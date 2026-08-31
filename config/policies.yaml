@@ -1,0 +1,17 @@
+policies:
+  internal_assistant:
+    pii_detection: standard
+    require_sources: false
+    grounding_threshold: 0.55
+    human_review_for: [destructive_tool_call]
+  engineering:
+    pii_detection: standard
+    require_sources: true
+    grounding_threshold: 0.70
+    human_review_for: [destructive_tool_call, low_grounding]
+  finance:
+    pii_detection: strict
+    require_sources: true
+    grounding_threshold: 0.80
+    human_review_for: [destructive_tool_call, low_grounding, external_transfer]
+

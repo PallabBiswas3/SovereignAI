@@ -1,0 +1,94 @@
+name: sovereign-ai
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      SOVEREIGN_DATABASE_URL: sqlite:////app/backend/data/sovereign.db
+      SOVEREIGN_MODELS_CONFIG: /app/config/models.docker.yaml
+      SOVEREIGN_POLICIES_CONFIG: /app/config/policies.yaml
+      SOVEREIGN_TOOLS_CONFIG: /app/config/tools.yaml
+      SOVEREIGN_WORKSPACE_ROOT: /app/workspace
+      SOVEREIGN_KNOWLEDGE_ROOT: /app/knowledge_base
+      SOVEREIGN_OLLAMA_URL: http://ollama:11434
+    volumes:
+      - backend-data:/app/backend/data
+      - ./config:/app/config:ro
+      - ./workspace:/app/workspace
+      - ./knowledge_base:/app/knowledge_base
+    ports: ["127.0.0.1:8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [sovereign]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      backend: {condition: service_healthy}
+    restart: unless-stopped
+    networks: [sovereign]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:0.33.2
+    profiles: ["container-ollama"]
+    ports: ["127.0.0.1:11434:11434"]
+    volumes: ["ollama-models:/root/.ollama"]
+    restart: unless-stopped
+    networks: [sovereign]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    profiles: ["qdrant"]
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+    networks: [sovereign]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  sandbox-image:
+    image: sovereign-sandbox:py311
+    build:
+      context: .
+      dockerfile: backend/sandbox.Dockerfile
+    profiles: ["sandbox-build"]
+    network_mode: none
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+networks:
+  sovereign:
+    internal: true
+
+volumes:
+  backend-data:
+  qdrant-data:
+  ollama-models:

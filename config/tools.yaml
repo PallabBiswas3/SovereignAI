@@ -1,0 +1,19 @@
+tools:
+  list_files: {risk: LOW, enabled: true}
+  read_file: {risk: LOW, enabled: true}
+  search_files: {risk: LOW, enabled: true}
+  get_file_metadata: {risk: LOW, enabled: true}
+  extract_pdf_text: {risk: LOW, enabled: true}
+  knowledge_search: {risk: LOW, enabled: true}
+  ocr_document: {risk: LOW, enabled: true}
+  analyze_image: {risk: LOW, enabled: true}
+  write_file: {risk: MEDIUM, enabled: true, approval_required: true, executable_after_approval: true}
+  run_python: {risk: MEDIUM, enabled: true}
+  create_docx: {risk: LOW, enabled: true}
+  create_xlsx: {risk: LOW, enabled: true}
+  create_pptx: {risk: LOW, enabled: true}
+  generate_docx: {risk: LOW, enabled: true}
+  generate_xlsx: {risk: LOW, enabled: true}
+  generate_pptx: {risk: LOW, enabled: true}
+  delete_file: {risk: HIGH, enabled: false, executable_after_approval: false}
+  execute_shell: {risk: HIGH, enabled: false, executable_after_approval: false}
