@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, Field
 from app.monitoring.network import LocalNetworkPolicy
+from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace
 
 
 class VisionAnalysis(BaseModel):
@@ -19,6 +20,8 @@ class VisionAnalysis(BaseModel):
     available: bool = True
     warning: str | None = None
     model: str
+    cache_hit: bool = False
+    schema_version: str = "vision-analysis-v1"
 
 
 class VisionProvider(ABC):
@@ -30,13 +33,27 @@ class VisionProvider(ABC):
 class OllamaVisionProvider(VisionProvider):
     """Local-only Ollama VLM adapter with structured, uncertainty-aware output."""
 
-    def __init__(self, endpoint: str, model: str, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        model: str,
+        client: httpx.AsyncClient | None = None,
+        cache: CacheBackend | None = None,
+        schema_version: str = "vision-analysis-v1",
+    ) -> None:
         LocalNetworkPolicy.require_local(endpoint)
         self.endpoint = endpoint.rstrip("/")
         self.model = model
         self.client = client
+        self.cache = cache
+        self.schema_version = schema_version
 
     async def analyze_image(self, path: Path, prompt: str) -> VisionAnalysis:
+        cache_key = CacheKeyBuilder.vision(path, self.model, prompt, self.schema_version)
+        if self.cache:
+            cached = self.cache.get(CacheNamespace.vision.value, cache_key)
+            if isinstance(cached, dict):
+                return VisionAnalysis.model_validate({**cached, "cache_hit": True})
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
         schema = VisionAnalysis.model_json_schema()
         payload = {
@@ -58,7 +75,16 @@ class OllamaVisionProvider(VisionProvider):
             values: dict[str, Any] = json.loads(raw) if isinstance(raw, str) else raw
             values.setdefault("model", self.model)
             values.setdefault("available", True)
-            return VisionAnalysis.model_validate(values)
+            values.setdefault("schema_version", self.schema_version)
+            result = VisionAnalysis.model_validate(values)
+            if self.cache:
+                self.cache.set(
+                    CacheNamespace.vision.value,
+                    cache_key,
+                    result.model_dump(mode="json"),
+                    metadata={"model": self.model, "schema_version": self.schema_version},
+                )
+            return result
         except (httpx.HTTPError, json.JSONDecodeError, ValueError, KeyError) as exc:
             return VisionAnalysis(
                 description="No visual analysis was generated.", available=False, model=self.model,

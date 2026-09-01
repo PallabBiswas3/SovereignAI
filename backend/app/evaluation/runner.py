@@ -22,6 +22,7 @@ from app.rag.retrieval import LocalRetriever
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.tools.file_tools import extract_text
+from app.evaluation.batch2 import Batch2EvaluationRunner
 
 
 class EvaluationRunner:
@@ -32,7 +33,7 @@ class EvaluationRunner:
         self.benchmark = json.loads(Path(__file__).with_name("benchmarks.json").read_text(encoding="utf-8"))
 
     def run(self) -> dict[str, Any]:
-        return {
+        result = {
             "benchmark": {"version": self.benchmark["version"], "case_counts": {key: len(value) for key, value in self.benchmark.items() if isinstance(value, list)}},
             "routing": self._routing_metrics(),
             "rag": self._rag_metrics(),
@@ -40,6 +41,8 @@ class EvaluationRunner:
             "agent": self._agent_metrics(),
             "system": self._system_metrics(),
         }
+        result["rag"]["batch2"] = Batch2EvaluationRunner().run()
+        return result
 
     def _routing_metrics(self) -> dict[str, Any]:
         router = ModelRouter(ModelRegistry(self.models_config))

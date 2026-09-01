@@ -2,6 +2,18 @@
 
 SovereignAI is a locally deployable prototype for confidential enterprise knowledge work. It combines configurable local inference, model routing, structured agent execution, file/OCR/vision tools, evidence-preserving retrieval, controlled Python execution, real DOCX/XLSX/PPTX artifacts, governance, auditability, and an air-gap monitor.
 
+The SovereignAI 2.0 Batch 1 runtime upgrade is complete: true token streaming, cancellable
+FAST/STANDARD/DEEP execution, resource-aware model admission, observable model lifecycle, and
+versioned local caches are implemented. See [docs/SOVEREIGNAI_2_BATCH1.md](docs/SOVEREIGNAI_2_BATCH1.md)
+for architecture, configuration, verification evidence, and limitations.
+
+Batch 2 evidence intelligence is also implemented: dense + BM25 hybrid retrieval, RRF,
+offline-only CPU reranking with honest fallback, bounded context compilation, typed evidence,
+deterministic verification, Pint unit normalization, revision conflicts, measured retrieval
+evaluation, and “Why this answer?” lineage. See
+[docs/SOVEREIGNAI_2_BATCH2.md](docs/SOVEREIGNAI_2_BATCH2.md). The configured reranker weights
+must be staged locally; until then retrieval correctly uses hybrid RRF without reranking.
+
 It is deliberately honest about runtime dependencies: model answers require a configured local Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
 ## Architecture

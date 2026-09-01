@@ -12,6 +12,7 @@ class TaskChannel:
     subscribers: set[asyncio.Queue] = field(default_factory=set)
     completed: bool = False
     task: asyncio.Task | None = None
+    cancellation_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 class TaskEventBroker:
@@ -26,6 +27,20 @@ class TaskEventBroker:
     async def attach_task(self, task_id: str, task: asyncio.Task) -> None:
         async with self._lock:
             self._channels[task_id].task = task
+
+    async def cancellation_event(self, task_id: str) -> asyncio.Event:
+        async with self._lock:
+            channel = self._channels.get(task_id)
+            if channel is None:
+                raise KeyError(task_id)
+            return channel.cancellation_event
+
+    async def cancel(self, task_id: str) -> None:
+        async with self._lock:
+            channel = self._channels.get(task_id)
+            if channel is None:
+                raise KeyError(task_id)
+            channel.cancellation_event.set()
 
     async def publish(self, task_id: str, event_type: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         event = {
@@ -73,6 +88,8 @@ class TaskEventBroker:
                 channel = self._channels.get(task_id)
                 if channel:
                     channel.subscribers.discard(queue)
+                    if not channel.completed and not channel.subscribers:
+                        channel.cancellation_event.set()
 
 
 task_event_broker = TaskEventBroker()

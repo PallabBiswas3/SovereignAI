@@ -50,6 +50,10 @@ class ModelRuntimeStatus(BaseModel):
     installed: bool
     detail: str
     capabilities: list[str] = Field(default_factory=list)
+    lifecycle_state: str = "UNKNOWN"
+    warm_status: str = "unknown"
+    memory_usage_mb: float | None = None
+    runtime_metrics: dict[str, object] = Field(default_factory=dict)
 
 
 class RoutingDecision(BaseModel):

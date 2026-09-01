@@ -5,6 +5,7 @@ import math
 import re
 from abc import ABC, abstractmethod
 from functools import lru_cache
+from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace, get_cache_backend
 
 
 class EmbeddingProvider(ABC):
@@ -125,19 +126,81 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
         return normalized.cpu().tolist()
 
 
+class CachedEmbeddingProvider(EmbeddingProvider):
+    """Caches vectors by text hash plus the exact embedding model identity."""
+
+    def __init__(self, provider: EmbeddingProvider, cache: CacheBackend) -> None:
+        self.provider = provider
+        self.cache = cache
+
+    @property
+    def dimension(self) -> int:
+        return self.provider.dimension
+
+    @property
+    def provider_name(self) -> str:
+        return self.provider.provider_name
+
+    @property
+    def model_identity(self) -> str:
+        return f"{self.provider_name}:dim={self.dimension}:pipeline=v1"
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        results: list[list[float] | None] = [None] * len(texts)
+        missing_indexes: list[int] = []
+        missing_texts: list[str] = []
+        for index, text in enumerate(texts):
+            key = CacheKeyBuilder.embedding(text, self.model_identity)
+            cached = self.cache.get(CacheNamespace.embedding.value, key)
+            if isinstance(cached, list) and len(cached) == self.dimension:
+                results[index] = [float(value) for value in cached]
+            else:
+                missing_indexes.append(index)
+                missing_texts.append(text)
+        if missing_texts:
+            generated = self.provider.embed_documents(missing_texts)
+            for index, text, vector in zip(missing_indexes, missing_texts, generated):
+                results[index] = vector
+                self._store(text, vector)
+        return [vector for vector in results if vector is not None]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed_cached(text)
+
+    def _embed_cached(self, text: str) -> list[float]:
+        key = CacheKeyBuilder.embedding(text, self.model_identity)
+        cached = self.cache.get(CacheNamespace.embedding.value, key)
+        if isinstance(cached, list) and len(cached) == self.dimension:
+            return [float(value) for value in cached]
+        vector = self.provider.embed_query(text)
+        self._store(text, vector)
+        return vector
+
+    def _store(self, text: str, vector: list[float]) -> None:
+        key = CacheKeyBuilder.embedding(text, self.model_identity)
+        self.cache.set(
+            CacheNamespace.embedding.value,
+            key,
+            vector,
+            metadata={"model_identity": self.model_identity},
+        )
+
+
 @lru_cache(maxsize=2)
 def configured_embedding_provider() -> EmbeddingProvider:
     from app.core.config import get_settings
 
     settings = get_settings()
     if settings.embedding_provider.lower() == "hash":
-        return LocalHashEmbeddingProvider()
-    try:
-        return SentenceTransformerEmbeddingProvider(
+        provider: EmbeddingProvider = LocalHashEmbeddingProvider()
+    else:
+        try:
+            provider = SentenceTransformerEmbeddingProvider(
             settings.embedding_model,
             local_files_only=settings.embedding_local_files_only,
         )
-    except Exception:
-        if not settings.embedding_allow_hash_fallback:
-            raise
-        return LocalHashEmbeddingProvider()
+        except Exception:
+            if not settings.embedding_allow_hash_fallback:
+                raise
+            provider = LocalHashEmbeddingProvider()
+    return CachedEmbeddingProvider(provider, get_cache_backend()) if settings.cache_enabled else provider

@@ -11,13 +11,15 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
-from app.rag.retrieval import LocalRetriever
+from app.rag.factory import configured_hybrid_retriever
 from app.tools.file_tools import SafeWorkspace
 from app.workflows.inspection import InspectionWorkflow
 from app.workflows.coding import CodingWorkflow
 from app.sandbox.executor import DockerSandboxExecutor
 from app.llm.ollama_provider import OllamaProvider
 from app.router.model_registry import ModelRegistry
+from app.resources.cache import get_cache_backend
+from app.multimodal.ocr import DocumentTextExtractor, LocalOCRService
 
 
 router = APIRouter(prefix="/api/demo", tags=["demo"])
@@ -39,9 +41,14 @@ async def run_inspection_demo(payload: InspectionDemoRequest, db: Session = Depe
         inspection = SafeWorkspace(settings.workspace_root).resolve(payload.inspection_path, must_exist=True)
         sop = SafeWorkspace(settings.knowledge_root).resolve(payload.sop_path, must_exist=True)
         embeddings = configured_embedding_provider()
+        cache = get_cache_backend() if settings.cache_enabled else None
         KnowledgeIngestionService(db, embeddings).ingest(sop, {"department": "maintenance", "classification": "internal"})
         output = settings.workspace_root / "artifacts" / f"Approval_Note_{uuid4().hex[:8]}.docx"
-        analysis = InspectionWorkflow(LocalRetriever(db, embeddings)).analyze(inspection, output)
+        analysis = InspectionWorkflow(
+            configured_hybrid_retriever(db, embeddings=embeddings, cache=cache, settings=settings),
+            DocumentTextExtractor(LocalOCRService(cache=cache)),
+            cache,
+        ).analyze(inspection, output)
         artifact = ArtifactService(db, settings.workspace_root / "artifacts").register(output)
     except (ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

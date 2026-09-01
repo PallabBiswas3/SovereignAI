@@ -13,9 +13,10 @@ from app.artifacts.xlsx_generator import XlsxGenerator
 from app.multimodal.ocr import LocalOCRService
 from app.multimodal.vision import OllamaVisionProvider
 from app.rag.embeddings import configured_embedding_provider
-from app.rag.retrieval import LocalRetriever
+from app.rag.factory import configured_hybrid_retriever
 from app.tools.base import Tool, ToolResult, ToolRisk
 from app.tools.file_tools import SafeWorkspace
+from app.resources.cache import get_cache_backend
 
 
 def _filename(value: str, extension: str) -> str:
@@ -37,9 +38,9 @@ class KnowledgeSearchTool(Tool):
         if not query:
             return ToolResult(success=False, error="A query is required")
         limit = max(1, min(int(args.get("limit", 5)), 10))
-        results = LocalRetriever(self.session, configured_embedding_provider()).search(query, limit)
+        results = configured_hybrid_retriever(self.session, cache=get_cache_backend()).search(query, limit)
         return ToolResult(success=True, output={"results": [
-            {"text": item.text, "score": round(item.score, 4), "source": item.source}
+            item.to_dict()
             for item in results
         ]})
 
@@ -56,7 +57,7 @@ class OCRDocumentTool(Tool):
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         try:
             path = self.workspace.resolve(str(args.get("path", "")), must_exist=True)
-            result = LocalOCRService().extract(path)
+            result = LocalOCRService(cache=get_cache_backend()).extract(path)
             return ToolResult(success=result.available, output=result.model_dump(), error=result.warning if not result.available else None)
         except (ValueError, FileNotFoundError, OSError) as exc:
             return ToolResult(success=False, error=str(exc))
@@ -74,7 +75,9 @@ class AnalyzeImageTool(Tool):
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         try:
             path = self.workspace.resolve(str(args.get("path", "")), must_exist=True)
-            result = await OllamaVisionProvider(self.endpoint, self.model_tag).analyze_image(
+            result = await OllamaVisionProvider(
+                self.endpoint, self.model_tag, cache=get_cache_backend()
+            ).analyze_image(
                 path, str(args.get("prompt", "Describe relevant industrial evidence and uncertainty."))
             )
             return ToolResult(success=result.available, output=result.model_dump(), error=result.warning if not result.available else None)

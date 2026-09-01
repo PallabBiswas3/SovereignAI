@@ -30,6 +30,32 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_local_files_only: bool = True
     embedding_allow_hash_fallback: bool = True
+    max_gpu_model_jobs: int = 1
+    max_cpu_jobs: int = 2
+    model_idle_timeout_seconds: int = 300
+    model_keep_alive: str | None = None
+    model_generation_timeout_seconds: float = 300.0
+    cache_enabled: bool = True
+    cache_default_ttl_seconds: int | None = None
+    hybrid_dense_top_k: int = 30
+    hybrid_sparse_top_k: int = 30
+    hybrid_fusion_candidate_limit: int = 50
+    hybrid_rrf_k: int = 60
+    hybrid_rerank_top_k: int = 10
+    hybrid_final_context_k: int = 5
+    dense_retriever_version: str = "cosine-v2"
+    bm25_index_version: str = "bm25-v1"
+    fusion_strategy_version: str = "rrf-v1"
+    reranker_enabled: bool = True
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_local_files_only: bool = True
+    reranker_version: str = "cross-encoder-v1"
+    context_max_fraction_of_window: float = 0.60
+    context_output_reserve_tokens: int = 1024
+    context_max_evidence_chunks: int = 8
+    context_max_evidence_tokens: int = 3000
+    context_near_duplicate_threshold: float = 0.90
+    max_retrieval_subqueries: int = 4
 
 
 @lru_cache

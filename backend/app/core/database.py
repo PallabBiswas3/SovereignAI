@@ -150,6 +150,21 @@ class TaskEventRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class CacheRecord(Base):
+    __tablename__ = "cache_entries"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(40), index=True)
+    cache_key: Mapped[str] = mapped_column(String(64), index=True)
+    value_json: Mapped[str] = mapped_column(Text, default="null")
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_accessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 
 
 

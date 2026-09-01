@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
+from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace
 
 
 class OCRWord(BaseModel):
@@ -29,12 +30,22 @@ class OCRResult(BaseModel):
     engine: str = "tesseract"
     available: bool = True
     warning: str | None = None
+    cache_hit: bool = False
+    pipeline_version: str = "tesseract-preprocess-v1"
 
 
 class LocalOCRService:
-    def __init__(self, language: str = "eng", confidence_threshold: float = 0.65) -> None:
+    def __init__(
+        self,
+        language: str = "eng",
+        confidence_threshold: float = 0.65,
+        cache: CacheBackend | None = None,
+        pipeline_version: str = "tesseract-preprocess-v1",
+    ) -> None:
         self.language = language
         self.confidence_threshold = confidence_threshold
+        self.cache = cache
+        self.pipeline_version = pipeline_version
 
     @staticmethod
     def is_scanned_pdf(path: Path, min_chars_per_page: int = 30) -> bool:
@@ -45,19 +56,38 @@ class LocalOCRService:
         return sum(counts) / len(counts) < min_chars_per_page
 
     def extract(self, path: Path) -> OCRResult:
+        cache_key = CacheKeyBuilder.file(
+            path,
+            self.pipeline_version,
+            language=self.language,
+            confidence_threshold=self.confidence_threshold,
+        )
+        if self.cache:
+            cached = self.cache.get(CacheNamespace.ocr.value, cache_key)
+            if isinstance(cached, dict):
+                return OCRResult.model_validate({**cached, "cache_hit": True})
         if not shutil.which("tesseract"):
             return OCRResult(text="", pages=[], mean_confidence=0.0, low_confidence=True, available=False, warning="Tesseract is not installed; OCR was not performed.")
         images = self._load_images(path)
         pages = [self._ocr_image(image, index + 1) for index, image in enumerate(images)]
         mean = sum(page.confidence for page in pages) / len(pages) if pages else 0.0
         low = mean < self.confidence_threshold
-        return OCRResult(
+        result = OCRResult(
             text="\n\n".join(f"[PAGE {page.page}]\n{page.text}" for page in pages),
             pages=pages,
             mean_confidence=round(mean, 4),
             low_confidence=low,
             warning=(f"OCR confidence {mean:.0%} is below the {self.confidence_threshold:.0%} threshold; verify extracted facts." if low else None),
+            pipeline_version=self.pipeline_version,
         )
+        if self.cache:
+            self.cache.set(
+                CacheNamespace.ocr.value,
+                cache_key,
+                result.model_dump(mode="json"),
+                metadata={"pipeline_version": self.pipeline_version},
+            )
+        return result
 
     def _load_images(self, path: Path) -> list[Image.Image]:
         if path.suffix.lower() == ".pdf":
@@ -123,4 +153,3 @@ class DocumentTextExtractor:
                 raise RuntimeError(result.warning or "OCR unavailable")
             return result.text, result
         return extract_text(path), None
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,16 +31,20 @@ from app.documents.evidence import MultiFileEvidenceProcessor
 from app.multimodal.vision import OllamaVisionProvider
 from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
-from app.rag.retrieval import LocalRetriever
+from app.rag.factory import configured_hybrid_retriever
 from app.sandbox.executor import DockerSandboxExecutor
 from app.tools.file_tools import SafeWorkspace
 from app.workflows.coding import CodingWorkflow
 from app.workflows.inspection import InspectionWorkflow
 from pathlib import Path
 from app.llm.ollama_provider import OllamaProvider
+from app.llm.base import ModelGenerationCancelled
+from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.governance.action_guard import ActionGuard
 from app.governance.grounding import GroundingChecker
 from app.tools.registry import create_agent_registry
+from app.resources.cache import get_cache_backend
+from app.multimodal.ocr import DocumentTextExtractor, LocalOCRService
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -50,11 +55,21 @@ class CreateTaskRequest(BaseModel):
     model_override: str | None = None
     use_case: str = "internal_assistant"
     attachments: list[str] = Field(default_factory=list, max_length=10)
+    execution_mode: ExecutionMode = ExecutionMode.automatic
 
 
 class StartTaskResponse(BaseModel):
     task_id: str
     status: str = "accepted"
+
+
+EventCallback = Callable[[str, dict[str, object]], Awaitable[None]]
+
+
+def _mode_selection(payload: CreateTaskRequest, routing):
+    return ExecutionModeSelector().select(
+        payload.execution_mode, payload.request, routing.task_profile, len(payload.attachments)
+    )
 
 
 def _completed_step(step_id: int, action: str, title: str, observation: str) -> AgentStep:
@@ -65,6 +80,7 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
     run_id = str(uuid4())
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
+    selection = _mode_selection(payload, routing)
     workspace = SafeWorkspace(settings.workspace_root)
     attachment_paths = [workspace.resolve(item, must_exist=True) for item in payload.attachments]
     uploaded_sops = [path for path in attachment_paths if "sop" in path.stem.lower()]
@@ -78,11 +94,26 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
         sop_name = "Maintenance_SOP.pdf" if (settings.knowledge_root / "Maintenance_SOP.pdf").exists() else "Maintenance_SOP.md"
         sop = SafeWorkspace(settings.knowledge_root).resolve(sop_name, must_exist=True)
     embeddings = configured_embedding_provider()
+    cache = get_cache_backend() if settings.cache_enabled else None
     document = KnowledgeIngestionService(db, embeddings).ingest(sop, {"department": "maintenance", "classification": "internal"})
     package_requested = any(phrase in payload.request.lower() for phrase in ("management package", "management pack", "docx xlsx pptx"))
     artifact_root = settings.workspace_root / "artifacts"
     output = (artifact_root / run_id / "approval_note.docx") if package_requested else (artifact_root / f"Approval_Note_{run_id[:8]}.docx")
-    analysis = InspectionWorkflow(LocalRetriever(db, embeddings)).analyze(inspection, output)
+    selected_model = registry.get(routing.model_id)
+    analysis = InspectionWorkflow(
+        configured_hybrid_retriever(
+            db, embeddings=embeddings, cache=cache, settings=settings,
+            execution_mode=selection.selected.value,
+        ),
+        DocumentTextExtractor(LocalOCRService(cache=cache)),
+        cache,
+    ).analyze(
+        inspection, output, payload.request,
+        selected_model=selected_model.model_tag,
+        context_window=selected_model.context_length,
+        execution_mode=selection.selected.value,
+    )
+    structured = analysis.evidence_bundle
     artifact_service = ArtifactService(db, artifact_root)
     artifact = artifact_service.register(output, run_id)
     artifact_records = [artifact]
@@ -101,7 +132,7 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
     if extra_paths:
         vision = registry.get("vision")
         processed = await MultiFileEvidenceProcessor(
-            OllamaVisionProvider(vision.endpoint, vision.model_tag)
+            OllamaVisionProvider(vision.endpoint, vision.model_tag, cache=cache)
         ).process(extra_paths, payload.request)
         evidence.extend(item.model_dump(mode="json") for item in processed)
     if package_requested:
@@ -147,9 +178,19 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
         steps.append(_completed_step(14, "create_management_package", "Create management workbook and briefing", "Generated and validated DOCX, XLSX, and PPTX outputs."))
     return AgentRunState(
         id=run_id, request=payload.request, status=RunStatus.completed, routing=routing,
+        requested_execution_mode=selection.requested.value,
+        execution_mode=selection.selected.value,
+        execution_mode_reason=selection.reason,
         plan=AgentPlan(goal=payload.request, steps=steps),
         final_response=analysis.recommendation, warnings=warnings, sources=analysis.sources,
         evidence_records=evidence,
+        measurements=list(structured.get("measurements", [])),
+        rules=list(structured.get("rules", [])),
+        calculations=list(structured.get("calculations", [])),
+        claims=list(structured.get("claims", [])),
+        conflicts=list(structured.get("conflicts", [])),
+        context_metrics=dict(analysis.compiled_context.get("metrics", {})),
+        retrieval_metrics=analysis.retrieval_metrics,
         artifacts=[{"id": item.id, "name": item.name, "url": f"/api/artifacts/{item.id}"} for item in artifact_records],
     )
 
@@ -158,6 +199,7 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session) ->
     run_id = str(uuid4())
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
+    selection = _mode_selection(payload, routing)
     csv_path = SafeWorkspace(settings.workspace_root).resolve(payload.attachments[0], must_exist=True)
     if csv_path.suffix.lower() != ".csv":
         raise ValueError("Coding workflow requires a CSV attachment")
@@ -168,7 +210,11 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session) ->
     selected = registry.get(routing.model_id)
     result = await CodingWorkflow(
         DockerSandboxExecutor(settings.workspace_root / "sandbox"),
-        OllamaProvider(selected.endpoint, settings.allow_deterministic_fallback),
+        OllamaProvider(
+            selected.endpoint, settings.allow_deterministic_fallback,
+            role=selected.role, memory_requirement=selected.memory_requirement,
+            execution_mode=selection.selected.value, priority=selection.priority,
+        ),
         selected.model_tag,
     ).run(csv_path, artifact_root, payload.request, run_id)
     service = ArtifactService(db, artifact_root)
@@ -186,6 +232,9 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session) ->
     return AgentRunState(
         id=run_id, request=payload.request, status=RunStatus.completed if succeeded else RunStatus.failed,
         routing=routing, plan=AgentPlan(goal=payload.request, steps=steps),
+        requested_execution_mode=selection.requested.value,
+        execution_mode=selection.selected.value,
+        execution_mode_reason=selection.reason,
         final_response=("Anomaly detector executed and its output was verified." if succeeded else "The reusable anomaly detector and report were created, but execution could not be verified because Docker is unavailable."),
         warnings=result.warnings,
         artifacts=[{"id": record.id, "name": record.name, "url": f"/api/artifacts/{record.id}"} for record in records],
@@ -207,13 +256,21 @@ def _requires_tool_agent(payload: CreateTaskRequest) -> bool:
 async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> AgentRunState:
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
+    selection = _mode_selection(payload, routing)
     selected = registry.get(routing.model_id)
     state = AgentRunState(
         id=str(uuid4()), request=payload.request, status=RunStatus.running, routing=routing,
         plan=AgentPlan(goal=payload.request, steps=[]),
+        requested_execution_mode=selection.requested.value,
+        execution_mode=selection.selected.value,
+        execution_mode_reason=selection.reason,
     )
     completed = await BoundedToolAgent(
-        OllamaProvider(selected.endpoint, settings.allow_deterministic_fallback),
+        OllamaProvider(
+            selected.endpoint, settings.allow_deterministic_fallback,
+            role=selected.role, memory_requirement=selected.memory_requirement,
+            execution_mode=selection.selected.value, priority=selection.priority,
+        ),
         selected.model_tag,
         create_agent_registry(settings, db),
         ActionGuard(settings.tools_config),
@@ -232,8 +289,12 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> A
     return completed
 
 
-@router.post("", response_model=AgentRunState)
-async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db)) -> AgentRunState:
+async def _execute_task(
+    payload: CreateTaskRequest,
+    db: Session,
+    event_callback: EventCallback | None = None,
+    cancellation_event: asyncio.Event | None = None,
+) -> AgentRunState:
     settings = get_settings()
     policy_engine = PolicyEngine(settings.policies_config)
     policy = policy_engine.get(payload.use_case)
@@ -244,6 +305,7 @@ async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db))
         if input_decision == GovernanceDecision.block:
             registry = ModelRegistry(settings.models_config)
             routing = ModelRouter(registry).route(payload.request, payload.model_override)
+            selection = _mode_selection(payload, routing)
             state = AgentRunState(
                 id=str(uuid4()), request=payload.request, status=RunStatus.completed,
                 routing=routing,
@@ -254,6 +316,9 @@ async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db))
                 )]),
                 final_response="This request was blocked because it contains an instruction pattern that conflicts with workbench safety policy.",
                 warnings=["No model or tool was invoked."],
+                requested_execution_mode=selection.requested.value,
+                execution_mode=selection.selected.value,
+                execution_mode_reason=selection.reason,
             )
         elif payload.attachments and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop")):
             state = await _run_inspection_task(payload, settings, db)
@@ -262,7 +327,14 @@ async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db))
         elif _requires_tool_agent(payload):
             state = await _run_tool_task(payload, settings, db)
         else:
-            state = await AgentOrchestrator(settings).run(payload.request, payload.model_override)
+            state = await AgentOrchestrator(settings).run(
+                payload.request,
+                payload.model_override,
+                payload.execution_mode,
+                len(payload.attachments),
+                event_callback,
+                cancellation_event,
+            )
     except (KeyError, ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     grounding_score = 1.0 if state.sources else None
@@ -308,6 +380,9 @@ async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db))
     audit = AuditLogger(db)
     audit.log(state.id, "user_request", "Task accepted by the workbench.", {"request": payload.request, "use_case": payload.use_case})
     audit.log(state.id, "model_routing", state.routing.reason, state.routing.model_dump(mode="json"))
+    audit.log(state.id, "execution_mode", state.execution_mode_reason, {
+        "requested": state.requested_execution_mode, "selected": state.execution_mode,
+    })
     audit.log(state.id, "governance", f"Input decision: {input_decision.value}", state.governance)
     for step in state.plan.steps:
         audit.log(state.id, "agent_step", f"{step.title}: {step.status.value}", {"action": step.action, "status": step.status.value, "observation": step.observation, "verification": step.verification, "error": step.error})
@@ -325,8 +400,21 @@ async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db))
         )
     for artifact in state.artifacts:
         audit.log(state.id, "artifact_created", f"Created {artifact.get('name')}", artifact)
+    for claim in state.claims:
+        audit.log(state.id, "claim_verification", f"Claim {claim.get('id')}: {claim.get('support_status')}", claim)
+    for calculation in state.calculations:
+        audit.log(state.id, "deterministic_calculation", f"Calculation {calculation.get('id')} verified={calculation.get('verified')}", calculation)
+    for conflict in state.conflicts:
+        audit.log(state.id, "evidence_conflict", str(conflict.get("summary", "Evidence conflict")), conflict)
+    if state.context_metrics:
+        audit.log(state.id, "context_compilation", "Compiled bounded evidence context.", state.context_metrics)
     audit.log(state.id, "final_output", "Agent run completed without hidden reasoning in the audit.", {"response": state.final_response, "warnings": state.warnings})
     return state
+
+
+@router.post("", response_model=AgentRunState)
+async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db)) -> AgentRunState:
+    return await _execute_task(payload, db)
 
 
 async def _publish_event(db: Session, task_id: str, event_type: str, payload: dict | None = None) -> None:
@@ -353,8 +441,15 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest) -> 
         await _publish_event(db, tracking_id, "task_classified", routing.task_profile.model_dump(mode="json"))
         await _publish_event(db, tracking_id, "model_selected", {"model_id": routing.model_id, "model": routing.selected_model, "reason": routing.reason})
         await _publish_event(db, tracking_id, "plan_created", {"workflow": routing.task_profile.task_type})
+        selection = _mode_selection(payload, routing)
+        await _publish_event(db, tracking_id, "execution_mode_selected", selection.model_dump(mode="json"))
         await _publish_event(db, tracking_id, "step_started", {"id": 0, "action": "execute_workflow", "title": "Execute selected bounded workflow"})
-        result = await create_task(payload, db)
+        cancellation_event = await task_event_broker.cancellation_event(tracking_id)
+
+        async def publish_live(event_type: str, event_payload: dict[str, object]) -> None:
+            await _publish_event(db, tracking_id, event_type, event_payload)
+
+        result = await _execute_task(payload, db, publish_live, cancellation_event)
         await _publish_event(db, tracking_id, "step_completed", {"id": 0, "status": result.status.value, "observation": "Workflow returned a persisted run state."})
         for step in result.plan.steps:
             await _publish_event(db, tracking_id, "step_started", {"id": step.id, "action": step.action, "title": step.title})
@@ -368,9 +463,17 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest) -> 
             await _publish_event(db, tracking_id, "artifact_created", artifact)
         for source in result.sources:
             await _publish_event(db, tracking_id, "source_retrieved", source)
+        for calculation in result.calculations:
+            await _publish_event(db, tracking_id, "calculation_completed", calculation)
+        for claim in result.claims:
+            await _publish_event(db, tracking_id, "claim_verified", claim)
+        for conflict in result.conflicts:
+            await _publish_event(db, tracking_id, "evidence_conflict", conflict)
         for warning in result.warnings:
             await _publish_event(db, tracking_id, "warning", {"summary": warning})
         await _publish_event(db, tracking_id, "task_completed", {"result": result.model_dump(mode="json")})
+    except ModelGenerationCancelled as exc:
+        await _publish_event(db, tracking_id, "task_cancelled", {"error": str(exc)})
     except Exception as exc:
         await _publish_event(db, tracking_id, "task_failed", {"error": str(exc)})
     finally:
@@ -385,6 +488,15 @@ async def start_task(payload: CreateTaskRequest) -> StartTaskResponse:
     task = asyncio.create_task(_run_background_task(tracking_id, payload))
     await task_event_broker.attach_task(tracking_id, task)
     return StartTaskResponse(task_id=tracking_id)
+
+
+@router.delete("/{task_id}")
+async def cancel_task(task_id: str) -> dict[str, str]:
+    try:
+        await task_event_broker.cancel(task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    return {"task_id": task_id, "status": "cancellation_requested"}
 
 
 @router.get("/{task_id}/events")

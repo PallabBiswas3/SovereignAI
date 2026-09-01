@@ -9,11 +9,12 @@ backend/data/
 workspace/uploads/*
 workspace/artifacts/*
 workspace/sandbox/*
+workspace/approval-tests/*
 !workspace/uploads/.gitkeep
 !workspace/artifacts/.gitkeep
 !workspace/sandbox/.gitkeep
+!workspace/approval-tests/.gitkeep
 frontend/node_modules/
 frontend/.next/
 frontend/out/
 *.log
-

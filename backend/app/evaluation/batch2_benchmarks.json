@@ -1,0 +1,11 @@
+{
+  "version": "2026.09-batch2-v1",
+  "retrieval": [
+    {"id": "exact-identifier", "category": "EXACT_IDENTIFIER", "query": "PU-102 vibration limit", "expected_section": "7.4", "answerable": true},
+    {"id": "paraphrase", "category": "PARAPHRASE", "query": "What level of oscillation is acceptable for this pump?", "expected_section": "7.4", "answerable": true},
+    {"id": "numeric", "category": "NUMERIC", "query": "What pressure range is specified?", "expected_section": "7.6", "answerable": true},
+    {"id": "section", "category": "SECTION_STANDARD", "query": "What does SOP-MNT-42 Section 7.4 require?", "expected_section": "7.4", "answerable": true},
+    {"id": "unanswerable", "category": "UNANSWERABLE", "query": "Who manufactured Pump-102?", "expected_section": null, "answerable": false},
+    {"id": "revision-conflict", "category": "CONFLICTING_REVISION", "query": "What is the current Pump-102 vibration limit?", "expected_section": "7.4", "answerable": true, "conflict_expected": true}
+  ]
+}

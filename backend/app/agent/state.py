@@ -47,11 +47,22 @@ class AgentRunState(BaseModel):
     status: RunStatus
     plan: AgentPlan
     routing: RoutingDecision
+    requested_execution_mode: str = "AUTOMATIC"
+    execution_mode: str = "STANDARD"
+    execution_mode_reason: str = "Default bounded execution mode."
+    runtime_metrics: dict[str, Any] = Field(default_factory=dict)
     final_response: str | None = None
     warnings: list[str] = Field(default_factory=list)
     artifacts: list[dict[str, str]] = Field(default_factory=list)
     sources: list[dict[str, Any]] = Field(default_factory=list)
     evidence_records: list[dict[str, Any]] = Field(default_factory=list)
+    measurements: list[dict[str, Any]] = Field(default_factory=list)
+    rules: list[dict[str, Any]] = Field(default_factory=list)
+    calculations: list[dict[str, Any]] = Field(default_factory=list)
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    context_metrics: dict[str, Any] = Field(default_factory=dict)
+    retrieval_metrics: list[dict[str, Any]] = Field(default_factory=list)
     governance: dict[str, Any] = Field(default_factory=dict)
     execution_records: list[dict[str, Any]] = Field(default_factory=list)
     tool_records: list[dict[str, Any]] = Field(default_factory=list)

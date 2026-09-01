@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.multimodal.vision import OllamaVisionProvider
 from app.router.model_registry import ModelRegistry
 from app.tools.file_tools import SafeWorkspace
+from app.resources.cache import get_cache_backend
 
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
@@ -25,7 +26,10 @@ async def analyze_image(payload: VisionRequest) -> dict[str, object]:
         if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}:
             raise ValueError("Vision analysis requires a common raster image")
         model = ModelRegistry(settings.models_config).get("vision")
-        result = await OllamaVisionProvider(model.endpoint, model.model_tag).analyze_image(path, payload.prompt)
+        cache = get_cache_backend() if settings.cache_enabled else None
+        result = await OllamaVisionProvider(
+            model.endpoint, model.model_tag, cache=cache
+        ).analyze_image(path, payload.prompt)
         return result.model_dump()
     except (ValueError, FileNotFoundError, OSError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
