@@ -5,6 +5,9 @@ tools:
   get_file_metadata: {risk: LOW, enabled: true}
   extract_pdf_text: {risk: LOW, enabled: true}
   knowledge_search: {risk: LOW, enabled: true}
+  get_asset_telemetry: {risk: LOW, enabled: true}
+  get_asset_history: {risk: LOW, enabled: true}
+  approve_maintenance_draft: {risk: MEDIUM, enabled: true, approval_required: true, executable_after_approval: true}
   ocr_document: {risk: LOW, enabled: true}
   analyze_image: {risk: LOW, enabled: true}
   write_file: {risk: MEDIUM, enabled: true, approval_required: true, executable_after_approval: true}

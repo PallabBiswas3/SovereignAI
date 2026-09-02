@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.logger import AuditLogger
 from app.core.config import get_settings
-from app.core.database import AuditEventRecord, HumanApprovalRecord, get_db
+from app.core.database import AuditEventRecord, HumanApprovalRecord, MaintenanceDraftRecord, get_db
 from app.governance.action_guard import ActionGuard
 from app.governance.injection import PromptInjectionScanner
 from app.governance.pii import PIIDetector
@@ -112,8 +112,14 @@ async def decide_approval(
     approval.decided_at = datetime.now(timezone.utc)
     if not payload.approve:
         approval.execution_status = "not_executed"
+        draft = db.query(MaintenanceDraftRecord).filter_by(approval_id=approval.id).one_or_none()
+        if draft:
+            draft.status = "REJECTED"
+            draft.updated_at = datetime.now(timezone.utc)
         db.commit()
         AuditLogger(db, principal).log(approval.run_id or f"approval:{approval.id}", "approval_rejected", f"Rejected {approval.tool}", {"approval_id": approval.id, "decided_by": approval.decided_by})
+        if draft:
+            AuditLogger(db, principal).log(f"asset:{draft.asset_id}", "MAINTENANCE_DRAFT_REJECTED", "Maintenance draft rejected; no plant action was executed.", {"approval_id": approval.id, "draft_id": draft.id})
         return {"id": approval.id, "status": approval.status, "execution_status": approval.execution_status}
 
     settings = get_settings()
@@ -123,8 +129,10 @@ async def decide_approval(
     result_payload: dict[str, object]
     requester = (
         LocalIdentityProvider(db, settings.access_config).principal_for_user(approval.requester_id)
-        if settings.auth_mode.lower() == "local" and approval.requester_id else principal
+        if approval.requester_id else principal
     )
+    if requester is None and settings.auth_mode.lower() != "local":
+        requester = principal
     tool_access = AuthorizationService().can_use_tool(requester, approval.tool) if requester else None
     if approval.action_hash and current_hash != approval.action_hash:
         approval.status = "blocked"
@@ -138,6 +146,21 @@ async def decide_approval(
         approval.status = "blocked"
         approval.execution_status = "blocked"
         result_payload = {"success": False, "error": revalidated.reason}
+    elif approval.tool == "approve_maintenance_draft":
+        draft = db.get(MaintenanceDraftRecord, str(args.get("draft_id", "")))
+        if not draft or draft.approval_id != approval.id:
+            approval.status = "blocked"
+            approval.execution_status = "blocked"
+            result_payload = {"success": False, "error": "MAINTENANCE_DRAFT_FAILED"}
+        else:
+            draft.status = "APPROVED"
+            draft.updated_at = datetime.now(timezone.utc)
+            approval.execution_status = "draft_accepted"
+            result_payload = {
+                "success": True, "draft_id": draft.id, "status": draft.status,
+                "plant_action_executed": False,
+            }
+            AuditLogger(db, principal).log(f"asset:{draft.asset_id}", "MAINTENANCE_DRAFT_APPROVED", "Maintenance draft approved; no plant action was executed.", {"approval_id": approval.id, "draft_id": draft.id})
     else:
         registry = create_default_registry(settings.workspace_root)
         try:

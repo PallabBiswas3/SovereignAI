@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from time import monotonic
 from typing import Any
 
@@ -52,6 +53,7 @@ class CompiledContext(BaseModel):
     conflicts: list[EvidenceConflict] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
     user_constraints: list[str] = Field(default_factory=list)
+    asset_context: dict[str, Any] | None = None
     budget: ContextBudget
     metrics: ContextCompilationMetrics
     warnings: list[str] = Field(default_factory=list)
@@ -135,6 +137,7 @@ class ContextCompiler:
         previous_verified_findings: list[dict[str, Any]] | None = None,
         open_questions: list[str] | None = None,
         user_constraints: list[str] | None = None,
+        asset_context: dict[str, Any] | BaseModel | None = None,
     ) -> CompiledContext:
         started = monotonic()
         raw_tokens = sum(self.estimate_tokens(item.text) for item in evidence)
@@ -223,7 +226,15 @@ class ContextCompiler:
             ))
 
         conflicts = self._revision_conflicts(sources)
-        compiled_tokens = used_tokens + self.estimate_tokens(task)
+        structured_asset = (
+            asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else asset_context
+        )
+        asset_tokens = self.estimate_tokens(json.dumps(structured_asset, default=str)) if structured_asset else 0
+        if asset_tokens > max(0, available - used_tokens):
+            warnings.append("CONTEXT_BUDGET_EXCEEDED")
+            structured_asset = None
+            asset_tokens = 0
+        compiled_tokens = used_tokens + self.estimate_tokens(task) + asset_tokens
         metrics = ContextCompilationMetrics(
             raw_candidate_count=len(evidence),
             reranked_candidate_count=len(ordered),
@@ -248,6 +259,7 @@ class ContextCompiler:
             conflicts=conflicts,
             open_questions=open_questions or [],
             user_constraints=user_constraints or [],
+            asset_context=structured_asset,
             budget=budget,
             metrics=metrics,
             warnings=warnings,

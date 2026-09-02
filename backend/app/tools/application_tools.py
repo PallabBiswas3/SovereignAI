@@ -19,6 +19,10 @@ from app.tools.file_tools import SafeWorkspace
 from app.resources.cache import get_cache_backend
 from app.core.config import get_settings
 from app.identity.models import Principal, ResourceScope
+from app.assets.repository import AssetRepository
+from app.assets.resolver import AssetResolver
+from app.assets.telemetry import APELSimulatorTelemetryProvider, FreshnessPolicy
+from app.assets.trends import InsufficientHistoryError, TrendAnalyzer
 
 
 def _filename(value: str, extension: str) -> str:
@@ -50,6 +54,85 @@ class KnowledgeSearchTool(Tool):
             item.to_dict()
             for item in results
         ]})
+
+
+class GetAssetTelemetryTool(Tool):
+    name = "get_asset_telemetry"
+    description = "Read a bounded authorized telemetry snapshot from the local APEL simulator"
+    risk = ToolRisk.low
+    input_schema = {"type": "object", "properties": {
+        "asset_id": {"type": "string"}, "metrics": {"type": "array"},
+        "scenario": {"type": "string"}}, "required": ["asset_id"]}
+
+    def __init__(self, session: Session, principal: Principal) -> None:
+        self.session, self.principal = session, principal
+
+    async def execute(self, args: dict[str, Any]) -> ToolResult:
+        repository = AssetRepository(self.session)
+        resolution = AssetResolver(repository).resolve(self.principal, str(args.get("asset_id", "")))
+        if resolution.status != "RESOLVED" or not resolution.asset:
+            return ToolResult(success=False, error=resolution.status)
+        asset_row = repository.get_row(resolution.asset.asset_id)
+        if not asset_row or not repository.is_authorized(self.principal, asset_row, telemetry=True):
+            return ToolResult(success=False, error="ASSET_ACCESS_DENIED")
+        settings = get_settings()
+        provider = APELSimulatorTelemetryProvider(
+            repository, FreshnessPolicy(settings.telemetry_default_freshness_seconds, settings.telemetry_expired_seconds),
+            default_scenario=settings.telemetry_scenario,
+        )
+        values = provider.get_latest(
+            self.principal, resolution.asset.asset_id,
+            [str(item) for item in args.get("metrics", [])] if args.get("metrics") else None,
+            scenario=str(args["scenario"]) if args.get("scenario") else None,
+        )
+        return ToolResult(success=True, output={
+            "asset_id": resolution.asset.asset_id, "provider": provider.provider_name,
+            "measurements": [item.model_dump(mode="json") for item in values],
+            "data_source": "SIMULATED_PLANT_DATA",
+        })
+
+
+class GetAssetHistoryTool(Tool):
+    name = "get_asset_history"
+    description = "Read compressed authorized asset history and a deterministic trend summary"
+    risk = ToolRisk.low
+    input_schema = {"type": "object", "properties": {
+        "asset_id": {"type": "string"}, "metric": {"type": "string"},
+        "scenario": {"type": "string"}}, "required": ["asset_id", "metric"]}
+
+    def __init__(self, session: Session, principal: Principal) -> None:
+        self.session, self.principal = session, principal
+
+    async def execute(self, args: dict[str, Any]) -> ToolResult:
+        repository = AssetRepository(self.session)
+        resolution = AssetResolver(repository).resolve(self.principal, str(args.get("asset_id", "")))
+        if resolution.status != "RESOLVED" or not resolution.asset:
+            return ToolResult(success=False, error=resolution.status)
+        asset_row = repository.get_row(resolution.asset.asset_id)
+        if not asset_row or not repository.is_authorized(self.principal, asset_row, telemetry=True):
+            return ToolResult(success=False, error="ASSET_ACCESS_DENIED")
+        settings = get_settings()
+        provider = APELSimulatorTelemetryProvider(
+            repository, FreshnessPolicy(settings.telemetry_default_freshness_seconds, settings.telemetry_expired_seconds),
+            default_scenario=settings.telemetry_scenario,
+        )
+        series = provider.get_history(
+            self.principal, resolution.asset.asset_id, str(args.get("metric", "")),
+            scenario=str(args["scenario"]) if args.get("scenario") else None, limit=120,
+        )
+        if not series:
+            return ToolResult(success=False, error="HISTORY_UNAVAILABLE")
+        try:
+            trend = TrendAnalyzer().analyze(series)
+        except InsufficientHistoryError:
+            return ToolResult(success=False, error="INSUFFICIENT_HISTORY")
+        return ToolResult(success=True, output={
+            "asset_id": series.asset_id, "metric": series.metric, "unit": series.unit,
+            "time_range": trend.window.model_dump(mode="json"),
+            "trend": trend.model_dump(mode="json"),
+            "selected_measurement_ids": [item.measurement_id for item in series.measurements[-12:]],
+            "data_source": "SIMULATED_PLANT_DATA",
+        })
 
 
 class OCRDocumentTool(Tool):

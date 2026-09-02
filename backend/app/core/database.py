@@ -85,6 +85,132 @@ class TaskAccessRecord(Base):
     classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
 
 
+class PlantRecord(Base):
+    __tablename__ = "plants"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+
+
+class AreaRecord(Base):
+    __tablename__ = "plant_areas"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    plant_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+
+
+class UnitRecord(Base):
+    __tablename__ = "plant_units"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    plant_id: Mapped[str] = mapped_column(String(100), index=True)
+    area_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+
+
+class AssetRecord(Base):
+    __tablename__ = "assets"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String(200))
+    asset_type: Mapped[str] = mapped_column(String(100), index=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    plant_id: Mapped[str] = mapped_column(String(100), index=True)
+    area_id: Mapped[str] = mapped_column(String(100), index=True)
+    unit_id: Mapped[str] = mapped_column(String(100), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    allowed_roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    allowed_users_json: Mapped[str] = mapped_column(Text, default="[]")
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    criticality: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    commissioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    design_parameters_json: Mapped[str] = mapped_column(Text, default="{}")
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class AssetAliasRecord(Base):
+    __tablename__ = "asset_aliases"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    alias: Mapped[str] = mapped_column(String(160), index=True)
+    alias_normalized: Mapped[str] = mapped_column(String(160), index=True)
+
+
+class AssetEvidenceLinkRecord(Base):
+    __tablename__ = "asset_evidence_links"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    evidence_id: Mapped[str] = mapped_column(String(100), index=True)
+    relationship: Mapped[str] = mapped_column(String(60), index=True)
+    source: Mapped[str] = mapped_column(String(160))
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    inferred: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class InspectionRecordRow(Base):
+    __tablename__ = "asset_inspections"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    inspected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    source_document_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    measurement_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+
+
+class OperationalMeasurementRecord(Base):
+    __tablename__ = "operational_measurements"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    metric: Mapped[str] = mapped_column(String(100), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(40))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    quality: Mapped[str] = mapped_column(String(30), index=True)
+    source: Mapped[str] = mapped_column(String(160), index=True)
+    source_tag: Mapped[str] = mapped_column(String(300))
+    original_value: Mapped[float] = mapped_column(Float)
+    original_unit: Mapped[str] = mapped_column(String(40))
+    scenario: Mapped[str] = mapped_column(String(80), default="PUMP_102_DEGRADING", index=True)
+
+
+class MaintenanceRecordRow(Base):
+    __tablename__ = "maintenance_records"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    event_type: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(240))
+    summary: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(40), default="COMPLETED")
+
+
+class MaintenanceDraftRecord(Base):
+    __tablename__ = "maintenance_drafts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(100), index=True)
+    action_type: Mapped[str] = mapped_column(String(80))
+    priority: Mapped[str] = mapped_column(String(30))
+    title: Mapped[str] = mapped_column(String(240))
+    description: Mapped[str] = mapped_column(Text)
+    reason_claim_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
+    created_by: Mapped[str] = mapped_column(String(100), index=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    classification: Mapped[str] = mapped_column(String(30), default="CONFIDENTIAL")
+    approval_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Message(Base):
     __tablename__ = "messages"
 

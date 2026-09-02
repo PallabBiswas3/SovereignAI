@@ -61,6 +61,10 @@ class AgentRunState(BaseModel):
     calculations: list[dict[str, Any]] = Field(default_factory=list)
     claims: list[dict[str, Any]] = Field(default_factory=list)
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    asset_context: dict[str, Any] | None = None
+    trend_analyses: list[dict[str, Any]] = Field(default_factory=list)
+    maintenance_history: list[dict[str, Any]] = Field(default_factory=list)
+    maintenance_draft: dict[str, Any] | None = None
     context_metrics: dict[str, Any] = Field(default_factory=dict)
     retrieval_metrics: list[dict[str, Any]] = Field(default_factory=list)
     governance: dict[str, Any] = Field(default_factory=dict)

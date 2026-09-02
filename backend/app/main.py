@@ -21,6 +21,7 @@ from app.api.workcells import router as workcells_router
 from app.api.capsules import capsule_router, task_capsule_router
 from app.api.auth import router as auth_router
 from app.api.organization import router as organization_router
+from app.api.assets import router as assets_router
 from app.identity.provider import LocalIdentityProvider
 import hmac
 from fastapi import Request
@@ -62,6 +63,7 @@ app.include_router(task_capsule_router)
 app.include_router(capsule_router)
 app.include_router(auth_router)
 app.include_router(organization_router)
+app.include_router(assets_router)
 
 
 @app.middleware("http")

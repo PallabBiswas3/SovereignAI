@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import inspect
 import re
 from pathlib import Path
 from typing import Any, Protocol
@@ -83,11 +85,13 @@ class InspectionWorkflow:
         selected_model: str = "general",
         context_window: int = 32768,
         execution_mode: str = "STANDARD",
+        asset_context: BaseModel | dict[str, Any] | None = None,
     ) -> InspectionAnalysis:
         input_hashes = [
             hashlib.sha256(inspection_path.read_bytes()).hexdigest(),
             self.retriever.collection_version(),
             hashlib.sha256(task.encode("utf-8")).hexdigest(),
+            hashlib.sha256(json.dumps(asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else asset_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
         ]
         workflow_version = "inspection-evidence-first-v2"
         if self.workcell_identity:
@@ -105,6 +109,9 @@ class InspectionWorkflow:
         text, ocr_result = self.extractor.extract(inspection_path)
         equipment_match = re.search(r"\b(Pump[- ]?\d+)\b", text, re.IGNORECASE)
         equipment = equipment_match.group(1).replace(" ", "-").title() if equipment_match else "Unknown equipment"
+        raw_asset_context = asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else (asset_context or {})
+        context_asset = raw_asset_context.get("asset", {}) if isinstance(raw_asset_context, dict) else {}
+        resolved_asset_id = str(context_asset.get("asset_id", equipment)) if isinstance(context_asset, dict) else equipment
         readings = self._extract_readings(text)
         if not readings:
             raise ValueError("No supported inspection measurements were found")
@@ -142,7 +149,11 @@ class InspectionWorkflow:
             })
         for reading in readings:
             query = f"{equipment} {reading.parameter} acceptable normal shutdown limit threshold {reading.unit}"
-            candidates = self.retriever.search(query, limit=10)
+            parameters = inspect.signature(self.retriever.search).parameters
+            candidates = (
+                self.retriever.search(query, limit=10, asset_id=resolved_asset_id)
+                if "asset_id" in parameters else self.retriever.search(query, limit=10)
+            )
             candidates_by_metric[reading.metric] = candidates
             all_candidates.update({item.chunk_id: item for item in candidates})
             telemetry = getattr(self.retriever, "last_telemetry", None)
@@ -211,6 +222,7 @@ class InspectionWorkflow:
             measurements=bundle.measurements, rules=bundle.rules,
             calculations=bundle.calculations,
             open_questions=[item.id for item in requirements if not item.satisfied],
+            asset_context=asset_context,
         )
         if compiled.conflicts:
             existing = {conflict.summary for conflict in bundle.conflicts}

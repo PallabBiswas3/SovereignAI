@@ -101,6 +101,16 @@ class EvidenceCapsuleBuilder:
             for name, value in evidence.items():
                 if value:
                     self._write_payload(temporary, f"evidence/{name}.json", value)
+            # Operational evidence is a task-time snapshot. Verification later
+            # hashes these stored values and never performs a fresh telemetry read.
+            if task.asset_context:
+                self._write_payload(temporary, "asset/asset_context_snapshot.json", task.asset_context)
+            if task.trend_analyses:
+                self._write_payload(temporary, "asset/trend_analyses.json", task.trend_analyses)
+            if task.maintenance_history:
+                self._write_payload(temporary, "asset/maintenance_history.json", task.maintenance_history)
+            if task.maintenance_draft:
+                self._write_payload(temporary, "asset/maintenance_draft.json", task.maintenance_draft)
             self._write_payload(temporary, "execution/workcell_manifest.json", definition.manifest.model_dump(mode="json"))
             self._write_payload(temporary, "execution/workflow_definition.json", definition.workflow.model_dump(mode="json"))
             self._write_payload(temporary, "execution/workcell_file_manifest.json", definition.files)

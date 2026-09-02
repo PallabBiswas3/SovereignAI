@@ -49,6 +49,10 @@ class Permission(str, Enum):
     approval_approve = "approval.approve"
     audit_read = "audit.read"
     admin_manage_users = "admin.manage_users"
+    asset_read = "asset.read"
+    telemetry_read = "telemetry.read"
+    maintenance_read = "maintenance.read"
+    maintenance_draft_create = "maintenance.draft.create"
 
 
 class AuthFailureCode(str, Enum):

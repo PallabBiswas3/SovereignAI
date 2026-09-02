@@ -1,7 +1,7 @@
 assets:
   - {id: Pump-101, area: Utilities, service: Boiler Feed Water, maker: Meridian Rotating Systems, pressure_bar: '7.2-8.0', vibration_max_mm_s: 5.5, shutdown_mm_s: 8.5}
-  - {id: Pump-102, area: Utilities, service: Cooling Water, maker: Meridian Rotating Systems, pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
-  - {id: Pump-103, area: Utilities, service: Cooling Water Standby, maker: Meridian Rotating Systems, pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
+  - {id: Pump-102, name: Cooling Water Pump B, type: centrifugal_pump, area: Utilities, unit: cooling-water, department: operations, service: Cooling Water, maker: Meridian Rotating Systems, model: MRS-CW-450, criticality: HIGH, status: IN_SERVICE, commissioned_at: '2018-06-15T00:00:00Z', aliases: [P-102, PU-102, P102], pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
+  - {id: Pump-103, area: Utilities, service: Cooling Water Standby, maker: Meridian Rotating Systems, aliases: [P102], pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
   - {id: Pump-104, area: Process Unit 1, service: Condensate, maker: Northstar Process Equipment, pressure_bar: '5.5-6.4', vibration_max_mm_s: 5.8, shutdown_mm_s: 8.8}
   - {id: Compressor-201, area: Process Unit 1, service: Instrument Air, maker: Aster Compression Works, pressure_bar: '7.0-7.8', vibration_max_mm_s: 7.1, shutdown_mm_s: 11.0}
   - {id: Compressor-202, area: Process Unit 1, service: Plant Air Standby, maker: Aster Compression Works, pressure_bar: '6.8-7.6', vibration_max_mm_s: 7.1, shutdown_mm_s: 11.0}

@@ -31,6 +31,14 @@ benchmark). See [docs/SOVEREIGNAI_2_BATCH4.md](docs/SOVEREIGNAI_2_BATCH4.md),
 [docs/IDENTITY_AND_ACCESS.md](docs/IDENTITY_AND_ACCESS.md), and
 [docs/APEL_DEMO_ORGANIZATION.md](docs/APEL_DEMO_ORGANIZATION.md).
 
+Batch 5 adds asset-aware industrial workflows using structured Asset Passports, authorized simulated
+plant telemetry, historical condition data, deterministic trend analysis, evidence-backed rule
+comparisons, and human-governed maintenance drafts. The connector layer is read-only and no plant
+control is implemented. See [docs/SOVEREIGNAI_2_BATCH5.md](docs/SOVEREIGNAI_2_BATCH5.md),
+[docs/ASSET_INTELLIGENCE.md](docs/ASSET_INTELLIGENCE.md),
+[docs/PLANT_DATA_CONNECTORS.md](docs/PLANT_DATA_CONNECTORS.md), and
+[docs/APEL_ASSET_DEMO.md](docs/APEL_ASSET_DEMO.md).
+
 It is deliberately honest about runtime dependencies: model answers require a configured local Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
 ## Architecture
@@ -91,6 +99,7 @@ backend/app/workcells/  safe loader, validator, registry, handlers, DAG executor
 backend/app/capsules/   atomic capsule build, signing, and independent verification
 backend/app/identity/   local identity provider, principals, ACLs, authorization
 backend/app/demo/       deterministic synthetic organization seeding
+backend/app/assets/     passports, read-only telemetry, trends, context, draft CMMS
 backend/app/core/events.py persisted task-event broker for SSE
 workcells/              versioned declarative local Workcell definitions
 frontend/app/           workbench, sovereignty, and metrics pages

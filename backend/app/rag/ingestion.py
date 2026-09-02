@@ -51,6 +51,7 @@ class KnowledgeIngestionService:
                 or existing.workspace_id not in {None, acl.workspace_id}
             ):
                 raise ValueError("DOCUMENT_ALREADY_SCOPED")
+            metadata_changed = False
             if acl and existing.organization_id is None:
                 existing.organization_id = acl.organization_id
                 existing.owner_id = acl.owner_id
@@ -59,13 +60,19 @@ class KnowledgeIngestionService:
                 existing.classification = acl.classification.name.upper()
                 existing.allowed_roles_json = json.dumps([role.value for role in acl.allowed_roles])
                 existing.allowed_users_json = json.dumps(acl.allowed_users)
-                existing_metadata = json.loads(existing.metadata_json or "{}")
+                metadata_changed = True
+            # Idempotent seed runs may enrich a document with deterministic
+            # asset lineage after its content hash was already indexed.
+            existing_metadata = json.loads(existing.metadata_json or "{}")
+            if any(existing_metadata.get(key) != value for key, value in metadata.items()):
                 existing_metadata.update(metadata)
                 existing.metadata_json = json.dumps(existing_metadata)
                 for record in self.session.query(KnowledgeChunkRecord).filter_by(document_id=existing.id).all():
                     chunk_metadata = json.loads(record.metadata_json or "{}")
                     chunk_metadata.update(metadata)
                     record.metadata_json = json.dumps(chunk_metadata)
+                metadata_changed = True
+            if metadata_changed:
                 self.session.commit()
             if existing.embedding_provider != self.embeddings.provider_name:
                 records = self.session.query(KnowledgeChunkRecord).filter_by(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
@@ -53,6 +54,10 @@ from app.identity.authorization import AuthorizationService
 from app.identity.dependencies import require_permission
 from app.identity.models import ClearanceLevel, DocumentACL, Permission, Principal, ResourceScope
 from app.identity.provider import LocalIdentityProvider
+from app.assets.context import AssetContextService
+from app.assets.repository import AssetRepository
+from app.assets.resolver import AssetResolver
+from app.assets.telemetry import APELSimulatorTelemetryProvider, FreshnessPolicy
 from app.identity import ContentIdentityService
 
 
@@ -88,7 +93,8 @@ def _completed_step(step_id: int, action: str, title: str, observation: str) -> 
 
 
 async def _run_inspection_task_implementation(
-    payload: CreateTaskRequest, settings, db: Session, principal: Principal, *, workcell_identity: str | None = None
+    payload: CreateTaskRequest, settings, db: Session, principal: Principal, *,
+    workcell_identity: str | None = None, event_callback: EventCallback | None = None,
 ) -> AgentRunState:
     run_id = str(uuid4())
     registry = ModelRegistry(settings.models_config)
@@ -118,6 +124,32 @@ async def _run_inspection_task_implementation(
     artifact_root = settings.workspace_root / "artifacts"
     output = (artifact_root / run_id / "approval_note.docx") if package_requested else (artifact_root / f"Approval_Note_{run_id[:8]}.docx")
     selected_model = registry.get(routing.model_id)
+    asset_context = None
+    asset_match = re.search(r"\b[A-Za-z]+-\d+\b", payload.request)
+    if asset_match:
+        repository = AssetRepository(db)
+        resolution = AssetResolver(repository).resolve(principal, asset_match.group(0))
+        if resolution.status == "RESOLVED" and resolution.asset:
+            if event_callback:
+                await event_callback("asset_resolved", {"asset_id": resolution.asset.asset_id})
+            provider = APELSimulatorTelemetryProvider(
+                repository,
+                FreshnessPolicy(settings.telemetry_default_freshness_seconds, settings.telemetry_expired_seconds),
+                default_scenario=settings.telemetry_scenario,
+            )
+            asset_context = AssetContextService(repository, provider).compile(
+                principal, resolution.asset.asset_id, payload.request,
+            )
+            if event_callback:
+                await event_callback("telemetry_loaded", {
+                    "asset_id": resolution.asset.asset_id,
+                    "measurement_ids": [item.measurement_id for item in asset_context.latest_measurements],
+                })
+                for warning in asset_context.warnings:
+                    await event_callback("telemetry_warning", {"asset_id": resolution.asset.asset_id, "code": warning.value})
+                for trend in asset_context.trends:
+                    await event_callback("trend_calculated", {"asset_id": resolution.asset.asset_id, "metric": trend.metric, "sample_count": trend.sample_count})
+                await event_callback("asset_context_ready", {"asset_id": resolution.asset.asset_id})
     analysis = InspectionWorkflow(
         configured_hybrid_retriever(
             db, embeddings=embeddings, cache=cache, settings=settings,
@@ -132,6 +164,7 @@ async def _run_inspection_task_implementation(
         selected_model=selected_model.model_tag,
         context_window=selected_model.context_length,
         execution_mode=selection.selected.value,
+        asset_context=asset_context,
     )
     structured = analysis.evidence_bundle
     artifact_service = ArtifactService(db, artifact_root)
@@ -212,6 +245,9 @@ async def _run_inspection_task_implementation(
         calculations=list(structured.get("calculations", [])),
         claims=list(structured.get("claims", [])),
         conflicts=list(structured.get("conflicts", [])),
+        asset_context=asset_context.model_dump(mode="json") if asset_context else None,
+        trend_analyses=[item.model_dump(mode="json") for item in asset_context.trends] if asset_context else [],
+        maintenance_history=[item.model_dump(mode="json") for item in asset_context.maintenance] if asset_context else [],
         context_metrics=dict(analysis.compiled_context.get("metrics", {})),
         retrieval_metrics=analysis.retrieval_metrics,
         artifacts=[{"id": item.id, "name": item.name, "url": f"/api/artifacts/{item.id}"} for item in artifact_records],
@@ -230,6 +266,7 @@ async def _run_inspection_workcell(
         return await _run_inspection_task_implementation(
             payload, settings, db, principal,
             workcell_identity=f"{definition.manifest.id}:{definition.manifest.version}",
+            event_callback=event_callback,
         )
 
     context = WorkcellHandlerContext(
@@ -502,6 +539,19 @@ async def _execute_task(
         })
         for step_id in state.workcell_state.get("completed_steps", []):
             audit.log(state.id, "workcell_step_completed", f"Workcell step completed: {step_id}", {"step_id": step_id})
+    if state.asset_context:
+        asset = state.asset_context.get("asset", {})
+        asset_id = asset.get("asset_id") if isinstance(asset, dict) else None
+        audit.log(state.id, "ASSET_RESOLVED", "Authorized asset identity resolved.", {"asset_id": asset_id})
+        audit.log(state.id, "TELEMETRY_READ", "Exact task-time telemetry snapshot used.", {
+            "asset_id": asset_id,
+            "measurement_ids": [item.get("measurement_id") for item in state.asset_context.get("latest_measurements", [])],
+        })
+        for trend in state.trend_analyses:
+            audit.log(state.id, "TREND_CALCULATED", "Deterministic trend used by the task.", {
+                "asset_id": asset_id, "metric": trend.get("metric"), "sample_count": trend.get("sample_count"),
+            })
+        audit.log(state.id, "ASSET_CONTEXT_COMPILED", "Bounded authorized asset context compiled.", {"asset_id": asset_id})
     for step in state.plan.steps:
         audit.log(state.id, "agent_step", f"{step.title}: {step.status.value}", {"action": step.action, "status": step.status.value, "observation": step.observation, "verification": step.verification, "error": step.error})
     for execution in state.execution_records:

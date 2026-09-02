@@ -5,7 +5,9 @@ roles:
     - task.read
     - artifact.read
     - capsule.read
+    - asset.read
   ENGINEER:
+    - asset.read
     - knowledge.read
     - knowledge.ingest
     - task.create
@@ -18,6 +20,9 @@ roles:
     - capsule.verify
     - tool.execute
     - approval.request
+    - telemetry.read
+    - maintenance.read
+    - maintenance.draft.create
   APPROVER:
     - task.read
     - artifact.read
@@ -36,12 +41,19 @@ roles:
     - capsule.read
     - capsule.verify
     - approval.request
+    - asset.read
+    - telemetry.read
+    - maintenance.read
+    - maintenance.draft.create
   AUDITOR:
     - task.read
     - artifact.read
     - capsule.read
     - capsule.verify
     - audit.read
+    - asset.read
+    - telemetry.read
+    - maintenance.read
   ADMIN:
     - admin.manage_users
     - workcell.manage

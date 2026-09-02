@@ -138,6 +138,7 @@ class BM25Retriever:
                 "revision": metadata.get("revision"),
                 "department": metadata.get("department"),
                 "classification": metadata.get("classification"),
+                "asset_id": metadata.get("asset_id"),
             }
             ranked.append(RetrievedChunk(
                 chunk_id=chunk.id,
@@ -233,7 +234,7 @@ class HybridRetriever:
     def collection_version(self) -> str:
         return self.dense.collection_version()
 
-    def search(self, query: str, limit: int | None = None) -> list[RetrievedChunk]:
+    def search(self, query: str, limit: int | None = None, *, asset_id: str | None = None) -> list[RetrievedChunk]:
         final_limit = max(1, min(limit or self.settings.hybrid_final_context_k, 20))
         limits = {
             "dense_top_k": self.settings.hybrid_dense_top_k,
@@ -249,7 +250,7 @@ class HybridRetriever:
         )
         reranker_version = self.reranker.version if self.reranker else "none"
         key = CacheKeyBuilder.hybrid_retrieval(
-            query,
+            f"{query}\nasset:{asset_id}" if asset_id else query,
             collection_version=self.collection_version(),
             embedding_model=self.embeddings.provider_name,
             dense_version=self.settings.dense_retriever_version,
@@ -299,6 +300,22 @@ class HybridRetriever:
                 telemetry.warning = f"RERANKER_UNAVAILABLE: {exc}"
                 ranked = fused
             telemetry.reranker_duration_ms = round((monotonic() - started) * 1000, 6)
+        # Asset affinity is an additional ranking signal only. Candidate ACLs
+        # were already enforced independently by both retrievers above.
+        if asset_id:
+            for item in ranked:
+                linked = str(item.source.get("asset_id") or "") == asset_id
+                item.scores["asset"] = 1.0 if linked else 0.0
+                if linked and "asset_link" not in item.retrieval_methods:
+                    item.retrieval_methods.append("asset_link")
+            ranked = sorted(
+                ranked,
+                key=lambda item: (
+                    -float(item.scores.get("asset") or 0.0),
+                    -float(item.scores.get("reranker") or item.scores.get("fusion") or item.score),
+                    item.chunk_id,
+                ),
+            )
         output = ranked[:final_limit]
         telemetry.output_count = len(output)
         shared_telemetry = telemetry.to_dict()

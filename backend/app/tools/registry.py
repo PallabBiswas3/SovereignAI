@@ -77,6 +77,8 @@ def create_agent_registry(
         AnalyzeImageTool,
         GenerateDocxTool,
         GeneratePptxTool,
+        GetAssetHistoryTool,
+        GetAssetTelemetryTool,
         GenerateXlsxTool,
         KnowledgeSearchTool,
         OCRDocumentTool,
@@ -86,11 +88,15 @@ def create_agent_registry(
     workspace = SafeWorkspace(settings.workspace_root)
     artifacts = ArtifactService(session, settings.workspace_root / "artifacts")
     vision = ModelRegistry(settings.models_config).get("vision")
+    asset_tools = (
+        (GetAssetTelemetryTool(session, principal), GetAssetHistoryTool(session, principal))
+        if principal is not None else ()
+    )
     for tool in (
         KnowledgeSearchTool(session, principal), OCRDocumentTool(workspace),
         AnalyzeImageTool(workspace, vision.endpoint, vision.model_tag),
         GenerateDocxTool(artifacts, scope), GenerateXlsxTool(artifacts, scope),
-        GeneratePptxTool(artifacts, scope),
+        GeneratePptxTool(artifacts, scope), *asset_tools,
     ):
         registry.register(tool)
     return registry

@@ -51,6 +51,18 @@ def task_state(task_id: str = "task-capsule") -> AgentRunState:
         calculations=[{"id": "C1", "expression": "6.1 <= 4.5", "inputs": ["M1", "R1"], "result": False, "verified": True}],
         claims=[{"id": "CL1", "text": "Vibration exceeds the normal limit.", "claim_type": "engineering_finding", "evidence_ids": ["M1", "R1"], "calculation_ids": ["C1"], "support_status": "SUPPORTED"}],
         governance={"decision": "ALLOW", "policy": "engineering"},
+        asset_context={
+            "asset": {"asset_id": "Pump-102", "canonical_name": "Cooling Water Pump B"},
+            "provider": "apel-readonly-simulator",
+            "latest_measurements": [{
+                "measurement_id": "TEL-P102-VIB-06", "metric": "vibration", "value": 8.2,
+                "unit": "mm/s", "timestamp": "2026-09-02T12:40:00Z", "quality": "GOOD",
+                "freshness_status": "FRESH",
+            }],
+        },
+        trend_analyses=[{"asset_id": "Pump-102", "metric": "vibration", "latest": 8.2, "trend": "INCREASING", "engine": "deterministic"}],
+        maintenance_history=[{"id": "MNT-P102-20260818", "asset_id": "Pump-102", "title": "Bearing replacement"}],
+        maintenance_draft={"draft_id": "DRAFT-P102", "asset_id": "Pump-102", "status": "DRAFT", "approval_required": True},
     )
 
 
@@ -91,6 +103,10 @@ def test_capsule_creation_manifest_hashes_root_and_unsigned_policies(tmp_path: P
     assert (root / "capsule_manifest.json").is_file()
     assert (root / "hashes.sha256").is_file()
     assert (root / "evidence" / "claims.json").is_file()
+    assert (root / "asset" / "asset_context_snapshot.json").is_file()
+    assert (root / "asset" / "trend_analyses.json").is_file()
+    snapshot = json.loads((root / "asset" / "asset_context_snapshot.json").read_text(encoding="utf-8"))
+    assert snapshot["latest_measurements"][0]["measurement_id"] == "TEL-P102-VIB-06"
     manifest = json.loads((root / "capsule_manifest.json").read_text(encoding="utf-8"))
     assert manifest["capsule_root_hash"] == record.capsule_root_hash
     assert manifest["workcell"]["id"] == "pump-inspection"
@@ -110,6 +126,17 @@ def test_capsule_tamper_identifies_exact_file(tmp_path: Path):
     result = EvidenceCapsuleVerifier().verify(root)
     assert result.status.value == "INVALID"
     assert any(item.path == "artifacts/approval_note.docx" and item.type == "CAPSULE_HASH_MISMATCH" for item in result.failures)
+
+
+def test_capsule_tampered_task_time_telemetry_snapshot_fails(tmp_path: Path):
+    _, _, root = build_fixture(tmp_path)
+    target = root / "asset" / "asset_context_snapshot.json"
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["latest_measurements"][0]["value"] = 1.0
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    result = EvidenceCapsuleVerifier().verify(root)
+    assert result.status.value == "INVALID"
+    assert any(item.path == "asset/asset_context_snapshot.json" and item.type == "CAPSULE_HASH_MISMATCH" for item in result.failures)
 
 
 def test_capsule_missing_extra_and_invalid_manifest_are_rejected(tmp_path: Path):

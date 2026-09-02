@@ -96,6 +96,18 @@ class AuthorizationService:
             return self._deny(AccessFailureCode.capsule_access_denied, "Capsule access is not permitted.")
         return decision
 
+    def can_read_asset(self, principal: Principal, scope: ResourceScope) -> AuthorizationDecision:
+        decision = self.authorize(principal, Permission.asset_read, scope)
+        if not decision.allowed:
+            return self._deny(AccessFailureCode.access_denied, "Asset access is not permitted.")
+        return decision
+
+    def can_read_telemetry(self, principal: Principal, scope: ResourceScope) -> AuthorizationDecision:
+        decision = self.authorize(principal, Permission.telemetry_read, scope)
+        if not decision.allowed:
+            return self._deny(AccessFailureCode.access_denied, "Telemetry access is not permitted.")
+        return decision
+
     def can_approve_action(self, principal: Principal, requester_id: str | None) -> AuthorizationDecision:
         if not principal.has_permission(Permission.approval_approve) or Role.approver not in principal.roles:
             return self._deny(AccessFailureCode.access_denied, "Business approval authority is required.")

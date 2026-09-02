@@ -27,6 +27,8 @@ type TaskResult = {
   workcell_version?: string | null;
   workcell_hash?: string | null;
   workflow_version?: string | null;
+  asset_context?: { asset?: { asset_id?: string; canonical_name?: string }; latest_measurements?: Array<{ measurement_id: string; metric: string; original_value: number; original_unit: string; quality: string; freshness_status: string }> } | null;
+  trend_analyses?: Array<{ metric: string; trend: string; sample_count: number; latest: number; unit: string }>;
 };
 
 type Workcell = { id: string; name: string; version: string; description: string; status: string; trust_status: string; task_classes: string[] };
@@ -107,6 +109,11 @@ const eventLabels: Record<string, string> = {
   capsule_created: "Evidence Capsule created",
   capsule_verified: "Evidence Capsule verified",
   capsule_invalid: "Evidence Capsule integrity failed",
+  asset_resolved: "Authorized asset resolved",
+  telemetry_loaded: "Authorized telemetry loaded",
+  telemetry_warning: "Telemetry needs caution",
+  trend_calculated: "Deterministic trend calculated",
+  asset_context_ready: "Asset context is ready",
 };
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -207,7 +214,7 @@ export default function Home() {
       setActiveTaskId(started.task_id);
       const stream = new EventSource(`${api}/api/tasks/${started.task_id}/events`, { withCredentials: true });
       let finished = false;
-      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
+      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
       const receive = (event: MessageEvent) => {
         const item = JSON.parse(event.data) as LiveEvent;
         setLiveEvents((current) => [...current, item]);
@@ -323,7 +330,7 @@ export default function Home() {
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
       <button className="newTask" onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
-      <nav><a className="active">Workbench</a><Link href="/organization">APEL organization</Link><a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
+      <nav><a className="active">Workbench</a><Link href="/assets">Asset intelligence</Link><Link href="/organization">APEL organization</Link><a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
     </aside>
@@ -355,6 +362,7 @@ export default function Home() {
       <section><label>AI SAFETY</label><div className="metric"><span>Decision</span><b>{result?.governance.decision ?? "Pending"}</b></div><div className="metric"><span>Privacy risk</span><b>{result?.governance.privacy_risk ?? "Low"}</b></div><div className="metric"><span>Grounding</span><b>{result?.governance.grounding_score != null ? `${Math.round(result.governance.grounding_score * 100)}%` : "N/A"}</b></div><div className="metric"><span>External requests</span><b>0</b></div></section>
       {result?.claims.length ? <section><label>WHY THIS ANSWER?</label>{result.claims.map((claim) => <details key={claim.id} open={claim.support_status !== "SUPPORTED"}><summary>{claim.support_status}: {claim.text}</summary><p><b>Evidence</b>: {claim.evidence_ids.join(", ") || "None"}</p><p><b>Calculations</b>: {claim.calculation_ids.join(", ") || "None"}</p><p><b>Capsule</b>: {capsule ? "Included in Evidence Capsule" : "Available after capsule creation"}</p>{claim.verification.map((check) => <p key={`${claim.id}-${check.verifier}`}>{check.passed ? "✓" : "!"} {check.verifier}: {check.summary}</p>)}</details>)}{result.context_metrics?.raw_candidate_count != null && <div className="metric"><span>Evidence selected</span><b>{result.context_metrics.final_evidence_count}/{result.context_metrics.raw_candidate_count}</b></div>}</section> : null}
       {result?.measurements.length ? <section><label>MEASUREMENTS</label>{result.measurements.map((measurement) => <details key={measurement.id}><summary>{measurement.id}: {measurement.metric}</summary><p>Original: {measurement.original_value} {measurement.original_unit}</p><p>Normalized: {measurement.normalized_value} {measurement.normalized_unit}</p><p>Source: {measurement.source_id}</p></details>)}</section> : null}
+      {result?.asset_context?.asset ? <section><label>ASSET CONTEXT · SIMULATED</label><b>{result.asset_context.asset.asset_id} · {result.asset_context.asset.canonical_name}</b>{result.asset_context.latest_measurements?.map((measurement) => <details key={measurement.measurement_id}><summary>{measurement.metric}: {measurement.original_value} {measurement.original_unit}</summary><p>{measurement.quality} quality · {measurement.freshness_status}</p><p>Snapshot: {measurement.measurement_id}</p></details>)}{result.trend_analyses?.map((trend) => <div className="metric" key={trend.metric}><span>{trend.metric} trend ({trend.sample_count})</span><b>{trend.trend}</b></div>)}<Link className="artifactLink" href="/assets">Open asset view</Link></section> : null}
       {result?.rules.length ? <section><label>RULES &amp; CALCULATIONS</label>{result.rules.map((rule) => <details key={rule.id}><summary>{rule.id}: {rule.rule_type}</summary><p>{rule.operator === "between" ? `${rule.lower_bound}–${rule.upper_bound}` : `${rule.operator} ${rule.threshold}`} {rule.unit}</p><p>Source: {rule.source.source_id} · Section {rule.source.section ?? "—"} · {rule.source.revision ?? "Revision not stated"}</p></details>)}{result.calculations.map((calculation) => <div className="metric" key={calculation.id}><span>{calculation.expression}</span><b>{String(calculation.result)}</b></div>)}</section> : null}
       {result?.conflicts.length ? <section><label>EVIDENCE CONFLICTS</label>{result.conflicts.map((conflict) => <details key={conflict.id} open><summary>{conflict.status}</summary><p>{conflict.summary}</p>{conflict.values.map((value, index) => <p key={`${conflict.id}-${index}`}>{String(value.revision ?? "Unknown revision")}: {String(value.threshold ?? value.text ?? "conflicting value")}</p>)}</details>)}</section> : null}
       {result?.sources.length ? <section><label>SOURCES</label>{result.sources.map((source, index) => <details key={`${source.file}-${index}`}><summary>{source.file}</summary><p>Page {source.page ?? "—"} · Section {source.section ?? "—"}</p>{source.text && <p>{source.text}</p>}</details>)}</section> : null}
