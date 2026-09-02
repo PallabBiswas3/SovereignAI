@@ -1,0 +1,47 @@
+roles:
+  USER:
+    - knowledge.read
+    - task.create
+    - task.read
+    - artifact.read
+    - capsule.read
+  ENGINEER:
+    - knowledge.read
+    - knowledge.ingest
+    - task.create
+    - task.read
+    - workcell.execute
+    - artifact.create
+    - artifact.read
+    - capsule.create
+    - capsule.read
+    - capsule.verify
+    - tool.execute
+    - approval.request
+  APPROVER:
+    - task.read
+    - artifact.read
+    - capsule.read
+    - capsule.verify
+    - approval.approve
+  MANAGER:
+    - knowledge.read
+    - knowledge.read.cross_department
+    - task.create
+    - task.read
+    - workcell.execute
+    - artifact.create
+    - artifact.read
+    - capsule.create
+    - capsule.read
+    - capsule.verify
+    - approval.request
+  AUDITOR:
+    - task.read
+    - artifact.read
+    - capsule.read
+    - capsule.verify
+    - audit.read
+  ADMIN:
+    - admin.manage_users
+    - workcell.manage

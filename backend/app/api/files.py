@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.core.config import get_settings
 from app.tools.file_tools import ALLOWED_EXTENSIONS, SafeWorkspace
+from app.identity.dependencies import require_permission
+from app.identity.models import Permission, Principal
 
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -20,7 +22,10 @@ def _safe_name(name: str | None) -> str:
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)) -> dict[str, object]:
+async def upload_file(
+    file: UploadFile = File(...),
+    principal: Principal = Depends(require_permission(Permission.task_create)),
+) -> dict[str, object]:
     settings = get_settings()
     name = _safe_name(file.filename)
     if Path(name).suffix.lower() not in ALLOWED_EXTENSIONS:
@@ -35,8 +40,9 @@ async def upload_file(file: UploadFile = File(...)) -> dict[str, object]:
 
 
 @router.get("")
-async def list_files() -> list[dict[str, object]]:
+async def list_files(
+    principal: Principal = Depends(require_permission(Permission.task_read)),
+) -> list[dict[str, object]]:
     root = get_settings().workspace_root / "uploads"
     root.mkdir(parents=True, exist_ok=True)
     return [{"name": path.name, "size": path.stat().st_size, "path": f"uploads/{path.name}"} for path in root.iterdir() if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS]
-

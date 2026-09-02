@@ -1,0 +1,21 @@
+assets:
+  - {id: Pump-101, area: Utilities, service: Boiler Feed Water, maker: Meridian Rotating Systems, pressure_bar: '7.2-8.0', vibration_max_mm_s: 5.5, shutdown_mm_s: 8.5}
+  - {id: Pump-102, area: Utilities, service: Cooling Water, maker: Meridian Rotating Systems, pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
+  - {id: Pump-103, area: Utilities, service: Cooling Water Standby, maker: Meridian Rotating Systems, pressure_bar: '4.8-5.5', vibration_max_mm_s: 6.0, shutdown_mm_s: 9.0}
+  - {id: Pump-104, area: Process Unit 1, service: Condensate, maker: Northstar Process Equipment, pressure_bar: '5.5-6.4', vibration_max_mm_s: 5.8, shutdown_mm_s: 8.8}
+  - {id: Compressor-201, area: Process Unit 1, service: Instrument Air, maker: Aster Compression Works, pressure_bar: '7.0-7.8', vibration_max_mm_s: 7.1, shutdown_mm_s: 11.0}
+  - {id: Compressor-202, area: Process Unit 1, service: Plant Air Standby, maker: Aster Compression Works, pressure_bar: '6.8-7.6', vibration_max_mm_s: 7.1, shutdown_mm_s: 11.0}
+  - {id: Motor-201, area: Utilities, service: Pump-101 Driver, maker: Orion Industrial Motors, pressure_bar: n/a, vibration_max_mm_s: 4.5, shutdown_mm_s: 7.1}
+  - {id: Motor-202, area: Utilities, service: Pump-102 Driver, maker: Orion Industrial Motors, pressure_bar: n/a, vibration_max_mm_s: 4.5, shutdown_mm_s: 7.1}
+  - {id: HeatExchanger-301, area: Process Unit 1, service: Product Cooler, maker: Delta Thermal Fabrication, pressure_bar: '3.5-5.0', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: HeatExchanger-302, area: Utilities, service: Cooling Water Trim, maker: Delta Thermal Fabrication, pressure_bar: '3.0-4.5', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Tank-401, area: Tank Farm, service: Product Storage, maker: APEL Fabrication Standard, pressure_bar: atmospheric, vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Tank-402, area: Tank Farm, service: Slop Storage, maker: APEL Fabrication Standard, pressure_bar: atmospheric, vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Valve-XV-101, area: Utilities, service: Pump-102 Isolation, maker: Summit Valve Company, pressure_bar: '0-10', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Valve-XV-102, area: Process Unit 1, service: Compressor-201 Isolation, maker: Summit Valve Company, pressure_bar: '0-12', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Fan-501, area: Process Unit 1, service: Air Cooler, maker: Meridian Rotating Systems, pressure_bar: n/a, vibration_max_mm_s: 6.3, shutdown_mm_s: 10.0}
+  - {id: Boiler-601, area: Utilities, service: Steam Generation, maker: Northstar Process Equipment, pressure_bar: '38-42', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Filter-701, area: Utilities, service: Cooling Water Filtration, maker: Delta Filtration, pressure_bar: '4.5-5.5', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: PSV-801, area: Process Unit 1, service: Compressor Relief, maker: Summit Valve Company, pressure_bar: 'set 10.5', vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Analyzer-901, area: Process Unit 1, service: Product Quality, maker: Vector Instruments, pressure_bar: n/a, vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}
+  - {id: Transformer-1001, area: Utilities, service: Plant A Distribution, maker: Orion Power Systems, pressure_bar: n/a, vibration_max_mm_s: 0.0, shutdown_mm_s: 0.0}

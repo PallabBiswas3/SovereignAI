@@ -12,6 +12,8 @@ from app.llm.ollama_provider import OllamaProvider
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.router.schemas import RoutingDecision
+from app.identity.dependencies import require_permission
+from app.identity.models import Permission, Principal
 
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -33,7 +35,11 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+async def chat(
+    payload: ChatRequest,
+    principal: Principal = Depends(require_permission(Permission.task_create)),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
     conversation_id = payload.conversation_id or str(uuid4())
     if payload.conversation_id is None:
         db.add(Conversation(id=conversation_id, title=payload.message[:80]))

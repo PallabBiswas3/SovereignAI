@@ -1,0 +1,51 @@
+demo_password: ApelDemo!2026
+users:
+  - id: apel-maint-001
+    email: arjun.rao@apel.local
+    display_name: Arjun Rao
+    title: Maintenance Engineer
+    departments: [maintenance, engineering, operations]
+    roles: [USER, ENGINEER]
+    clearance: CONFIDENTIAL
+  - id: apel-hse-001
+    email: meera.sen@apel.local
+    display_name: Meera Sen
+    title: HSE Officer
+    departments: [hse, operations]
+    roles: [USER, ENGINEER]
+    clearance: RESTRICTED
+  - id: apel-proc-001
+    email: vikram.shah@apel.local
+    display_name: Vikram Shah
+    title: Procurement Engineer
+    departments: [procurement, engineering]
+    roles: [USER, ENGINEER]
+    clearance: CONFIDENTIAL
+  - id: apel-manager-001
+    email: ananya.iyer@apel.local
+    display_name: Ananya Iyer
+    title: Plant Manager
+    departments: [management, maintenance, operations, engineering, hse, quality, procurement]
+    roles: [USER, MANAGER, APPROVER]
+    clearance: RESTRICTED
+  - id: apel-auditor-001
+    email: auditor@apel.local
+    display_name: APEL Audit User
+    title: Auditor
+    departments: [management]
+    roles: [AUDITOR]
+    clearance: RESTRICTED
+  - id: apel-admin-001
+    email: admin@apel.local
+    display_name: APEL Platform Admin
+    title: Administrator
+    departments: [it]
+    roles: [ADMIN]
+    clearance: RESTRICTED
+  - id: apel-ops-001
+    email: operations@apel.local
+    display_name: Devika Nair
+    title: Operations Engineer
+    departments: [operations, maintenance]
+    roles: [USER, ENGINEER]
+    clearance: CONFIDENTIAL

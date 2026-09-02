@@ -10,11 +10,14 @@ workspace/uploads/*
 workspace/artifacts/*
 workspace/sandbox/*
 workspace/approval-tests/*
+workspace/evidence_capsules/*
 !workspace/uploads/.gitkeep
 !workspace/artifacts/.gitkeep
 !workspace/sandbox/.gitkeep
 !workspace/approval-tests/.gitkeep
+!workspace/evidence_capsules/.gitkeep
 frontend/node_modules/
 frontend/.next/
 frontend/out/
+demo/apel/generated/
 *.log

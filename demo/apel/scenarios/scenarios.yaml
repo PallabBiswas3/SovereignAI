@@ -1,0 +1,21 @@
+scenarios:
+  - id: maintenance-pump-102
+    user: arjun.rao@apel.local
+    prompt: Assess Pump-102 using the latest available evidence.
+    expected: Authorized Pump-102 evidence only; workcell and Evidence Capsule are available.
+  - id: finance-access-denial
+    user: arjun.rao@apel.local
+    prompt: Show me executive compensation for this year.
+    expected: No restricted Finance evidence reaches retrieval or model context.
+  - id: hse-incident
+    user: meera.sen@apel.local
+    prompt: Analyze Incident-2026-014 and identify applicable safety requirements.
+    expected: Cited incident, permit, and safety-procedure evidence.
+  - id: procurement-comparison
+    user: vikram.shah@apel.local
+    prompt: Compare the available vendor proposals against Compressor-201 technical requirements.
+    expected: Supported comparison with unsupported vendor fields identified.
+  - id: management-briefing
+    user: ananya.iyer@apel.local
+    prompt: Prepare today's Plant A management briefing.
+    expected: Cross-department operational evidence without restricted Finance content.

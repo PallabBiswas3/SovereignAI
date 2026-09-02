@@ -17,6 +17,8 @@ from app.rag.factory import configured_hybrid_retriever
 from app.tools.base import Tool, ToolResult, ToolRisk
 from app.tools.file_tools import SafeWorkspace
 from app.resources.cache import get_cache_backend
+from app.core.config import get_settings
+from app.identity.models import Principal, ResourceScope
 
 
 def _filename(value: str, extension: str) -> str:
@@ -30,15 +32,20 @@ class KnowledgeSearchTool(Tool):
     risk = ToolRisk.low
     input_schema = {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, principal: Principal | None = None) -> None:
         self.session = session
+        self.principal = principal
 
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         query = str(args.get("query", "")).strip()
         if not query:
             return ToolResult(success=False, error="A query is required")
         limit = max(1, min(int(args.get("limit", 5)), 10))
-        results = configured_hybrid_retriever(self.session, cache=get_cache_backend()).search(query, limit)
+        settings = get_settings()
+        results = configured_hybrid_retriever(
+            self.session, cache=get_cache_backend(), settings=settings,
+            principal=self.principal if settings.auth_mode.lower() == "local" else None,
+        ).search(query, limit)
         return ToolResult(success=True, output={"results": [
             item.to_dict()
             for item in results
@@ -88,11 +95,12 @@ class AnalyzeImageTool(Tool):
 class _ArtifactTool(Tool):
     risk = ToolRisk.low
 
-    def __init__(self, artifacts: ArtifactService) -> None:
+    def __init__(self, artifacts: ArtifactService, scope: ResourceScope | None = None) -> None:
         self.artifacts = artifacts
+        self.scope = scope
 
     def register(self, path: Path, run_id: str | None) -> ToolResult:
-        record = self.artifacts.register(path, run_id)
+        record = self.artifacts.register(path, run_id, scope=self.scope)
         return ToolResult(success=True, output={
             "artifact": {"id": record.id, "name": record.name, "url": f"/api/artifacts/{record.id}"}
         }, generated_files=[record.path])

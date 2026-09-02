@@ -1,0 +1,20 @@
+profiles:
+  maintenance_engineer:
+    departments: [maintenance, engineering, operations]
+    denied_departments: [finance]
+    workcells: [pump-inspection]
+  hse_officer:
+    departments: [hse, operations]
+    denied_departments: [finance]
+  procurement_engineer:
+    departments: [procurement, engineering]
+    denied_departments: [finance]
+  plant_manager:
+    departments: [management, maintenance, operations, engineering, hse, quality, procurement]
+    denied_departments: [finance]
+  auditor:
+    capabilities: [audit.read, capsule.read, capsule.verify]
+    denied_capabilities: [tool.execute, approval.approve, admin.manage_users]
+  administrator:
+    capabilities: [admin.manage_users, workcell.manage]
+    denied_capabilities: [approval.approve]

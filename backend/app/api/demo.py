@@ -20,6 +20,9 @@ from app.llm.ollama_provider import OllamaProvider
 from app.router.model_registry import ModelRegistry
 from app.resources.cache import get_cache_backend
 from app.multimodal.ocr import DocumentTextExtractor, LocalOCRService
+from app.identity.authorization import AuthorizationService
+from app.identity.dependencies import require_permission
+from app.identity.models import DocumentACL, Permission, Principal
 
 
 router = APIRouter(prefix="/api/demo", tags=["demo"])
@@ -35,28 +38,41 @@ class CodingDemoRequest(BaseModel):
 
 
 @router.post("/inspection")
-async def run_inspection_demo(payload: InspectionDemoRequest, db: Session = Depends(get_db)) -> dict[str, object]:
+async def run_inspection_demo(
+    payload: InspectionDemoRequest,
+    principal: Principal = Depends(require_permission(Permission.workcell_execute)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     try:
         inspection = SafeWorkspace(settings.workspace_root).resolve(payload.inspection_path, must_exist=True)
         sop = SafeWorkspace(settings.knowledge_root).resolve(payload.sop_path, must_exist=True)
         embeddings = configured_embedding_provider()
         cache = get_cache_backend() if settings.cache_enabled else None
-        KnowledgeIngestionService(db, embeddings).ingest(sop, {"department": "maintenance", "classification": "internal"})
+        access = AuthorizationService().can_execute_workcell(principal, "pump-inspection")
+        if not access.allowed:
+            raise HTTPException(status_code=403, detail={"code": access.reason_code})
+        scope = AuthorizationService.owned_scope(principal)
+        acl = DocumentACL(**scope.model_dump(exclude={"resource_id"})) if settings.auth_mode.lower() == "local" else None
+        KnowledgeIngestionService(db, embeddings).ingest(sop, {"department": "maintenance", "classification": "internal"}, acl=acl, require_acl=acl is not None)
         output = settings.workspace_root / "artifacts" / f"Approval_Note_{uuid4().hex[:8]}.docx"
         analysis = InspectionWorkflow(
-            configured_hybrid_retriever(db, embeddings=embeddings, cache=cache, settings=settings),
+            configured_hybrid_retriever(db, embeddings=embeddings, cache=cache, settings=settings, principal=principal if settings.auth_mode.lower() == "local" else None),
             DocumentTextExtractor(LocalOCRService(cache=cache)),
             cache,
         ).analyze(inspection, output)
-        artifact = ArtifactService(db, settings.workspace_root / "artifacts").register(output)
+        artifact = ArtifactService(db, settings.workspace_root / "artifacts").register(output, scope=scope)
     except (ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {**analysis.model_dump(), "artifact": {"id": artifact.id, "name": artifact.name, "size": artifact.size}}
 
 
 @router.post("/coding")
-async def run_coding_demo(payload: CodingDemoRequest, db: Session = Depends(get_db)) -> dict[str, object]:
+async def run_coding_demo(
+    payload: CodingDemoRequest,
+    principal: Principal = Depends(require_permission(Permission.tool_execute)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     try:
         csv_path = SafeWorkspace(settings.workspace_root).resolve(payload.csv_path, must_exist=True)
@@ -71,7 +87,8 @@ async def run_coding_demo(payload: CodingDemoRequest, db: Session = Depends(get_
         ).run(csv_path, artifact_root, "Analyze anomalies and create a reusable verified Python program")
         service = ArtifactService(db, artifact_root)
         paths = [result.source_path, result.report_path, *result.result_paths]
-        artifacts = [service.register(Path(path)) for path in paths if path]
+        scope = AuthorizationService.owned_scope(principal)
+        artifacts = [service.register(Path(path), scope=scope) for path in paths if path]
     except (ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {**result.model_dump(), "artifacts": [{"id": item.id, "name": item.name, "size": item.size} for item in artifacts]}

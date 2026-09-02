@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     models_config: Path = PROJECT_DIR / "config" / "models.yaml"
     policies_config: Path = PROJECT_DIR / "config" / "policies.yaml"
     tools_config: Path = PROJECT_DIR / "config" / "tools.yaml"
+    access_config: Path = PROJECT_DIR / "config" / "access.yaml"
+    workcells_root: Path = PROJECT_DIR / "workcells"
+    unsigned_workcells_allowed: bool = True
+    capsules_root: Path = PROJECT_DIR / "workspace" / "evidence_capsules"
+    unsigned_capsules_allowed: bool = True
+    auth_mode: str = "disabled"
+    demo_org_enabled: bool = False
+    auth_session_seconds: int = 8 * 60 * 60
+    auth_cookie_name: str = "sovereign_session"
+    auth_csrf_cookie_name: str = "sovereign_csrf"
+    auth_cookie_secure: bool = False
     workspace_root: Path = PROJECT_DIR / "workspace"
     knowledge_root: Path = PROJECT_DIR / "knowledge_base"
     ollama_url: str = "http://127.0.0.1:11434"
@@ -61,6 +72,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
+    if settings.environment.lower() == "production" and settings.auth_mode.lower() == "disabled":
+        raise RuntimeError("SOVEREIGN_AUTH_MODE=disabled is forbidden in production")
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
     settings.knowledge_root.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)

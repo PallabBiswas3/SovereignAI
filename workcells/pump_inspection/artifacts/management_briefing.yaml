@@ -1,0 +1,5 @@
+id: management-briefing
+artifact_type: pptx
+handler: generate_pptx
+filename: management_briefing.pptx
+derived_from_claims: []

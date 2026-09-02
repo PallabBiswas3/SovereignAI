@@ -1,0 +1,21 @@
+id: apel
+name: Apex Petrochemical & Energy Ltd.
+short_name: APEL
+fictional: true
+plant:
+  id: plant-a
+  name: Plant A
+  areas: [Utilities, Process Unit 1, Tank Farm]
+workspace:
+  id: apel-plant-a
+  name: Plant A
+departments:
+  - {id: operations, name: Operations}
+  - {id: maintenance, name: Maintenance}
+  - {id: engineering, name: Engineering}
+  - {id: hse, name: HSE}
+  - {id: quality, name: Quality}
+  - {id: procurement, name: Procurement}
+  - {id: management, name: Management}
+  - {id: finance, name: Finance}
+  - {id: it, name: IT}

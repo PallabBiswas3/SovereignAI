@@ -1,0 +1,8 @@
+cases:
+  - id: pump-102-baseline
+    description: Preserve the validated Pump-102 deterministic finding behavior.
+    input:
+      fixture: workspace/uploads/Pump_Inspection_Report.md
+    expected:
+      evidence_first: true
+      human_authorization_retained: true

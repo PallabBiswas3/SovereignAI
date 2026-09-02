@@ -13,6 +13,8 @@ from app.core.config import Settings, get_settings
 from app.core.database import KnowledgeChunkRecord, KnowledgeDocument
 from app.rag.embeddings import EmbeddingProvider
 from app.rag.retrieval import LocalRetriever, RetrievedChunk, _normalize_scope, _record_scope, _scope_allows
+from app.identity.authorization import AuthorizationService
+from app.identity.models import Principal
 from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace, stable_hash
 
 
@@ -67,12 +69,14 @@ class BM25Retriever:
         version: str = "bm25-v1",
         k1: float = 1.5,
         b: float = 0.75,
+        principal: Principal | None = None,
     ) -> None:
         self.session = session
         self.access_scope = _normalize_scope(access_scope)
         self.version = version
         self.k1 = k1
         self.b = b
+        self.principal = principal
 
     @staticmethod
     def tokenize(text: str) -> list[str]:
@@ -97,7 +101,7 @@ class BM25Retriever:
                 **json.loads(document.metadata_json or "{}"),
                 **json.loads(chunk.metadata_json or "{}"),
             }
-            if _scope_allows(metadata, self.access_scope):
+            if _scope_allows(metadata, self.access_scope, self.principal):
                 corpus.append((chunk, document, metadata, self.tokenize(chunk.text)))
         if not corpus:
             return []
@@ -198,9 +202,14 @@ class HybridRetriever:
         access_scope: str | list[str] = "internal",
         reranker: CandidateReranker | None = None,
         settings: Settings | None = None,
+        principal: Principal | None = None,
     ) -> None:
         self.settings = settings or get_settings()
+        self.principal = principal
         self.access_scope = _normalize_scope(access_scope)
+        self.authorization_fingerprint = (
+            AuthorizationService().effective_scope(principal).fingerprint if principal else None
+        )
         self.embeddings = embeddings
         self.cache = cache
         self.dense = LocalRetriever(
@@ -209,11 +218,13 @@ class HybridRetriever:
             None,
             acl_scope=self.access_scope,
             retriever_version=self.settings.dense_retriever_version,
+            principal=principal,
         )
         self.sparse = BM25Retriever(
             session,
             access_scope=self.access_scope,
             version=self.settings.bm25_index_version,
+            principal=principal,
         )
         self.fusion = ReciprocalRankFusion(self.settings.hybrid_rrf_k)
         self.reranker = reranker
@@ -246,7 +257,7 @@ class HybridRetriever:
             fusion_version=self.settings.fusion_strategy_version,
             reranker_identity=reranker_identity,
             reranker_version=reranker_version,
-            access_scope=self.access_scope,
+            access_scope=([f"authz:{self.authorization_fingerprint}"] if self.authorization_fingerprint else self.access_scope),
             limits=limits,
         )
         if self.cache:
@@ -301,6 +312,7 @@ class HybridRetriever:
                 {"results": [item.to_dict() for item in output], "telemetry": shared_telemetry},
                 metadata={
                     "pipeline": "hybrid",
+                    "authorization_fingerprint": self.authorization_fingerprint,
                     "identity": stable_hash({
                         "dense": self.settings.dense_retriever_version,
                         "bm25": self.settings.bm25_index_version,

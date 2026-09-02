@@ -1,0 +1,10 @@
+requirements:
+  - id: inspection_report
+    type: measurement
+    required: true
+  - id: applicable_rule
+    type: rule
+    required: true
+  - id: source_revision
+    type: source_revision
+    required: false

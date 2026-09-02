@@ -1,0 +1,27 @@
+id: pump-inspection
+name: Pump Inspection
+version: 1.0.0
+description: Evidence-first assessment of pump inspection reports against authorized maintenance requirements.
+platform_version: ">=2.0,<3.0"
+task_classes:
+  - engineering_inspection
+supported_execution_modes:
+  - STANDARD
+  - DEEP
+required_tools:
+  - read_file
+  - knowledge_search
+optional_tools:
+  - ocr_document
+  - analyze_image
+  - run_python
+  - generate_docx
+  - generate_xlsx
+  - generate_pptx
+risk_class: engineering
+entry_workflow: workflow.yaml
+input_schema:
+  path: schemas/input.schema.json
+output_schema:
+  path: schemas/output.schema.json
+enabled: true

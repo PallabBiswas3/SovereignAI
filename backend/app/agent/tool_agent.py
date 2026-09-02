@@ -11,6 +11,8 @@ from app.governance.action_guard import ActionGuard
 from app.governance.policy_engine import GovernanceDecision
 from app.llm.base import LocalModelProvider
 from app.tools.registry import ToolRegistry
+from app.identity.authorization import AuthorizationService
+from app.identity.models import Principal
 
 
 class BoundedToolAgent:
@@ -27,6 +29,7 @@ class BoundedToolAgent:
         max_decisions: int = 8,
         max_seconds: int = 180,
         tool_timeout: int = 60,
+        principal: Principal | None = None,
     ) -> None:
         self.provider = provider
         self.model_tag = model_tag
@@ -36,6 +39,8 @@ class BoundedToolAgent:
         self.max_decisions = max(2, min(max_decisions, 12))
         self.max_seconds = max(10, min(max_seconds, 600))
         self.tool_timeout = max(2, min(tool_timeout, 120))
+        self.principal = principal
+        self.authorization = AuthorizationService()
 
     async def execute(self, state: AgentRunState, attachments: list[str]) -> AgentRunState:
         state.plan = AgentPlan(goal=state.request, steps=[
@@ -113,11 +118,18 @@ class BoundedToolAgent:
                         break
                     continue
                 policy = self.guard.evaluate(tool_name)
+                access = self.authorization.can_use_tool(self.principal, tool_name) if self.principal else None
                 record = {
                     "decision": decision_number, "tool": tool_name, "arguments": arguments,
                     "reason_summary": reason, "risk": policy.risk,
                     "governance_decision": policy.decision.value,
                 }
+                if access and not access.allowed:
+                    record.update({"success": False, "error": access.reason_code,
+                                   "authorization_decision": access.reason_code})
+                    state.tool_records.append(record)
+                    observations.append({"tool": tool_name, "error": access.reason_code})
+                    continue
                 if policy.decision == GovernanceDecision.require_human_approval:
                     record["success"] = False
                     record["waiting_for_approval"] = True

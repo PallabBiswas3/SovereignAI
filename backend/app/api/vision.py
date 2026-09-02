@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -8,6 +8,8 @@ from app.multimodal.vision import OllamaVisionProvider
 from app.router.model_registry import ModelRegistry
 from app.tools.file_tools import SafeWorkspace
 from app.resources.cache import get_cache_backend
+from app.identity.dependencies import require_permission
+from app.identity.models import Permission, Principal
 
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
@@ -19,7 +21,10 @@ class VisionRequest(BaseModel):
 
 
 @router.post("/analyze")
-async def analyze_image(payload: VisionRequest) -> dict[str, object]:
+async def analyze_image(
+    payload: VisionRequest,
+    principal: Principal = Depends(require_permission(Permission.tool_execute)),
+) -> dict[str, object]:
     settings = get_settings()
     try:
         path = SafeWorkspace(settings.workspace_root).resolve(payload.path, must_exist=True)

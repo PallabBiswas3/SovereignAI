@@ -15,6 +15,9 @@ from app.rag.factory import configured_hybrid_retriever
 from app.tools.file_tools import SafeWorkspace
 from app.governance.injection import PromptInjectionScanner
 from app.resources.cache import get_cache_backend
+from app.identity.authorization import AuthorizationService
+from app.identity.dependencies import require_permission
+from app.identity.models import ClearanceLevel, DocumentACL, Permission, Principal, Role
 
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -24,6 +27,7 @@ class IngestRequest(BaseModel):
     path: str
     department: str | None = None
     classification: str = "internal"
+    workspace_id: str | None = None
 
 
 class SearchRequest(BaseModel):
@@ -33,7 +37,11 @@ class SearchRequest(BaseModel):
 
 
 @router.post("/ingest")
-async def ingest(payload: IngestRequest, db: Session = Depends(get_db)) -> dict[str, object]:
+async def ingest(
+    payload: IngestRequest,
+    principal: Principal = Depends(require_permission(Permission.knowledge_ingest)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     workspace = SafeWorkspace(settings.knowledge_root)
     try:
@@ -41,9 +49,23 @@ async def ingest(payload: IngestRequest, db: Session = Depends(get_db)) -> dict[
         scan_text = path.read_text(encoding="utf-8", errors="ignore") if path.suffix.lower() in {".txt", ".md", ".csv", ".json"} else ""
         injection_findings = PromptInjectionScanner().scan(scan_text)
         embeddings = configured_embedding_provider()
-        document = KnowledgeIngestionService(db, embeddings).ingest(
-            path, {"department": payload.department, "classification": payload.classification}
+        classification = ClearanceLevel.parse(payload.classification)
+        department = payload.department or next(iter(principal.department_ids), None)
+        workspace_id = payload.workspace_id or next(iter(principal.workspace_ids), None)
+        if not department or not workspace_id:
+            raise ValueError("ACCESS_SCOPE_REQUIRED")
+        if department not in principal.department_ids and "*" not in principal.department_ids and not principal.has_permission(Permission.knowledge_read_cross_department):
+            raise ValueError("DEPARTMENT_SCOPE_MISMATCH")
+        if workspace_id not in principal.workspace_ids and "*" not in principal.workspace_ids:
+            raise ValueError("WORKSPACE_SCOPE_MISMATCH")
+        if principal.clearance < classification:
+            raise ValueError("INSUFFICIENT_CLEARANCE")
+        acl = DocumentACL(
+            organization_id=principal.organization_id, department_id=department,
+            workspace_id=workspace_id, classification=classification,
+            owner_id=principal.user_id,
         )
+        document = KnowledgeIngestionService(db, embeddings).ingest(path, acl=acl, require_acl=True)
     except (ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"id": document.id, "filename": document.filename, "chunks": document.chunk_count,
@@ -52,11 +74,16 @@ async def ingest(payload: IngestRequest, db: Session = Depends(get_db)) -> dict[
 
 
 @router.post("/answer")
-async def grounded_answer(payload: SearchRequest, db: Session = Depends(get_db)) -> dict[str, object]:
+async def grounded_answer(
+    payload: SearchRequest,
+    principal: Principal = Depends(require_permission(Permission.knowledge_read)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     cache = get_cache_backend() if settings.cache_enabled else None
     retriever = configured_hybrid_retriever(
-        db, cache=cache, settings=settings, execution_mode=payload.execution_mode
+        db, cache=cache, settings=settings, execution_mode=payload.execution_mode,
+        principal=principal if settings.auth_mode.lower() == "local" else None,
     )
     results = retriever.search(payload.query, payload.limit)
     dense_score = float(results[0].scores.get("dense") or 0.0) if results else 0.0
@@ -71,11 +98,16 @@ async def grounded_answer(payload: SearchRequest, db: Session = Depends(get_db))
 
 
 @router.post("/search")
-async def search(payload: SearchRequest, db: Session = Depends(get_db)) -> dict[str, object]:
+async def search(
+    payload: SearchRequest,
+    principal: Principal = Depends(require_permission(Permission.knowledge_read)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     cache = get_cache_backend() if settings.cache_enabled else None
     retriever = configured_hybrid_retriever(
-        db, cache=cache, settings=settings, execution_mode=payload.execution_mode
+        db, cache=cache, settings=settings, execution_mode=payload.execution_mode,
+        principal=principal if settings.auth_mode.lower() == "local" else None,
     )
     from app.rag.decomposition import ModeAwareRetrievalPipeline
     pipeline = ModeAwareRetrievalPipeline(retriever, settings.max_retrieval_subqueries)

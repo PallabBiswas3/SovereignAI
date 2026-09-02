@@ -1,0 +1,21 @@
+version: 1.0.0
+terminal_step: execute_inspection
+steps:
+  - id: validate_inputs
+    handler: validate_pump_inspection_inputs
+    outputs:
+      - validated_inputs
+    evidence_requirements:
+      - inspection_report
+  - id: execute_inspection
+    handler: execute_existing_pump_inspection
+    depends_on:
+      - validate_inputs
+    inputs:
+      validation: validated_inputs
+    outputs:
+      - task_state
+    evidence_requirements:
+      - inspection_report
+      - applicable_rule
+    failure_behavior: stop

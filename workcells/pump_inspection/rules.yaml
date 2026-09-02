@@ -1,0 +1,5 @@
+rules:
+  - id: applicable-maintenance-requirement
+    source: authorized_knowledge
+    evaluator: deterministic_existing_inspection_engine
+    note: Threshold values are extracted from authorized SOP evidence and are not duplicated in this pack.

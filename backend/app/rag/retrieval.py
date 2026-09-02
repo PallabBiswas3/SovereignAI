@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.database import KnowledgeChunkRecord, KnowledgeDocument
 from app.rag.embeddings import EmbeddingProvider
 from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace, stable_hash
+from app.identity.authorization import AuthorizationService
+from app.identity.models import ClearanceLevel, DocumentACL, Principal, Role
 
 
 @dataclass(slots=True)
@@ -48,6 +50,7 @@ class LocalRetriever:
         *,
         acl_scope: str | list[str] = "internal",
         retriever_version: str = "cosine-v1",
+        principal: Principal | None = None,
     ) -> None:
         self.session = session
         self.embeddings = embeddings
@@ -55,6 +58,7 @@ class LocalRetriever:
         self.access_scope = _normalize_scope(acl_scope)
         self.acl_scope = ",".join(self.access_scope)
         self.retriever_version = retriever_version
+        self.principal = principal
 
     @staticmethod
     def _cosine(left: list[float], right: list[float]) -> float:
@@ -89,15 +93,15 @@ class LocalRetriever:
         ).filter(KnowledgeDocument.embedding_provider == self.embeddings.provider_name).all()
         ranked: list[RetrievedChunk] = []
         for chunk, document in rows:
+            metadata = json.loads(chunk.metadata_json or "{}")
+            document_metadata = json.loads(document.metadata_json or "{}")
+            metadata = {**document_metadata, **metadata}
+            if not _scope_allows(metadata, self.access_scope, self.principal):
+                continue
             stored_vector = json.loads(chunk.embedding_json)
             if len(stored_vector) != self.embeddings.dimension:
                 continue
             score = self._cosine(query_vector, stored_vector)
-            metadata = json.loads(chunk.metadata_json or "{}")
-            document_metadata = json.loads(document.metadata_json or "{}")
-            metadata = {**document_metadata, **metadata}
-            if not _scope_allows(metadata, self.access_scope):
-                continue
             ranked.append(RetrievedChunk(
                 chunk_id=chunk.id, text=chunk.text, score=score,
                 source={"file": document.filename, "page": chunk.page, "section": chunk.section,
@@ -145,7 +149,33 @@ def _record_scope(metadata: dict[str, object]) -> list[str]:
     return sorted(set(values or ["internal"]))
 
 
-def _scope_allows(metadata: dict[str, object], requested_scope: list[str]) -> bool:
+def _document_acl(metadata: dict[str, object]) -> DocumentACL | None:
+    organization_id = metadata.get("organization_id")
+    workspace_id = metadata.get("workspace_id")
+    if not organization_id or not workspace_id:
+        return None
+    try:
+        return DocumentACL(
+            organization_id=str(organization_id),
+            department_id=str(metadata["department_id"]) if metadata.get("department_id") else (
+                str(metadata["department"]) if metadata.get("department") else None
+            ),
+            workspace_id=str(workspace_id),
+            classification=ClearanceLevel.parse(str(metadata.get("classification", "INTERNAL"))),
+            allowed_roles=[Role(str(value).upper()) for value in metadata.get("allowed_roles", []) if str(value).upper() in {item.value for item in Role}],
+            allowed_users=[str(value) for value in metadata.get("allowed_users", [])],
+            owner_id=str(metadata["owner_id"]) if metadata.get("owner_id") else None,
+        )
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def _scope_allows(
+    metadata: dict[str, object], requested_scope: list[str], principal: Principal | None = None
+) -> bool:
+    if principal is not None:
+        acl = _document_acl(metadata)
+        return bool(acl and AuthorizationService().can_read_document(principal, acl).allowed)
     if "*" in requested_scope:
         return True
     record_scope = _record_scope(metadata)

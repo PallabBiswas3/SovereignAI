@@ -1,0 +1,5 @@
+id: approval-note
+artifact_type: docx
+handler: generate_docx
+filename: approval_note.docx
+derived_from_claims: []

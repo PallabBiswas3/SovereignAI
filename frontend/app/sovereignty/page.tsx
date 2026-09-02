@@ -15,7 +15,7 @@ export default function SovereigntyPage() {
   const [monitor, setMonitor] = useState<Monitor | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000"}/api/monitor/network`)
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000"}/api/monitor/network`, { credentials: "include" })
       .then((response) => { if (!response.ok) throw new Error(`Monitor returned ${response.status}`); return response.json(); })
       .then(setMonitor).catch((caught) => setError(String(caught)));
   }, []);
@@ -28,4 +28,3 @@ export default function SovereigntyPage() {
     <p className="monitorNote">{monitor?.note}</p>
   </main>;
 }
-

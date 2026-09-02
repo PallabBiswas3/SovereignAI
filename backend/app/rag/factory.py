@@ -7,6 +7,7 @@ from app.rag.embeddings import EmbeddingProvider, configured_embedding_provider
 from app.rag.hybrid import HybridRetriever
 from app.rag.reranking import LocalCrossEncoderReranker, Reranker
 from app.resources.cache import CacheBackend, get_cache_backend
+from app.identity.models import Principal
 
 
 def configured_reranker(settings: Settings | None = None) -> Reranker | None:
@@ -29,6 +30,7 @@ def configured_hybrid_retriever(
     reranker: Reranker | None = None,
     settings: Settings | None = None,
     execution_mode: str = "STANDARD",
+    principal: Principal | None = None,
 ) -> HybridRetriever:
     settings = settings or get_settings()
     return HybridRetriever(
@@ -42,4 +44,5 @@ def configured_hybrid_retriever(
             else configured_reranker(settings)
         ),
         settings=settings,
+        principal=principal,
     )

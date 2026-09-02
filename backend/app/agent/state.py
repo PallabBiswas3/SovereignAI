@@ -66,5 +66,16 @@ class AgentRunState(BaseModel):
     governance: dict[str, Any] = Field(default_factory=dict)
     execution_records: list[dict[str, Any]] = Field(default_factory=list)
     tool_records: list[dict[str, Any]] = Field(default_factory=list)
+    workcell_id: str | None = None
+    workcell_version: str | None = None
+    workcell_hash: str | None = None
+    workflow_version: str | None = None
+    workcell_state: dict[str, Any] = Field(default_factory=dict)
+    capsule: dict[str, Any] | None = None
+    principal_id: str | None = None
+    organization_id: str | None = None
+    workspace_id: str | None = None
+    department_id: str | None = None
+    classification: str = "INTERNAL"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

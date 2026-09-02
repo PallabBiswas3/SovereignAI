@@ -23,6 +23,68 @@ class Conversation(Base):
     )
 
 
+class OrganizationRecord(Base):
+    __tablename__ = "organizations"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    short_name: Mapped[str] = mapped_column(String(40))
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+
+
+class DepartmentRecord(Base):
+    __tablename__ = "departments"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+
+
+class WorkspaceRecord(Base):
+    __tablename__ = "workspaces"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+
+
+class UserRecord(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    email_normalized: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(160))
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    department_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    workspace_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    permissions_json: Mapped[str] = mapped_column(Text, default="[]")
+    clearance: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    password_hash: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class IdentitySessionRecord(Base):
+    __tablename__ = "identity_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    csrf_token: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TaskAccessRecord(Base):
+    __tablename__ = "task_access"
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    organization_id: Mapped[str] = mapped_column(String(100), index=True)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100), index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+
+
 class Message(Base):
     __tablename__ = "messages"
 
@@ -48,6 +110,11 @@ class AgentRunRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
 
 
 class KnowledgeDocument(Base):
@@ -63,6 +130,13 @@ class KnowledgeDocument(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    allowed_roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    allowed_users_json: Mapped[str] = mapped_column(Text, default="[]")
 
 
 class KnowledgeChunkRecord(Base):
@@ -87,6 +161,18 @@ class ArtifactRecord(Base):
     media_type: Mapped[str] = mapped_column(String(120))
     path: Mapped[str] = mapped_column(Text)
     size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    workcell_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    workcell_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    artifact_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    lineage_json: Mapped[str] = mapped_column(Text, default="{}")
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    allowed_roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    allowed_users_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -100,6 +186,8 @@ class AuditEventRecord(Base):
     event_type: Mapped[str] = mapped_column(String(80), index=True)
     summary: Mapped[str] = mapped_column(String(500))
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    principal_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -119,6 +207,10 @@ class HumanApprovalRecord(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     execution_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requester_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    action_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -165,6 +257,27 @@ class CacheRecord(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class EvidenceCapsuleRecord(Base):
+    __tablename__ = "evidence_capsules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    state: Mapped[str] = mapped_column(String(30), index=True)
+    path: Mapped[str] = mapped_column(Text)
+    capsule_root_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    signature_status: Mapped[str] = mapped_column(String(40), default="UNSIGNED")
+    manifest_json: Mapped[str] = mapped_column(Text, default="{}")
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    department_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
+    allowed_roles_json: Mapped[str] = mapped_column(Text, default="[]")
+    allowed_users_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 
 
 
@@ -198,6 +311,76 @@ def init_db() -> None:
         if approval_migrations:
             with engine.begin() as connection:
                 for statement in approval_migrations:
+                    connection.execute(text(statement))
+        artifact_columns = {column["name"] for column in inspect(engine).get_columns("artifacts")}
+        artifact_migrations = []
+        if "sha256" not in artifact_columns:
+            artifact_migrations.append("ALTER TABLE artifacts ADD COLUMN sha256 VARCHAR(64)")
+        if "workcell_id" not in artifact_columns:
+            artifact_migrations.append("ALTER TABLE artifacts ADD COLUMN workcell_id VARCHAR(100)")
+        if "workcell_version" not in artifact_columns:
+            artifact_migrations.append("ALTER TABLE artifacts ADD COLUMN workcell_version VARCHAR(40)")
+        if "artifact_type" not in artifact_columns:
+            artifact_migrations.append("ALTER TABLE artifacts ADD COLUMN artifact_type VARCHAR(80)")
+        if "lineage_json" not in artifact_columns:
+            artifact_migrations.append("ALTER TABLE artifacts ADD COLUMN lineage_json TEXT NOT NULL DEFAULT '{}'")
+        if artifact_migrations:
+            with engine.begin() as connection:
+                for statement in artifact_migrations:
+                    connection.execute(text(statement))
+        scoped_migrations = {
+            "agent_runs": {
+                "organization_id": "ALTER TABLE agent_runs ADD COLUMN organization_id VARCHAR(100)",
+                "owner_id": "ALTER TABLE agent_runs ADD COLUMN owner_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE agent_runs ADD COLUMN workspace_id VARCHAR(100)",
+                "department_id": "ALTER TABLE agent_runs ADD COLUMN department_id VARCHAR(100)",
+                "classification": "ALTER TABLE agent_runs ADD COLUMN classification VARCHAR(30) NOT NULL DEFAULT 'INTERNAL'",
+            },
+            "knowledge_documents": {
+                "organization_id": "ALTER TABLE knowledge_documents ADD COLUMN organization_id VARCHAR(100)",
+                "owner_id": "ALTER TABLE knowledge_documents ADD COLUMN owner_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE knowledge_documents ADD COLUMN workspace_id VARCHAR(100)",
+                "department_id": "ALTER TABLE knowledge_documents ADD COLUMN department_id VARCHAR(100)",
+                "classification": "ALTER TABLE knowledge_documents ADD COLUMN classification VARCHAR(30) NOT NULL DEFAULT 'INTERNAL'",
+                "allowed_roles_json": "ALTER TABLE knowledge_documents ADD COLUMN allowed_roles_json TEXT NOT NULL DEFAULT '[]'",
+                "allowed_users_json": "ALTER TABLE knowledge_documents ADD COLUMN allowed_users_json TEXT NOT NULL DEFAULT '[]'",
+            },
+            "artifacts": {
+                "organization_id": "ALTER TABLE artifacts ADD COLUMN organization_id VARCHAR(100)",
+                "owner_id": "ALTER TABLE artifacts ADD COLUMN owner_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE artifacts ADD COLUMN workspace_id VARCHAR(100)",
+                "department_id": "ALTER TABLE artifacts ADD COLUMN department_id VARCHAR(100)",
+                "classification": "ALTER TABLE artifacts ADD COLUMN classification VARCHAR(30) NOT NULL DEFAULT 'INTERNAL'",
+                "allowed_roles_json": "ALTER TABLE artifacts ADD COLUMN allowed_roles_json TEXT NOT NULL DEFAULT '[]'",
+                "allowed_users_json": "ALTER TABLE artifacts ADD COLUMN allowed_users_json TEXT NOT NULL DEFAULT '[]'",
+            },
+            "evidence_capsules": {
+                "organization_id": "ALTER TABLE evidence_capsules ADD COLUMN organization_id VARCHAR(100)",
+                "owner_id": "ALTER TABLE evidence_capsules ADD COLUMN owner_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE evidence_capsules ADD COLUMN workspace_id VARCHAR(100)",
+                "department_id": "ALTER TABLE evidence_capsules ADD COLUMN department_id VARCHAR(100)",
+                "classification": "ALTER TABLE evidence_capsules ADD COLUMN classification VARCHAR(30) NOT NULL DEFAULT 'INTERNAL'",
+                "allowed_roles_json": "ALTER TABLE evidence_capsules ADD COLUMN allowed_roles_json TEXT NOT NULL DEFAULT '[]'",
+                "allowed_users_json": "ALTER TABLE evidence_capsules ADD COLUMN allowed_users_json TEXT NOT NULL DEFAULT '[]'",
+            },
+            "human_approvals": {
+                "requester_id": "ALTER TABLE human_approvals ADD COLUMN requester_id VARCHAR(100)",
+                "organization_id": "ALTER TABLE human_approvals ADD COLUMN organization_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE human_approvals ADD COLUMN workspace_id VARCHAR(100)",
+                "action_hash": "ALTER TABLE human_approvals ADD COLUMN action_hash VARCHAR(64)",
+            },
+            "audit_events": {
+                "principal_id": "ALTER TABLE audit_events ADD COLUMN principal_id VARCHAR(100)",
+                "organization_id": "ALTER TABLE audit_events ADD COLUMN organization_id VARCHAR(100)",
+            },
+        }
+        pending: list[str] = []
+        for table, statements in scoped_migrations.items():
+            existing = {column["name"] for column in inspect(engine).get_columns(table)}
+            pending.extend(statement for column, statement in statements.items() if column not in existing)
+        if pending:
+            with engine.begin() as connection:
+                for statement in pending:
                     connection.execute(text(statement))
 
 

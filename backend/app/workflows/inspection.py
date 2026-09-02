@@ -65,12 +65,14 @@ class InspectionWorkflow:
         cache: CacheBackend | None = None,
         context_compiler: ContextCompiler | None = None,
         evidence_executor: EvidenceFirstExecutor | None = None,
+        workcell_identity: str | None = None,
     ) -> None:
         self.retriever = retriever
         self.extractor = extractor or DocumentTextExtractor()
         self.cache = cache
         self.context_compiler = context_compiler or ContextCompiler()
         self.evidence_executor = evidence_executor or EvidenceFirstExecutor()
+        self.workcell_identity = workcell_identity
 
     def analyze(
         self,
@@ -87,9 +89,10 @@ class InspectionWorkflow:
             self.retriever.collection_version(),
             hashlib.sha256(task.encode("utf-8")).hexdigest(),
         ]
-        cache_key = CacheKeyBuilder.deterministic(
-            input_hashes, "inspection-evidence-first-v2", "engineering-rules-v2"
-        )
+        workflow_version = "inspection-evidence-first-v2"
+        if self.workcell_identity:
+            workflow_version = f"{workflow_version}:{self.workcell_identity}"
+        cache_key = CacheKeyBuilder.deterministic(input_hashes, workflow_version, "engineering-rules-v2")
         if self.cache:
             cached = self.cache.get(CacheNamespace.deterministic.value, cache_key)
             if isinstance(cached, dict):
@@ -232,7 +235,7 @@ class InspectionWorkflow:
             self.cache.set(
                 CacheNamespace.deterministic.value, cache_key,
                 analysis.model_dump(mode="json"),
-                metadata={"workflow_version": "inspection-evidence-first-v2",
+                metadata={"workflow_version": workflow_version,
                           "rule_version": "engineering-rules-v2", "input_hashes": input_hashes},
             )
         return analysis

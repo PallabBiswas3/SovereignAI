@@ -11,6 +11,7 @@ from app.tools.python_tool import PythonSandboxTool
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from app.core.config import Settings
+    from app.identity.models import Principal, ResourceScope
 
 
 class ToolRegistry:
@@ -66,7 +67,10 @@ def create_default_registry(workspace_root: Path) -> ToolRegistry:
     return registry
 
 
-def create_agent_registry(settings: "Settings", session: "Session") -> ToolRegistry:
+def create_agent_registry(
+    settings: "Settings", session: "Session", principal: "Principal | None" = None,
+    scope: "ResourceScope | None" = None,
+) -> ToolRegistry:
     from app.artifacts.service import ArtifactService
     from app.router.model_registry import ModelRegistry
     from app.tools.application_tools import (
@@ -83,9 +87,10 @@ def create_agent_registry(settings: "Settings", session: "Session") -> ToolRegis
     artifacts = ArtifactService(session, settings.workspace_root / "artifacts")
     vision = ModelRegistry(settings.models_config).get("vision")
     for tool in (
-        KnowledgeSearchTool(session), OCRDocumentTool(workspace),
+        KnowledgeSearchTool(session, principal), OCRDocumentTool(workspace),
         AnalyzeImageTool(workspace, vision.endpoint, vision.model_tag),
-        GenerateDocxTool(artifacts), GenerateXlsxTool(artifacts), GeneratePptxTool(artifacts),
+        GenerateDocxTool(artifacts, scope), GenerateXlsxTool(artifacts, scope),
+        GeneratePptxTool(artifacts, scope),
     ):
         registry.register(tool)
     return registry

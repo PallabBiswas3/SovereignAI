@@ -1,0 +1,5 @@
+id: inspection-analysis
+artifact_type: xlsx
+handler: generate_xlsx
+filename: inspection_analysis.xlsx
+derived_from_claims: []

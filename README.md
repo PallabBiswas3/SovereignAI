@@ -14,6 +14,23 @@ evaluation, and “Why this answer?” lineage. See
 [docs/SOVEREIGNAI_2_BATCH2.md](docs/SOVEREIGNAI_2_BATCH2.md). The configured reranker weights
 must be staged locally; until then retrieval correctly uses hybrid RRF without reranking.
 
+Batch 3 turns those capabilities into a local workflow platform: strict versioned declarative
+Workcell Packs resolve only to trusted registered handlers, and completed Workcell tasks can export
+portable Evidence Capsules with SHA-256 content identities, deterministic root hashes, independent
+tamper verification, and optional local Ed25519 signatures. The first official pack is Pump
+Inspection v1.0.0. See [docs/SOVEREIGNAI_2_BATCH3.md](docs/SOVEREIGNAI_2_BATCH3.md),
+[docs/WORKCELL_PACKS.md](docs/WORKCELL_PACKS.md), and
+[docs/EVIDENCE_CAPSULES.md](docs/EVIDENCE_CAPSULES.md). This is a local installed-pack catalog,
+not a public marketplace, and development signing is not enterprise PKI.
+
+Batch 4 adds organization-aware local identity and access control: salted password authentication,
+server-side sessions and CSRF protection, centralized RBAC plus contextual ACL checks, pre-ranking
+retrieval authorization, task/SSE/artifact/capsule security, approval separation of duties, and the
+fictional APEL enterprise demo (20 assets, 55 generated files, seven users, and a 50-question
+benchmark). See [docs/SOVEREIGNAI_2_BATCH4.md](docs/SOVEREIGNAI_2_BATCH4.md),
+[docs/IDENTITY_AND_ACCESS.md](docs/IDENTITY_AND_ACCESS.md), and
+[docs/APEL_DEMO_ORGANIZATION.md](docs/APEL_DEMO_ORGANIZATION.md).
+
 It is deliberately honest about runtime dependencies: model answers require a configured local Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
 ## Architecture
@@ -70,9 +87,14 @@ backend/app/artifacts/  DOCX, XLSX, PPTX generators
 backend/app/audit/      concise machine-readable audit events
 backend/app/monitoring/ local service and egress verification
 backend/app/evaluation/ offline benchmark runner
+backend/app/workcells/  safe loader, validator, registry, handlers, DAG executor
+backend/app/capsules/   atomic capsule build, signing, and independent verification
+backend/app/identity/   local identity provider, principals, ACLs, authorization
+backend/app/demo/       deterministic synthetic organization seeding
 backend/app/core/events.py persisted task-event broker for SSE
+workcells/              versioned declarative local Workcell definitions
 frontend/app/           workbench, sovereignty, and metrics pages
-demo/                   synthetic demo-data generator
+demo/apel/              canonical APEL organization, assets, scenarios, evaluation
 tests/                  phase and end-to-end tests
 workspace/              uploads, generated artifacts, sandbox runs
 knowledge_base/         internal document corpus
@@ -117,6 +139,18 @@ npm run dev
 
 Open `http://127.0.0.1:3000`. API docs are at `http://127.0.0.1:8000/docs`.
 
+For the multi-user APEL demonstration, seed explicitly before starting the backend:
+
+```powershell
+$env:SOVEREIGN_DEMO_ORG_ENABLED = "true"
+$env:SOVEREIGN_AUTH_MODE = "local"
+.\.venv\Scripts\python.exe scripts\seed_apel_demo.py
+```
+
+All synthetic accounts use the development-only password `ApelDemo!2026`; account names and reset
+commands are documented in `docs/APEL_DEMO_ORGANIZATION.md`. Authentication is never silently
+disabled in production configuration.
+
 ## Local models
 
 Install Ollama before taking the system offline, then fetch the exact models configured in `config/models.yaml`:
@@ -144,6 +178,7 @@ Flagship inspection:
 3. Watch the 13 verified steps: classification, routing, scanned-PDF detection, OCR, extraction, SOP indexing/retrieval, comparison, citations, verification, recommendation, DOCX generation, and governance.
 4. Inspect the page/section sources and download `Approval_Note_<run>.docx`.
 5. Open the Sovereignty Monitor; external AI APIs remain zero.
+6. In the Workbench inspector, create the Evidence Capsule, verify its integrity, and download the ZIP.
 
 Management-package demo:
 
@@ -196,12 +231,17 @@ For an air-gapped transfer, pre-download model weights, Python wheels, npm packa
 - Upload extensions and sizes are allow-listed.
 - Generated Python is never run on the host; Docker uses no network, CPU/memory/PID/time limits, dropped capabilities, no-new-privileges, non-root user, and read-only root filesystem.
 - Explicitly configured approval-required tools use persisted proposals, exact arguments, policy revalidation, controlled registered-tool execution, result persistence, and audit events.
+- Authenticated principals are derived from opaque server-side sessions; role, clearance, department, workspace, and user authority are never trusted from browser payloads.
+- Document ACL exclusion occurs before dense/BM25 scoring, RRF, reranking, context compilation, and model input; caches include a stable effective-access fingerprint.
+- Tasks, SSE streams, artifacts, Evidence Capsules, approvals, and audits enforce organization/workspace/classification scope and separation of duties.
 - Retrieved documents are data, never instruction authority.
 - PII, injection, grounding, model routing, steps, tools, files, artifacts, and decisions are auditable without hidden chain-of-thought.
 - Inference and vision providers reject public endpoints and redirects.
 - No cloud telemetry or external AI SDK is included.
 
-This is prototype-level security, not a production accreditation. It does not provide OS packet capture, malware scanning, authenticated users, RBAC, encrypted storage, content-disarm/reconstruction, signed audit logs, or hardened container orchestration.
+This is prototype-level security, not a production accreditation. It does not provide MFA, LDAP/AD,
+password recovery, enterprise rate limiting, OS packet capture, malware scanning, encrypted storage,
+content-disarm/reconstruction, signed audit logs, or hardened container orchestration.
 
 ## Architecture decisions
 
@@ -215,6 +255,9 @@ This is prototype-level security, not a production accreditation. It does not pr
 ## API summary
 
 - `POST /api/tasks`, `POST /api/tasks/start`, `GET /api/tasks/{tracking_id}/events`, `GET /api/tasks/{id}`
+- `POST /api/auth/login|logout`, `GET /api/auth/me`, `GET /api/organization`, `GET /api/admin/users`
+- `GET /api/workcells`, `GET /api/workcells/{id}`, `POST /api/workcells/{id}/validate`
+- `POST|GET /api/tasks/{id}/capsule`, `GET /api/capsules/{id}`, `POST /api/capsules/{id}/verify`, `GET /api/capsules/{id}/download`
 - `POST /api/chat`
 - `POST /api/files/upload`, `GET /api/files`
 - `POST /api/knowledge/ingest|search|answer`
@@ -234,4 +277,6 @@ This is prototype-level security, not a production accreditation. It does not pr
 - Vision output needs human engineering review and never claims exact unseen measurements.
 - Agent execution is bounded and registered-tool-only; SSE jobs and event channels are process-local, so durable queues and cross-process event delivery are future work.
 - Fine-tuning is intentionally not required. Establish larger task/evidence evaluation sets before considering LoRA or other local adaptation.
-- Add GraphRAG, LDAP/Active Directory, RBAC, PostgreSQL, signed/encrypted audit logs, encrypted vector storage, policy-as-code, Kubernetes, multi-GPU inference, stronger vision models, model fine-tuning, and a workflow marketplace.
+- Workcell and capsule Ed25519 support uses local public-key trust and development/test keys; enterprise PKI, HSM-backed keys, certificate lifecycle, and formal signature certification are not implemented.
+- SQLite remains single-node, local IAM is prototype-level, LLM prose is not deterministic, and capsule integrity does not prove factual correctness.
+- Later batches may add GraphRAG, LDAP/Active Directory, PostgreSQL, signed/encrypted audit logs, encrypted vector storage, policy-as-code, Kubernetes, multi-GPU inference, stronger vision models, and controlled enterprise Workcell distribution.

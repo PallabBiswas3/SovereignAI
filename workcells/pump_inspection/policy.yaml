@@ -1,0 +1,13 @@
+enabled: true
+tools:
+  read_file: true
+  knowledge_search: true
+  ocr_document: true
+  analyze_image: true
+  run_python: true
+  generate_docx: true
+  generate_xlsx: true
+  generate_pptx: true
+require_human_approval_for:
+  - engineering_disposition
+unsigned_allowed: true

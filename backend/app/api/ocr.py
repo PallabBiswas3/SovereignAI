@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.multimodal.ocr import LocalOCRService
 from app.tools.file_tools import SafeWorkspace
 from app.resources.cache import get_cache_backend
+from app.identity.dependencies import require_permission
+from app.identity.models import Permission, Principal
 
 
 router = APIRouter(prefix="/api/ocr", tags=["ocr"])
@@ -17,7 +19,10 @@ class OCRRequest(BaseModel):
 
 
 @router.post("")
-async def run_ocr(payload: OCRRequest) -> dict[str, object]:
+async def run_ocr(
+    payload: OCRRequest,
+    principal: Principal = Depends(require_permission(Permission.tool_execute)),
+) -> dict[str, object]:
     try:
         path = SafeWorkspace(get_settings().workspace_root).resolve(payload.path, must_exist=True)
         if path.suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}:

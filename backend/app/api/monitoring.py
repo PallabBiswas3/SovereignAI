@@ -6,13 +6,18 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import NetworkEventRecord, get_db
 from app.monitoring.network import AirGapVerifier, NetworkMonitor, local_service_status
+from app.identity.dependencies import require_permission
+from app.identity.models import Permission, Principal
 
 
 router = APIRouter(prefix="/api/monitor", tags=["monitoring"])
 
 
 @router.get("/network")
-async def network_status(db: Session = Depends(get_db)) -> dict[str, object]:
+async def network_status(
+    principal: Principal = Depends(require_permission(Permission.audit_read)),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
     settings = get_settings()
     counts = NetworkMonitor(db).counts()
     config_check = AirGapVerifier().verify_model_config(settings.models_config)

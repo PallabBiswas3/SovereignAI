@@ -6,16 +6,16 @@ import json
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.agent.orchestrator import AgentOrchestrator
 from app.agent.tool_agent import BoundedToolAgent
 from app.agent.state import AgentPlan, AgentRunState, AgentStep, RunStatus, StepStatus
 from app.core.config import get_settings
-from app.core.database import AgentRunRecord, HumanApprovalRecord, SessionLocal, TaskEventRecord, get_db
+from app.core.database import AgentRunRecord, ArtifactRecord, HumanApprovalRecord, SessionLocal, TaskAccessRecord, TaskEventRecord, get_db
 from app.core.events import task_event_broker
 from app.audit.logger import AuditLogger
 from app.governance.injection import PromptInjectionScanner
@@ -45,17 +45,28 @@ from app.governance.grounding import GroundingChecker
 from app.tools.registry import create_agent_registry
 from app.resources.cache import get_cache_backend
 from app.multimodal.ocr import DocumentTextExtractor, LocalOCRService
+from app.workcells.defaults import configured_workcell_registry, create_workcell_handler_registry
+from app.workcells.executor import WorkcellExecutor
+from app.workcells.handlers import WorkcellHandlerContext
+from app.workcells.models import WorkcellDefinition
+from app.identity.authorization import AuthorizationService
+from app.identity.dependencies import require_permission
+from app.identity.models import ClearanceLevel, DocumentACL, Permission, Principal, ResourceScope
+from app.identity.provider import LocalIdentityProvider
+from app.identity import ContentIdentityService
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 class CreateTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     request: str = Field(min_length=1, max_length=50_000)
     model_override: str | None = None
     use_case: str = "internal_assistant"
     attachments: list[str] = Field(default_factory=list, max_length=10)
     execution_mode: ExecutionMode = ExecutionMode.automatic
+    workcell_id: str | None = Field(default=None, max_length=100)
 
 
 class StartTaskResponse(BaseModel):
@@ -76,7 +87,9 @@ def _completed_step(step_id: int, action: str, title: str, observation: str) -> 
     return AgentStep(id=step_id, action=action, title=title, status=StepStatus.completed, observation=observation, verification="Completed by deterministic workflow service.")
 
 
-async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session) -> AgentRunState:
+async def _run_inspection_task_implementation(
+    payload: CreateTaskRequest, settings, db: Session, principal: Principal, *, workcell_identity: str | None = None
+) -> AgentRunState:
     run_id = str(uuid4())
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
@@ -95,7 +108,12 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
         sop = SafeWorkspace(settings.knowledge_root).resolve(sop_name, must_exist=True)
     embeddings = configured_embedding_provider()
     cache = get_cache_backend() if settings.cache_enabled else None
-    document = KnowledgeIngestionService(db, embeddings).ingest(sop, {"department": "maintenance", "classification": "internal"})
+    scope = AuthorizationService.owned_scope(principal)
+    secure_acl = DocumentACL(**scope.model_dump(exclude={"resource_id"})) if settings.auth_mode.lower() == "local" else None
+    document = KnowledgeIngestionService(db, embeddings).ingest(
+        sop, {"department": "maintenance", "classification": "internal"},
+        acl=secure_acl, require_acl=secure_acl is not None,
+    )
     package_requested = any(phrase in payload.request.lower() for phrase in ("management package", "management pack", "docx xlsx pptx"))
     artifact_root = settings.workspace_root / "artifacts"
     output = (artifact_root / run_id / "approval_note.docx") if package_requested else (artifact_root / f"Approval_Note_{run_id[:8]}.docx")
@@ -104,9 +122,11 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
         configured_hybrid_retriever(
             db, embeddings=embeddings, cache=cache, settings=settings,
             execution_mode=selection.selected.value,
+            principal=principal if settings.auth_mode.lower() == "local" else None,
         ),
         DocumentTextExtractor(LocalOCRService(cache=cache)),
         cache,
+        workcell_identity=workcell_identity,
     ).analyze(
         inspection, output, payload.request,
         selected_model=selected_model.model_tag,
@@ -115,7 +135,7 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
     )
     structured = analysis.evidence_bundle
     artifact_service = ArtifactService(db, artifact_root)
-    artifact = artifact_service.register(output, run_id)
+    artifact = artifact_service.register(output, run_id, scope=scope)
     artifact_records = [artifact]
     extra_paths = [path for path in attachment_paths if path not in {inspection, sop}]
     evidence = [{
@@ -143,7 +163,10 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
             {"title": "Inspection findings", "bullets": [f"{item['parameter']}: {item['observed']} ({item['status']})" for item in analysis.findings]},
             {"title": "Recommendation", "bullets": [analysis.recommendation, "Human engineering authorization remains required."]},
         ])
-        artifact_records.extend([artifact_service.register(xlsx, run_id), artifact_service.register(pptx, run_id)])
+        artifact_records.extend([
+            artifact_service.register(xlsx, run_id, scope=scope),
+            artifact_service.register(pptx, run_id, scope=scope),
+        ])
     observations = [
         f"Task classified as {routing.task_profile.task_type}.",
         f"Selected {routing.model_id}: {routing.reason}",
@@ -195,7 +218,53 @@ async def _run_inspection_task(payload: CreateTaskRequest, settings, db: Session
     )
 
 
-async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session) -> AgentRunState:
+async def _run_inspection_workcell(
+    payload: CreateTaskRequest,
+    settings,
+    db: Session,
+    definition: WorkcellDefinition,
+    principal: Principal,
+    event_callback: EventCallback | None = None,
+) -> AgentRunState:
+    async def runner() -> AgentRunState:
+        return await _run_inspection_task_implementation(
+            payload, settings, db, principal,
+            workcell_identity=f"{definition.manifest.id}:{definition.manifest.version}",
+        )
+
+    context = WorkcellHandlerContext(
+        task_id="pending",
+        request=payload.request,
+        definition=definition,
+        inputs={
+            "request": payload.request,
+            "attachments": payload.attachments,
+            "execution_mode": payload.execution_mode.value,
+        },
+        services={"pump_inspection_runner": runner},
+    )
+    execution = await WorkcellExecutor(create_workcell_handler_registry()).execute(
+        context,
+        event_callback=event_callback,
+    )
+    state = context.accumulated.get("task_state")
+    if not isinstance(state, AgentRunState):
+        raise RuntimeError("WORKCELL_EXECUTION_FAILED: Pump handler returned no task state")
+    state.workcell_id = definition.manifest.id
+    state.workcell_version = definition.manifest.version
+    state.workcell_hash = definition.content_hash
+    state.workflow_version = definition.workflow.version
+    state.workcell_state = execution.model_dump(mode="json")
+    claim_ids = [str(item.get("id")) for item in state.claims if item.get("id")]
+    for artifact in db.query(ArtifactRecord).filter(ArtifactRecord.run_id == state.id).all():
+        artifact.workcell_id = state.workcell_id
+        artifact.workcell_version = state.workcell_version
+        artifact.lineage_json = json.dumps({"derived_from_claims": claim_ids})
+    db.commit()
+    return state
+
+
+async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal) -> AgentRunState:
     run_id = str(uuid4())
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
@@ -219,7 +288,8 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session) ->
     ).run(csv_path, artifact_root, payload.request, run_id)
     service = ArtifactService(db, artifact_root)
     paths = [result.source_path, result.report_path, *result.result_paths]
-    records = [service.register(Path(path), run_id) for path in paths if path]
+    scope = AuthorizationService.owned_scope(principal)
+    records = [service.register(Path(path), run_id, scope=scope) for path in paths if path]
     executed = bool(result.execution.get("executed"))
     succeeded = executed and result.execution.get("exit_code") == 0
     steps = [
@@ -253,7 +323,7 @@ def _requires_tool_agent(payload: CreateTaskRequest) -> bool:
     ))
 
 
-async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> AgentRunState:
+async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal) -> AgentRunState:
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
@@ -272,8 +342,9 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> A
             execution_mode=selection.selected.value, priority=selection.priority,
         ),
         selected.model_tag,
-        create_agent_registry(settings, db),
+        create_agent_registry(settings, db, principal, AuthorizationService.owned_scope(principal)),
         ActionGuard(settings.tools_config),
+        principal=principal,
     ).execute(state, payload.attachments)
     waiting = next((item for item in completed.tool_records if item.get("waiting_for_approval")), None)
     if waiting:
@@ -281,6 +352,9 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> A
             id=str(uuid4()), run_id=completed.id, tool=str(waiting["tool"]),
             args_json=json.dumps(waiting.get("arguments", {})), risk=str(waiting.get("risk", "UNKNOWN")),
             status="pending",
+            requester_id=principal.user_id, organization_id=principal.organization_id,
+            workspace_id=next(iter(principal.workspace_ids), None),
+            action_hash=ContentIdentityService().hash_json({"tool": waiting["tool"], "arguments": waiting.get("arguments", {})}),
         )
         db.add(approval)
         db.commit()
@@ -292,6 +366,7 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session) -> A
 async def _execute_task(
     payload: CreateTaskRequest,
     db: Session,
+    principal: Principal,
     event_callback: EventCallback | None = None,
     cancellation_event: asyncio.Event | None = None,
 ) -> AgentRunState:
@@ -320,12 +395,34 @@ async def _execute_task(
                 execution_mode=selection.selected.value,
                 execution_mode_reason=selection.reason,
             )
-        elif payload.attachments and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop")):
-            state = await _run_inspection_task(payload, settings, db)
+        elif payload.workcell_id or (payload.attachments and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop"))):
+            workcells = configured_workcell_registry(settings)
+            if payload.workcell_id:
+                definition = workcells.get(payload.workcell_id)
+            else:
+                definition = workcells.resolve_for_task("engineering_inspection")
+                if definition is None:
+                    raise ValueError("WORKCELL_NOT_FOUND: no ready engineering inspection Workcell")
+            if definition.manifest.id != "pump-inspection":
+                raise ValueError(f"WORKCELL_EXECUTION_FAILED: no trusted task adapter for {definition.manifest.id}")
+            if event_callback:
+                await event_callback("workcell_selected", {
+                    "workcell_id": definition.manifest.id,
+                    "version": definition.manifest.version,
+                    "hash": definition.content_hash,
+                })
+                await event_callback("workcell_validated", {"status": "READY"})
+            access = AuthorizationService().can_execute_workcell(principal, definition.manifest.id)
+            if not access.allowed:
+                raise HTTPException(status_code=403, detail={"code": access.reason_code})
+            state = await _run_inspection_workcell(payload, settings, db, definition, principal, event_callback)
         elif payload.attachments and payload.attachments[0].lower().endswith(".csv") and any(word in payload.request.lower() for word in ("code", "python", "anomal")):
-            state = await _run_coding_task(payload, settings, db)
+            access = AuthorizationService().can_use_tool(principal, "run_python")
+            if not access.allowed:
+                raise HTTPException(status_code=403, detail={"code": access.reason_code})
+            state = await _run_coding_task(payload, settings, db, principal)
         elif _requires_tool_agent(payload):
-            state = await _run_tool_task(payload, settings, db)
+            state = await _run_tool_task(payload, settings, db, principal)
         else:
             state = await AgentOrchestrator(settings).run(
                 payload.request,
@@ -367,6 +464,12 @@ async def _execute_task(
         "claim_results": claim_results,
         "unsupported_material_claims": unsupported_claims,
     }
+    scope = AuthorizationService.owned_scope(principal)
+    state.principal_id = principal.user_id
+    state.organization_id = principal.organization_id
+    state.workspace_id = scope.workspace_id
+    state.department_id = scope.department_id
+    state.classification = scope.classification.name.upper()
     record = AgentRunRecord(
         id=state.id,
         request=state.request,
@@ -374,16 +477,31 @@ async def _execute_task(
         state_json=state.model_dump_json(),
         created_at=state.created_at,
         updated_at=state.updated_at,
+        organization_id=scope.organization_id, owner_id=scope.owner_id,
+        workspace_id=scope.workspace_id, department_id=scope.department_id,
+        classification=scope.classification.name.upper(),
     )
     db.add(record)
     db.commit()
-    audit = AuditLogger(db)
+    audit = AuditLogger(db, principal)
     audit.log(state.id, "user_request", "Task accepted by the workbench.", {"request": payload.request, "use_case": payload.use_case})
     audit.log(state.id, "model_routing", state.routing.reason, state.routing.model_dump(mode="json"))
     audit.log(state.id, "execution_mode", state.execution_mode_reason, {
         "requested": state.requested_execution_mode, "selected": state.execution_mode,
     })
     audit.log(state.id, "governance", f"Input decision: {input_decision.value}", state.governance)
+    if state.workcell_id:
+        audit.log(state.id, "workcell_selected", f"Selected {state.workcell_id} {state.workcell_version}", {
+            "workcell_id": state.workcell_id, "version": state.workcell_version,
+        })
+        audit.log(state.id, "workcell_validation", f"Validated {state.workcell_id} {state.workcell_version}", {
+            "workcell_id": state.workcell_id,
+            "version": state.workcell_version,
+            "hash": state.workcell_hash,
+            "workflow_version": state.workflow_version,
+        })
+        for step_id in state.workcell_state.get("completed_steps", []):
+            audit.log(state.id, "workcell_step_completed", f"Workcell step completed: {step_id}", {"step_id": step_id})
     for step in state.plan.steps:
         audit.log(state.id, "agent_step", f"{step.title}: {step.status.value}", {"action": step.action, "status": step.status.value, "observation": step.observation, "verification": step.verification, "error": step.error})
     for execution in state.execution_records:
@@ -412,9 +530,33 @@ async def _execute_task(
     return state
 
 
+def _task_scope(row: AgentRunRecord | TaskAccessRecord) -> ResourceScope | None:
+    if not row.organization_id or not row.workspace_id:
+        return None
+    return ResourceScope(
+        resource_id=getattr(row, "id", None) or getattr(row, "task_id", None),
+        organization_id=row.organization_id, owner_id=row.owner_id,
+        workspace_id=row.workspace_id, department_id=row.department_id,
+        classification=ClearanceLevel.parse(row.classification),
+    )
+
+
+def _assert_task_access(principal: Principal, row: AgentRunRecord | TaskAccessRecord) -> None:
+    if get_settings().auth_mode.lower() != "local":
+        return
+    scope = _task_scope(row)
+    decision = AuthorizationService().authorize(principal, Permission.task_read, scope) if scope else None
+    if not decision or not decision.allowed:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+
 @router.post("", response_model=AgentRunState)
-async def create_task(payload: CreateTaskRequest, db: Session = Depends(get_db)) -> AgentRunState:
-    return await _execute_task(payload, db)
+async def create_task(
+    payload: CreateTaskRequest,
+    principal: Principal = Depends(require_permission(Permission.task_create)),
+    db: Session = Depends(get_db),
+) -> AgentRunState:
+    return await _execute_task(payload, db, principal)
 
 
 async def _publish_event(db: Session, task_id: str, event_type: str, payload: dict | None = None) -> None:
@@ -427,7 +569,7 @@ async def _publish_event(db: Session, task_id: str, event_type: str, payload: di
     db.commit()
 
 
-async def _run_background_task(tracking_id: str, payload: CreateTaskRequest) -> None:
+async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, principal: Principal) -> None:
     db = SessionLocal()
     try:
         await _publish_event(db, tracking_id, "task_accepted", {"request": payload.request})
@@ -449,7 +591,11 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest) -> 
         async def publish_live(event_type: str, event_payload: dict[str, object]) -> None:
             await _publish_event(db, tracking_id, event_type, event_payload)
 
-        result = await _execute_task(payload, db, publish_live, cancellation_event)
+        result = await _execute_task(payload, db, principal, publish_live, cancellation_event)
+        access_row = db.get(TaskAccessRecord, tracking_id)
+        if access_row:
+            access_row.run_id = result.id
+            db.commit()
         await _publish_event(db, tracking_id, "step_completed", {"id": 0, "status": result.status.value, "observation": "Workflow returned a persisted run state."})
         for step in result.plan.steps:
             await _publish_event(db, tracking_id, "step_started", {"id": step.id, "action": step.action, "title": step.title})
@@ -482,16 +628,35 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest) -> 
 
 
 @router.post("/start", response_model=StartTaskResponse, status_code=202)
-async def start_task(payload: CreateTaskRequest) -> StartTaskResponse:
+async def start_task(
+    payload: CreateTaskRequest,
+    principal: Principal = Depends(require_permission(Permission.task_create)),
+    db: Session = Depends(get_db),
+) -> StartTaskResponse:
     tracking_id = str(uuid4())
+    scope = AuthorizationService.owned_scope(principal)
+    db.add(TaskAccessRecord(
+        task_id=tracking_id, organization_id=scope.organization_id,
+        owner_id=principal.user_id, workspace_id=scope.workspace_id,
+        department_id=scope.department_id, classification=scope.classification.name.upper(),
+    ))
+    db.commit()
     await task_event_broker.create(tracking_id)
-    task = asyncio.create_task(_run_background_task(tracking_id, payload))
+    task = asyncio.create_task(_run_background_task(tracking_id, payload, principal))
     await task_event_broker.attach_task(tracking_id, task)
     return StartTaskResponse(task_id=tracking_id)
 
 
 @router.delete("/{task_id}")
-async def cancel_task(task_id: str) -> dict[str, str]:
+async def cancel_task(
+    task_id: str,
+    principal: Principal = Depends(require_permission(Permission.task_read)),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    access_row = db.get(TaskAccessRecord, task_id)
+    if not access_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_access(principal, access_row)
     try:
         await task_event_broker.cancel(task_id)
     except KeyError as exc:
@@ -500,10 +665,24 @@ async def cancel_task(task_id: str) -> dict[str, str]:
 
 
 @router.get("/{task_id}/events")
-async def task_events(task_id: str) -> StreamingResponse:
+async def task_events(
+    task_id: str, request: Request,
+    principal: Principal = Depends(require_permission(Permission.task_read)),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    access_row = db.get(TaskAccessRecord, task_id)
+    if not access_row:
+        raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_access(principal, access_row)
+    settings = get_settings()
+    token = request.cookies.get(settings.auth_cookie_name)
     async def generate():
         try:
             async for event in task_event_broker.stream(task_id):
+                if settings.auth_mode.lower() == "local":
+                    if not token or LocalIdentityProvider(db, settings.access_config).resolve_principal(token) is None:
+                        yield f"event: access_revoked\ndata: {json.dumps({'task_id': task_id, 'type': 'access_revoked', 'payload': {'code': 'AUTHENTICATION_REQUIRED'}})}\n\n"
+                        break
                 yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
         except KeyError:
             yield f"event: task_failed\ndata: {json.dumps({'task_id': task_id, 'type': 'task_failed', 'payload': {'error': 'Unknown or expired task stream'}})}\n\n"
@@ -511,16 +690,28 @@ async def task_events(task_id: str) -> StreamingResponse:
 
 
 @router.get("/{task_id}", response_model=AgentRunState)
-async def get_task(task_id: str, db: Session = Depends(get_db)) -> AgentRunState:
+async def get_task(
+    task_id: str,
+    principal: Principal = Depends(require_permission(Permission.task_read)),
+    db: Session = Depends(get_db),
+) -> AgentRunState:
     record = db.get(AgentRunRecord, task_id)
     if not record:
         raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_access(principal, record)
     return AgentRunState.model_validate_json(record.state_json)
 
 
 @router.get("")
-async def list_tasks(db: Session = Depends(get_db)) -> list[dict[str, str]]:
+async def list_tasks(
+    principal: Principal = Depends(require_permission(Permission.task_read)),
+    db: Session = Depends(get_db),
+) -> list[dict[str, str]]:
     records = db.query(AgentRunRecord).order_by(AgentRunRecord.created_at.desc()).limit(100).all()
+    if get_settings().auth_mode.lower() == "local":
+        records = [row for row in records if _task_scope(row) and AuthorizationService().authorize(
+            principal, Permission.task_read, _task_scope(row)
+        ).allowed]
     return [
         {"id": row.id, "request": row.request, "status": row.status, "updated_at": row.updated_at.isoformat()}
         for row in records
