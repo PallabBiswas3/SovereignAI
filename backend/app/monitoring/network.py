@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,6 +14,23 @@ import yaml
 from sqlalchemy.orm import Session
 
 from app.core.database import NetworkEventRecord
+
+
+def _docker_daemon_available() -> bool:
+    """Probe Docker without relying on asyncio subprocess support on Windows."""
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        completed = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=2,
+            check=False,
+            creationflags=creation_flags,
+        )
+    except (OSError, subprocess.SubprocessError, NotImplementedError):
+        return False
+    return completed.returncode == 0
 
 
 class LocalNetworkPolicy:
@@ -84,10 +102,9 @@ async def local_service_status(ollama_url: str) -> list[dict[str, object]]:
         docker_status = "unavailable"
     else:
         try:
-            process = await asyncio.create_subprocess_exec("docker", "info", "--format", "{{.ServerVersion}}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            await asyncio.wait_for(process.communicate(), timeout=2)
-            docker_status = "available" if process.returncode == 0 else "unavailable"
-        except (OSError, asyncio.TimeoutError):
+            available = await asyncio.wait_for(asyncio.to_thread(_docker_daemon_available), timeout=3)
+            docker_status = "available" if available else "unavailable"
+        except (RuntimeError, asyncio.TimeoutError):
             docker_status = "unavailable"
     services.append({"name": "Sandbox", "endpoint": "Docker isolated", "status": docker_status})
     return services

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 import shutil
@@ -53,7 +54,15 @@ class ApelDemoService:
             path = self.generated_root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content.rstrip() + "\n", encoding="utf-8")
-            manifest.append({"path": relative, "department": department, "classification": classification, "asset_id": asset_id, "relationship": relationship})
+            revision_match = re.search(r"\bRev(?:ision)?\s*:?\s*([0-9]+(?:\.[0-9]+)?)\b", content, re.IGNORECASE)
+            manifest.append({
+                "path": relative,
+                "department": department,
+                "classification": classification,
+                "asset_id": asset_id,
+                "relationship": relationship,
+                "revision": f"Rev {revision_match.group(1)}" if revision_match else None,
+            })
 
         for asset in self.assets:
             write(
@@ -185,7 +194,12 @@ class ApelDemoService:
                 workspace_id=APEL_WORKSPACE_ID,
                 classification=ClearanceLevel.parse(item["classification"]), owner_id=owner,
             )
-            document = ingestion.ingest(self.generated_root / item["path"], {"asset_id": item.get("asset_id")}, acl=acl, require_acl=True)
+            document = ingestion.ingest(
+                self.generated_root / item["path"],
+                {"asset_id": item.get("asset_id"), "revision": item.get("revision")},
+                acl=acl,
+                require_acl=True,
+            )
             if item.get("asset_id") and not self.session.query(AssetEvidenceLinkRecord).filter_by(asset_id=item["asset_id"], evidence_id=document.id, relationship=item["relationship"]).first():
                 self.session.add(AssetEvidenceLinkRecord(id=str(uuid4()), asset_id=item["asset_id"], evidence_id=document.id, relationship=item["relationship"], source="apel-deterministic-seed", confidence=1.0, inferred=False))
         self._seed_asset_history()

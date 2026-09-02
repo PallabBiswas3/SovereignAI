@@ -16,7 +16,7 @@ const pct = (value: number | null | undefined) => value == null ? "N/A" : `${Mat
 export default function MetricsPage() {
   const [data, setData] = useState<MetricPayload | null>(null);
   const [running, setRunning] = useState(false);
-  const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
   useEffect(() => { fetch(`${api}/api/evaluation/metrics`, { credentials: "include" }).then((response) => response.json()).then(setData); }, [api]);
   async function run() { const csrf = document.cookie.split("; ").find((item) => item.startsWith("sovereign_csrf="))?.split("=")[1] ?? ""; setRunning(true); const response = await fetch(`${api}/api/evaluation/run`, { method: "POST", credentials: "include", headers: { "X-CSRF-Token": decodeURIComponent(csrf) } }); setData(await response.json()); setRunning(false); }
   const metrics = data?.metrics;

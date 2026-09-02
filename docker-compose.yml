@@ -13,6 +13,7 @@ services:
       SOVEREIGN_WORKSPACE_ROOT: /app/workspace
       SOVEREIGN_KNOWLEDGE_ROOT: /app/knowledge_base
       SOVEREIGN_OLLAMA_URL: http://ollama:11434
+      SOVEREIGN_MODEL_GENERATION_TIMEOUT_SECONDS: "600"
     volumes:
       - backend-data:/app/backend/data
       - ./config:/app/config:ro
@@ -32,7 +33,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
     ports: ["127.0.0.1:3000:3000"]

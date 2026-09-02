@@ -14,6 +14,7 @@ from app.agent.executor import EventCallback
 import asyncio
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
+from app.orchestration.chat_mode import ChatMode, system_prompt_for_mode
 
 
 class AgentOrchestrator:
@@ -31,6 +32,11 @@ class AgentOrchestrator:
         attachment_count: int = 0,
         event_callback: EventCallback | None = None,
         cancellation_event: asyncio.Event | None = None,
+        *,
+        requested_chat_mode: ChatMode = ChatMode.automatic,
+        chat_mode: ChatMode = ChatMode.general,
+        chat_mode_reason: str = "No organizational evidence or governed action was requested.",
+        generation_prompt: str | None = None,
     ) -> AgentRunState:
         routing = self.router.route(request, model_override)
         selection = ExecutionModeSelector().select(
@@ -42,6 +48,9 @@ class AgentOrchestrator:
             requested_execution_mode=selection.requested.value,
             execution_mode=selection.selected.value,
             execution_mode_reason=selection.reason,
+            requested_chat_mode=requested_chat_mode.value,
+            chat_mode=chat_mode.value,
+            chat_mode_reason=chat_mode_reason,
         )
         selected = self.registry.get(routing.model_id)
         provider = OllamaProvider(
@@ -52,7 +61,11 @@ class AgentOrchestrator:
             execution_mode=selection.selected.value,
             priority=selection.priority,
         )
-        executor = AgentExecutor(provider, selected.model_tag, event_callback, cancellation_event)
+        executor = AgentExecutor(
+            provider, selected.model_tag, event_callback, cancellation_event,
+            system_prompt=system_prompt_for_mode(chat_mode),
+            generation_prompt=generation_prompt,
+        )
         try:
             for step in state.plan.steps:
                 step.status = StepStatus.running

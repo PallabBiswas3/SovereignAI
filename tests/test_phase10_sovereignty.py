@@ -1,5 +1,7 @@
+import asyncio
 from pathlib import Path
 
+from app.monitoring import network
 from app.monitoring.network import AirGapVerifier, LocalNetworkPolicy
 
 
@@ -23,6 +25,22 @@ def test_external_destination_is_blocked() -> None:
         assert "blocked" in str(exc).lower()
     else:
         raise AssertionError("External destination was permitted")
+
+
+def test_monitor_does_not_crash_when_docker_probe_is_unsupported(monkeypatch) -> None:
+    monkeypatch.setattr(
+        network.shutil,
+        "which",
+        lambda command: "docker.exe" if command == "docker" else None,
+    )
+
+    def unsupported_subprocess(*args, **kwargs):
+        raise NotImplementedError
+
+    monkeypatch.setattr(network.subprocess, "run", unsupported_subprocess)
+    services = asyncio.run(network.local_service_status("http://127.0.0.1:9"))
+    sandbox = next(service for service in services if service["name"] == "Sandbox")
+    assert sandbox["status"] == "unavailable"
 
 
 def test_compose_declares_network_isolation_and_internal_ollama() -> None:

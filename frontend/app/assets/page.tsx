@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type Asset = { asset_id:string; canonical_name:string; asset_type:string; plant_id:string; area_id:string; unit_id:string; criticality:string; status:string; manufacturer?:string|null; model?:string|null; aliases:string[] };
 type Measurement = { measurement_id:string; metric:string; value:number; unit:string; timestamp:string; quality:string; freshness_status:string; age_seconds?:number|null; warnings:string[]; original_value:number; original_unit:string };

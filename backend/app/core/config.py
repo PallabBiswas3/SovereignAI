@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     max_cpu_jobs: int = 2
     model_idle_timeout_seconds: int = 300
     model_keep_alive: str | None = None
-    model_generation_timeout_seconds: float = 300.0
+    model_generation_timeout_seconds: float = 600.0
     cache_enabled: bool = True
     cache_default_ttl_seconds: int | None = None
     hybrid_dense_top_k: int = 30

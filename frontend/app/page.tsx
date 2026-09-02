@@ -16,6 +16,9 @@ type TaskResult = {
   requested_execution_mode: string;
   execution_mode: string;
   execution_mode_reason: string;
+  requested_chat_mode: string;
+  chat_mode: string;
+  chat_mode_reason: string;
   runtime_metrics: Record<string, unknown>;
   measurements: Array<{ id: string; asset_id?: string | null; metric: string; original_value: number; original_unit?: string | null; normalized_value?: number | null; normalized_unit?: string | null; source_id: string; status: string }>;
   rules: Array<{ id: string; metric: string; operator: string; threshold?: number | null; lower_bound?: number | null; upper_bound?: number | null; unit?: string | null; rule_type: string; source: { source_id: string; section?: string | null; revision?: string | null } }>;
@@ -82,6 +85,7 @@ const eventLabels: Record<string, string> = {
   governance_completed: "Safety checks completed",
   task_classified: "Task classified",
   model_selected: "Local model selected",
+  chat_mode_selected: "Chat access mode selected",
   execution_mode_selected: "Execution depth selected",
   generation_started: "Local model started generating",
   model_token: "Local model is responding",
@@ -116,7 +120,7 @@ const eventLabels: Record<string, string> = {
   asset_context_ready: "Asset context is ready",
 };
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function cookie(name: string) {
   if (typeof document === "undefined") return "";
@@ -146,6 +150,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [modelOverride, setModelOverride] = useState("");
   const [executionMode, setExecutionMode] = useState("AUTOMATIC");
+  const [chatMode, setChatMode] = useState("AUTOMATIC");
   const [activeTaskId, setActiveTaskId] = useState("");
   const [attachments, setAttachments] = useState<Array<{ name: string; path: string }>>([]);
   const [models, setModels] = useState<ModelStatus[]>([]);
@@ -204,6 +209,7 @@ export default function Home() {
           request: submittedMessage,
           model_override: modelOverride || null,
           execution_mode: executionMode,
+          chat_mode: chatMode,
           attachments: attachments.map((item) => item.path),
           use_case: submittedMessage.toLowerCase().includes("inspection") ? "engineering" : "internal_assistant",
           workcell_id: workcellId || null,
@@ -214,7 +220,7 @@ export default function Home() {
       setActiveTaskId(started.task_id);
       const stream = new EventSource(`${api}/api/tasks/${started.task_id}/events`, { withCredentials: true });
       let finished = false;
-      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
+      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
       const receive = (event: MessageEvent) => {
         const item = JSON.parse(event.data) as LiveEvent;
         setLiveEvents((current) => [...current, item]);
@@ -354,12 +360,17 @@ export default function Home() {
       </form>
     </section>
     <aside className="inspector">
+      <div className="inspectorColumn inspectorExecution">
       <h3>Agent execution</h3>
-      <section><label>MODEL &amp; EXECUTION</label><b>{result?.routing.model_id ?? "Automatic routing"}</b><p>{result?.routing.reason ?? "A local model will be selected for the task."}</p>{result && <><div className="metric"><span>Confidence</span><b>{Math.round(result.routing.confidence * 100)}%</b></div><div className="metric"><span>Mode</span><b>{result.execution_mode}</b></div><p>{result.execution_mode_reason}</p></>}<div className="metric"><span>Local readiness</span><b>{models.length ? `${models.filter((model) => model.availability === "READY").length}/${models.length} roles` : "Checking"}</b></div><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value)} aria-label="Execution mode"><option value="AUTOMATIC">Automatic depth</option><option value="FAST">Fast</option><option value="STANDARD">Standard</option><option value="DEEP">Deep</option></select><select value={modelOverride} onChange={(event) => setModelOverride(event.target.value)} aria-label="Model override"><option value="">Automatic model</option>{models.map((model) => <option key={model.id} value={model.id} disabled={model.availability !== "READY"}>{model.role}: {model.display_name} — {model.availability}</option>)}</select>{models.map((model) => <div className="modelRuntime" key={model.id}><span className={model.availability === "READY" ? "readyDot" : "warnDot"}/><div><b>{model.role}</b><small>{model.model_tag} · {model.lifecycle_state ?? model.availability} · {model.warm_status ?? "unknown"}</small></div></div>)}</section>
+      <section><label>MODEL &amp; EXECUTION</label><b>{result?.routing.model_id ?? "Automatic routing"}</b><p>{result?.routing.reason ?? "A local model will be selected for the task."}</p>{result && <><div className="metric"><span>Confidence</span><b>{Math.round(result.routing.confidence * 100)}%</b></div><div className="metric"><span>Chat mode</span><b>{result.chat_mode}</b></div><p>{result.chat_mode_reason}</p><div className="metric"><span>Depth</span><b>{result.execution_mode}</b></div><p>{result.execution_mode_reason}</p></>}<div className="metric"><span>Local readiness</span><b>{models.length ? `${models.filter((model) => model.availability === "READY").length}/${models.length} roles` : "Checking"}</b></div><select value={chatMode} onChange={(event) => setChatMode(event.target.value)} aria-label="Chat mode"><option value="AUTOMATIC">Automatic chat mode</option><option value="GENERAL">General Chat</option><option value="AUTHORIZED">Authorized Knowledge</option><option value="CONTROLLED">Controlled Agent</option></select><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value)} aria-label="Execution mode"><option value="AUTOMATIC">Automatic depth</option><option value="FAST">Fast</option><option value="STANDARD">Standard</option><option value="DEEP">Deep</option></select><select value={modelOverride} onChange={(event) => setModelOverride(event.target.value)} aria-label="Model override"><option value="">Automatic model</option>{models.map((model) => <option key={model.id} value={model.id} disabled={model.availability !== "READY"}>{model.role}: {model.display_name} — {model.availability}</option>)}</select>{models.map((model) => <div className="modelRuntime" key={model.id}><span className={model.availability === "READY" ? "readyDot" : "warnDot"}/><div><b>{model.role}</b><small>{model.model_tag} · {model.lifecycle_state ?? model.availability} · {model.warm_status ?? "unknown"}</small></div></div>)}</section>
       <section><label>WORKFLOW</label>{result?.workcell_id ? <><b>{workcells.find((item) => item.id === result.workcell_id)?.name ?? result.workcell_id}</b><p>Version {result.workcell_version} · Workflow {result.workflow_version}</p><div className="metric"><span>Pack status</span><b>READY / DEVELOPMENT</b></div><code className="shortHash">{result.workcell_hash}</code></> : <><select value={workcellId} onChange={(event) => setWorkcellId(event.target.value)} aria-label="Workcell selection"><option value="">Automatic workflow</option>{workcells.map((item) => <option key={`${item.id}-${item.version}`} value={item.id}>{item.name} v{item.version}</option>)}</select><p>{workcellId ? workcells.find((item) => item.id === workcellId)?.description : "The task classifier can select an installed local Workcell."}</p></>}</section>
       {resources && <section><label>LOCAL RESOURCES</label><div className="metric"><span>GPU jobs / queue</span><b>{resources.active_gpu_jobs} / {resources.queue_depth}</b></div><div className="metric"><span>CPU</span><b>{resources.cpu_percent}%</b></div><div className="metric"><span>RAM</span><b>{Math.round(resources.ram_used_mb)} / {Math.round(resources.ram_total_mb)} MB</b></div>{resources.vram_total_mb != null && <div className="metric"><span>VRAM</span><b>{Math.round(resources.vram_used_mb ?? 0)} / {Math.round(resources.vram_total_mb)} MB</b></div>}</section>}
       <section><label>PLAN &amp; LIVE EVENTS</label>{result ? <ol className="plan">{result.plan.steps.map((step) => <li key={step.id} className={step.status}>{step.status === "completed" ? "✓" : step.status === "failed" ? "!" : "○"} {step.title}</li>)}</ol> : liveEvents.length ? <ol className="plan liveEvents">{liveEvents.slice(-10).map((item, index) => <li key={`${item.timestamp}-${index}`} className={item.type === "task_failed" ? "failed" : "completed"}>{item.type.replaceAll("_", " ")}</li>)}</ol> : <p className="muted">Submit a task to see a verifiable execution plan.</p>}</section>
       <section><label>AI SAFETY</label><div className="metric"><span>Decision</span><b>{result?.governance.decision ?? "Pending"}</b></div><div className="metric"><span>Privacy risk</span><b>{result?.governance.privacy_risk ?? "Low"}</b></div><div className="metric"><span>Grounding</span><b>{result?.governance.grounding_score != null ? `${Math.round(result.governance.grounding_score * 100)}%` : "N/A"}</b></div><div className="metric"><span>External requests</span><b>0</b></div></section>
+      </div>
+      <div className="inspectorColumn inspectorEvidence">
+      <h3>Evidence &amp; outputs</h3>
+      {!result && <section><p className="muted">Run a task to inspect evidence, calculations, artifacts and integrity controls.</p></section>}
       {result?.claims.length ? <section><label>WHY THIS ANSWER?</label>{result.claims.map((claim) => <details key={claim.id} open={claim.support_status !== "SUPPORTED"}><summary>{claim.support_status}: {claim.text}</summary><p><b>Evidence</b>: {claim.evidence_ids.join(", ") || "None"}</p><p><b>Calculations</b>: {claim.calculation_ids.join(", ") || "None"}</p><p><b>Capsule</b>: {capsule ? "Included in Evidence Capsule" : "Available after capsule creation"}</p>{claim.verification.map((check) => <p key={`${claim.id}-${check.verifier}`}>{check.passed ? "✓" : "!"} {check.verifier}: {check.summary}</p>)}</details>)}{result.context_metrics?.raw_candidate_count != null && <div className="metric"><span>Evidence selected</span><b>{result.context_metrics.final_evidence_count}/{result.context_metrics.raw_candidate_count}</b></div>}</section> : null}
       {result?.measurements.length ? <section><label>MEASUREMENTS</label>{result.measurements.map((measurement) => <details key={measurement.id}><summary>{measurement.id}: {measurement.metric}</summary><p>Original: {measurement.original_value} {measurement.original_unit}</p><p>Normalized: {measurement.normalized_value} {measurement.normalized_unit}</p><p>Source: {measurement.source_id}</p></details>)}</section> : null}
       {result?.asset_context?.asset ? <section><label>ASSET CONTEXT · SIMULATED</label><b>{result.asset_context.asset.asset_id} · {result.asset_context.asset.canonical_name}</b>{result.asset_context.latest_measurements?.map((measurement) => <details key={measurement.measurement_id}><summary>{measurement.metric}: {measurement.original_value} {measurement.original_unit}</summary><p>{measurement.quality} quality · {measurement.freshness_status}</p><p>Snapshot: {measurement.measurement_id}</p></details>)}{result.trend_analyses?.map((trend) => <div className="metric" key={trend.metric}><span>{trend.metric} trend ({trend.sample_count})</span><b>{trend.trend}</b></div>)}<Link className="artifactLink" href="/assets">Open asset view</Link></section> : null}
@@ -368,6 +379,7 @@ export default function Home() {
       {result?.sources.length ? <section><label>SOURCES</label>{result.sources.map((source, index) => <details key={`${source.file}-${index}`}><summary>{source.file}</summary><p>Page {source.page ?? "—"} · Section {source.section ?? "—"}</p>{source.text && <p>{source.text}</p>}</details>)}</section> : null}
       {result?.artifacts.length ? <section><label>ARTIFACTS</label>{result.artifacts.map((artifact) => <a className="artifactLink" href={`${api}${artifact.url}`} key={artifact.id}>Download {artifact.name}</a>)}</section> : null}
       {result?.workcell_id ? <section><label>SOVEREIGN EVIDENCE CAPSULE</label>{capsule ? <><div className="metric"><span>Status</span><b className={capsule.state === "INVALID" ? "capsuleInvalid" : "capsuleValid"}>{capsule.state}</b></div><div className="metric"><span>Integrity</span><b>{capsule.verification?.status ?? "NOT YET VERIFIED"}</b></div><div className="metric"><span>Signature</span><b>{capsule.verification?.signature_status ?? capsule.signature_status}</b></div><div className="metric"><span>Files</span><b>{capsule.manifest.files?.length ?? 0}</b></div><div className="metric"><span>Artifacts</span><b>{capsule.verification ? `${capsule.verification.artifact_valid_count}/${capsule.verification.artifact_count} VALID` : capsule.manifest.artifacts?.length ?? 0}</b></div><code className="shortHash">{capsule.capsule_root_hash}</code>{capsule.verification?.failures.map((failure, index) => <p className="capsuleFailure" key={`${failure.type}-${index}`}>{failure.type}: {failure.path ?? failure.message}</p>)}<button className="capsuleButton" type="button" disabled={capsuleBusy} onClick={() => void verifyCapsule()}>Verify</button><a className="artifactLink" href={`${api}${capsule.download_url}`}>Download Capsule</a></> : <><p>Export the answer, evidence, workflow identity, audit, and artifacts into a portable integrity package.</p><button className="capsuleButton" type="button" disabled={capsuleBusy} onClick={() => void buildCapsule()}>{capsuleBusy ? "Building…" : "Create Evidence Capsule"}</button></>}</section> : null}
+      </div>
     </aside>
   </main>;
 }

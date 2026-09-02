@@ -50,6 +50,9 @@ class AgentRunState(BaseModel):
     requested_execution_mode: str = "AUTOMATIC"
     execution_mode: str = "STANDARD"
     execution_mode_reason: str = "Default bounded execution mode."
+    requested_chat_mode: str = "AUTOMATIC"
+    chat_mode: str = "GENERAL"
+    chat_mode_reason: str = "No organizational evidence or governed action was requested."
     runtime_metrics: dict[str, Any] = Field(default_factory=dict)
     final_response: str | None = None
     warnings: list[str] = Field(default_factory=list)

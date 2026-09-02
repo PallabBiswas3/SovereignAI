@@ -15,7 +15,7 @@ type OrganizationPayload = {
   };
 };
 
-const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function OrganizationPage() {
   const [payload, setPayload] = useState<OrganizationPayload | null>(null);

@@ -150,17 +150,21 @@ class InspectionWorkflow:
         for reading in readings:
             query = f"{equipment} {reading.parameter} acceptable normal shutdown limit threshold {reading.unit}"
             parameters = inspect.signature(self.retriever.search).parameters
-            candidates = (
-                self.retriever.search(query, limit=10, asset_id=resolved_asset_id)
-                if "asset_id" in parameters else self.retriever.search(query, limit=10)
-            )
+            if "asset_id" in parameters:
+                asset_candidates = self.retriever.search(query, limit=20, asset_id=resolved_asset_id)
+                general_candidates = self.retriever.search(query, limit=20)
+                candidates = list({
+                    item.chunk_id: item for item in [*asset_candidates, *general_candidates]
+                }.values())
+            else:
+                candidates = self.retriever.search(query, limit=20)
             candidates_by_metric[reading.metric] = candidates
             all_candidates.update({item.chunk_id: item for item in candidates})
             telemetry = getattr(self.retriever, "last_telemetry", None)
             if telemetry is not None:
                 retrieval_metrics.append({"query": query, **telemetry.to_dict()})
             for candidate in candidates:
-                if not self._candidate_applies(reading, candidate):
+                if not self._candidate_applies(reading, candidate, resolved_asset_id):
                     continue
                 if candidate.chunk_id not in source_by_chunk:
                     source_by_chunk[candidate.chunk_id] = EvidenceSource(
@@ -179,6 +183,8 @@ class InspectionWorkflow:
         rules: list[Rule] = []
         for reading in readings:
             for candidate in candidates_by_metric[reading.metric]:
+                if not self._candidate_applies(reading, candidate, resolved_asset_id):
+                    continue
                 source = source_by_chunk.get(candidate.chunk_id)
                 if not source:
                     continue
@@ -270,7 +276,14 @@ class InspectionWorkflow:
         return readings
 
     @staticmethod
-    def _candidate_applies(reading: InspectionReading, candidate: RetrievedChunk) -> bool:
+    def _candidate_applies(
+        reading: InspectionReading,
+        candidate: RetrievedChunk,
+        asset_id: str | None = None,
+    ) -> bool:
+        linked_asset = candidate.source.get("asset_id")
+        if asset_id and linked_asset and str(linked_asset).lower() != asset_id.lower():
+            return False
         lowered = candidate.text.lower()
         required = {"vibration": ("vibration", "mm/s"),
                     "bearing_temperature": ("temperature",),
@@ -282,8 +295,16 @@ class InspectionWorkflow:
         source_ref = RuleSource(source_id=source.id, section=source.section, revision=source.revision)
         output: list[Rule] = []
         if reading.metric == "vibration":
-            normal = InspectionWorkflow._match_value(text, r"not exceed\s+([\d.]+)")
-            shutdown = InspectionWorkflow._match_value(text, r"above\s+([\d.]+).*?(?:removed|shutdown)")
+            normal = InspectionWorkflow._first_match_value(text, (
+                r"not exceed\s+([\d.]+)",
+                r"maximum normal vibration\s*:?\s*([\d.]+)",
+                r"investigate vibration above\s+([\d.]+)",
+            ))
+            shutdown = InspectionWorkflow._first_match_value(text, (
+                r"above\s+([\d.]+)\s*mm/s\s+(?:rms\s+)?(?:requires|triggers)\s+(?:removed|removal|shutdown)",
+                r"(?:controlled\s+)?shutdown\s+(?:vibration\s*:?\s*|at\s+|above\s+)([\d.]+)",
+                r"automatic shutdown vibration\s*:?\s*([\d.]+)",
+            ))
             if normal is not None:
                 output.append(Rule(id="pending", metric=reading.metric, operator="<=", threshold=normal,
                                    unit="mm/s", rule_type="normal_limit", source=source_ref))
@@ -384,3 +405,11 @@ class InspectionWorkflow:
     def _match_value(text: str, pattern: str) -> float | None:
         match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
         return float(match.group(1)) if match else None
+
+    @staticmethod
+    def _first_match_value(text: str, patterns: tuple[str, ...]) -> float | None:
+        for pattern in patterns:
+            value = InspectionWorkflow._match_value(text, pattern)
+            if value is not None:
+                return value
+        return None

@@ -18,11 +18,16 @@ class AgentExecutor:
         model: str,
         event_callback: EventCallback | None = None,
         cancellation_event: asyncio.Event | None = None,
+        *,
+        system_prompt: str | None = None,
+        generation_prompt: str | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
         self.event_callback = event_callback
         self.cancellation_event = cancellation_event
+        self.system_prompt = system_prompt
+        self.generation_prompt = generation_prompt
 
     async def _emit(self, event_type: str, payload: dict[str, object]) -> None:
         if self.event_callback:
@@ -41,9 +46,9 @@ class AgentExecutor:
             fallback = False
             provider_name = "local"
             async for chunk in self.provider.stream(
-                run.request,
+                self.generation_prompt or run.request,
                 self.model,
-                "You are a local industrial assistant. Do not invent evidence or claim unavailable tools ran.",
+                self.system_prompt or "You are a local industrial assistant. Do not invent evidence or claim unavailable tools ran.",
                 cancellation_event=self.cancellation_event,
             ):
                 fallback = fallback or chunk.fallback
