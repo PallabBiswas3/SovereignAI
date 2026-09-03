@@ -30,7 +30,7 @@ def session_for(tmp_path: Path):
 
 def task_state(task_id: str = "task-capsule") -> AgentRunState:
     routing = RoutingDecision(
-        selected_model="qwen3-vl:4b", model_id="general", confidence=0.9,
+        selected_model="qwen3:4b-instruct", model_id="general", confidence=0.9,
         reason="inspection task", scores={"general": 1.0},
         task_profile=TaskProfile(
             task_type="engineering_inspection", coding_requirement=0.0,

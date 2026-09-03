@@ -2,7 +2,7 @@
 
 | Upgrade phase | Delivered | Verification |
 |---|---|---|
-| 1 — Real Ollama roles | GENERAL/VISION `qwen3-vl:4b`, CODER `qwen2.5-coder:7b`, dynamic four-state readiness, UI | live Ollama status: 3/3 roles ready |
+| 1 — Real Ollama roles | GENERAL `qwen3:4b-instruct`, VISION `qwen3-vl:4b-instruct`, CODER `qwen2.5-coder:7b`, dynamic four-state readiness, UI | live Ollama status: 3/3 roles ready |
 | 2 — Semantic embeddings | local MiniLM provider, hash fallback, provider/dimension persistence, paraphrase benchmark | semantic grounding/retrieval tests |
 | 3 — LLM coding | dataset profile, structured code generation, Docker-only execution, max-three repair loop, version/audit records | fake-model repair test; Docker-unavailable safety test |
 | 4 — Tool agent | schema-discovered registered tools, bounded decisions/calls/time, governance, audit, source/artifact collection | bounded and unregistered-tool tests; live Qwen tool selection/execution check |

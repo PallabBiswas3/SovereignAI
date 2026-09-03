@@ -165,7 +165,8 @@ disabled in production configuration.
 Install Ollama before taking the system offline, then fetch the exact models configured in `config/models.yaml`:
 
 ```powershell
-ollama pull qwen3-vl:4b
+ollama pull qwen3:4b-instruct
+ollama pull qwen3-vl:4b-instruct
 ollama pull qwen2.5-coder:7b
 ollama serve
 ```

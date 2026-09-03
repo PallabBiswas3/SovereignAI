@@ -65,7 +65,10 @@ class OllamaProvider(LocalModelProvider):
 
     @staticmethod
     def _direct_prompt(prompt: str, model: str) -> str:
-        return f"/no_think\n{prompt}" if model.lower().startswith("qwen3") else prompt
+        lowered = model.lower()
+        if lowered.startswith("qwen3") and "-instruct" not in lowered:
+            return f"/no_think\n{prompt}"
+        return prompt
 
     def _base_payload(self, prompt: str, model: str, system: str | None) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -110,7 +113,7 @@ class OllamaProvider(LocalModelProvider):
         payload = self._base_payload(prompt, model, system)
         payload.update({
             "stream": True,
-            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1024},
+            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1280},
         })
         started = monotonic()
         first_token_at: float | None = None
@@ -386,6 +389,7 @@ class OllamaProvider(LocalModelProvider):
         load_seconds = _nanoseconds_to_seconds(response.get("load_duration"))
         eval_seconds = _nanoseconds_to_seconds(response.get("eval_duration"))
         token_count = int(response.get("eval_count", 0) or 0)
+        done_reason = str(response.get("done_reason") or "stop")
         return {
             "model": str(response.get("model", "")),
             "time_to_first_token_seconds": round(first_token_at - started, 6) if first_token_at else None,
@@ -396,6 +400,8 @@ class OllamaProvider(LocalModelProvider):
             "prompt_token_count": int(response.get("prompt_eval_count", 0) or 0),
             "warm_status": "warm" if was_loaded is True else "cold" if was_loaded is False else "unknown",
             "queue_wait_seconds": round(queue_wait_seconds, 6),
+            "done_reason": done_reason,
+            "output_truncated": done_reason == "length",
             "completed": True,
         }
 

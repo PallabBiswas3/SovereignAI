@@ -40,6 +40,13 @@ def test_execution_mode_selection_is_explicit_and_auditable() -> None:
     assert explicit.reason
 
 
+def test_instruction_models_receive_the_original_prompt() -> None:
+    prompt = "Summarize the authorized evidence."
+    assert OllamaProvider._direct_prompt(prompt, "qwen3:4b-instruct") == prompt
+    assert OllamaProvider._direct_prompt(prompt, "qwen3-vl:4b-instruct") == prompt
+    assert OllamaProvider._direct_prompt(prompt, "qwen3:4b").startswith("/no_think\n")
+
+
 def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     requests: list[dict[str, object]] = []
 
@@ -73,8 +80,11 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     pieces, stats = asyncio.run(run())
     assert pieces == ["Pump ", "ready."]
     assert requests[0]["stream"] is True
+    assert requests[0]["options"]["num_predict"] == 1280
     assert requests[0]["keep_alive"]
     assert stats["token_count"] == 2
+    assert stats["done_reason"] == "stop"
+    assert stats["output_truncated"] is False
     assert stats["tokens_per_second"] == 2.0
     assert stats["warm_status"] == "cold"
 

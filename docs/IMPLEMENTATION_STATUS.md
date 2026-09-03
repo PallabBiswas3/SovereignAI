@@ -6,11 +6,11 @@ This document describes what the repository now does. It is an implementation in
 
 | Logical role | Ollama tag | Purpose |
 |---|---|---|
-| GENERAL | `qwen3-vl:4b` | General responses and registered-tool decisions |
-| VISION | `qwen3-vl:4b` | Local image evidence analysis |
+| GENERAL | `qwen3:4b-instruct` | General responses and registered-tool decisions |
+| VISION | `qwen3-vl:4b-instruct` | Local image evidence analysis |
 | CODER | `qwen2.5-coder:7b` | Source generation and bounded repair |
 
-GENERAL and VISION intentionally share one downloaded model blob. `/api/models/status` queries Ollama and returns `READY`, `MODEL_NOT_INSTALLED`, `OLLAMA_UNAVAILABLE`, or `CONFIGURATION_ERROR` per logical role.
+GENERAL uses a direct-response text instruction model, VISION uses a direct-response multimodal instruction model, and CODER remains specialized for code. `/api/models/status` queries Ollama and returns `READY`, `MODEL_NOT_INSTALLED`, `OLLAMA_UNAVAILABLE`, or `CONFIGURATION_ERROR` per logical role.
 
 ## Working execution paths
 
@@ -30,7 +30,7 @@ The offline benchmark contains 20 routing cases, 20 RAG cases, 20 governance cas
 
 ## Boundaries
 
-- Ollama, its two model tags, Tesseract, and Docker are external local runtime dependencies and are not silently emulated.
+- Ollama, its three model tags, Tesseract, and Docker are external local runtime dependencies and are not silently emulated.
 - Docker must be running for verified code execution. Generated code never falls back to host execution.
 - The semantic model must be staged locally for true semantic retrieval; otherwise configured fallback is reported through provider metadata.
 - Vision and OCR results require human review for consequential engineering decisions.

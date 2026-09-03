@@ -30,11 +30,36 @@ _CONTROLLED_SIGNALS = (
     "maintenance report", "maintenance draft", "work order", "run python", "execute code",
     "spreadsheet", "presentation", "powerpoint", "word document",
 )
+_ASSET_CONDITION_SIGNALS = (
+    "assess", "condition", "health", "operating status", "current status",
+    "telemetry", "sensor", "measurement", "reading", "vibration", "temperature",
+    "pressure", "trend", "maintenance history", "maintenance record",
+)
+_DOCUMENT_ANALYSIS_SIGNALS = (
+    "vendor", "proposal", "procurement", "bid", "quotation", "quote",
+    "technical requirement", "technical specification", "commercial comparison",
+    "incident", "permit", "safety requirement",
+)
 
 
 def extract_asset_references(request: str) -> list[str]:
     """Return stable, de-duplicated exact industrial tag candidates."""
     return list(dict.fromkeys(match.group(0) for match in _ASSET_REFERENCE.finditer(request)))
+
+
+def requires_structured_asset_assessment(request: str) -> bool:
+    """Return whether an asset reference requests deterministic condition evidence.
+
+    Asset tags also occur in procurement, HSE and other document-analysis tasks. Those
+    requests should retain the tag as a retrieval filter without being converted into
+    a telemetry assessment.
+    """
+    normalized = request.lower()
+    if not extract_asset_references(request):
+        return False
+    if any(signal in normalized for signal in _DOCUMENT_ANALYSIS_SIGNALS):
+        return False
+    return any(signal in normalized for signal in _ASSET_CONDITION_SIGNALS)
 
 
 class ChatModeSelector:

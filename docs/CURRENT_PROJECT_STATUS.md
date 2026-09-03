@@ -1,6 +1,6 @@
 # SovereignAI: current project status and behavior
 
-Last verified: 1 September 2026
+Last verified: 3 September 2026
 
 SovereignAI is a working local-first industrial AI workbench, not merely a chat page. Its Next.js UI sends typed tasks to FastAPI; the backend applies governance, classifies and routes work, uses local Ollama models where probabilistic interpretation is appropriate, executes only registered tools, preserves evidence, generates real office artifacts, and persists task/audit state in SQLite.
 
@@ -11,8 +11,8 @@ For the detailed subsystem inventory and limitations, see [IMPLEMENTATION_STATUS
 | Component | Verified state |
 |---|---|
 | Ollama | Reachable at `http://localhost:11434` |
-| GENERAL | `qwen3-vl:4b` — `READY` |
-| VISION | `qwen3-vl:4b` — `READY`; shares the GENERAL model blob |
+| GENERAL | `qwen3:4b-instruct` — `READY` |
+| VISION | `qwen3-vl:4b-instruct` — `READY` |
 | CODER | `qwen2.5-coder:7b` — `READY` |
 | Semantic embeddings | Local `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions |
 | OCR | Local Tesseract/PDFium workflow passes scanned-PDF tests |

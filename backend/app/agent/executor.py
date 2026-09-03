@@ -58,6 +58,10 @@ class AgentExecutor:
                     await self._emit("model_token", {"text": chunk.text, "model": self.model})
                 if chunk.done:
                     run.runtime_metrics = dict(chunk.runtime_stats)
+                    if run.runtime_metrics.get("output_truncated"):
+                        run.warnings.append(
+                            "Local model reached its bounded output limit; the response may be incomplete."
+                        )
             run.final_response = "".join(pieces).strip()
             if not run.final_response:
                 raise RuntimeError("Local model returned no direct response")

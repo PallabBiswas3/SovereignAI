@@ -43,6 +43,7 @@ from app.llm.base import ModelGenerationCancelled
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.orchestration.chat_mode import (
     ChatMode, ChatModeSelection, ChatModeSelector, extract_asset_references,
+    requires_structured_asset_assessment,
 )
 from app.governance.action_guard import ActionGuard
 from app.governance.grounding import GroundingChecker
@@ -106,9 +107,25 @@ def _authorized_generation_prompt(
     asset_context: dict[str, object] | None,
     evidence: list[dict[str, object]],
 ) -> str:
+    provenance_keys = {
+        "file", "page", "section", "revision", "document_hash", "asset_id",
+        "department", "classification",
+    }
+    compact_evidence: list[dict[str, object]] = []
+    for item in evidence:
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        compact_evidence.append({
+            "chunk_id": item.get("chunk_id"),
+            "document_id": item.get("document_id"),
+            "text": item.get("text"),
+            "source": {
+                key: value for key, value in source.items()
+                if key in provenance_keys and value is not None
+            },
+        })
     context = {
         "asset_context": asset_context,
-        "authorized_document_evidence": evidence,
+        "authorized_document_evidence": compact_evidence,
         "context_policy": {
             "authorization_checked": True,
             "plant_access": "READ_ONLY",
@@ -121,8 +138,24 @@ def _authorized_generation_prompt(
         "AUTHORIZED_CONTEXT_START\n"
         f"{json.dumps(context, ensure_ascii=False, default=str)}\n"
         "AUTHORIZED_CONTEXT_END\n\n"
-        "Answer the USER_REQUEST using the authorized context and cite concrete evidence identifiers."
+        "Answer the USER_REQUEST using the authorized context and cite concrete evidence identifiers. "
+        "A requirement, SOP, limit, or policy states what should happen; it is not evidence that the "
+        "required action or operating condition actually occurred. State a current condition only from "
+        "a dated observation, measurement, status record, or log. Do not strengthen words such as "
+        "reviewed, draft, pending, or unsupported into approved, completed, or compliant. Complete every "
+        "requested section before adding detail, use compact tables or bullets, do not repeat the same "
+        "facts in a second summary table, and keep the answer under 400 words unless the user explicitly "
+        "requests a different length."
     )
+
+
+def _authorized_evidence_limit(request: str) -> int:
+    """Allocate enough bounded context for explicitly cross-department briefings."""
+    normalized = request.lower()
+    domains = ("operations", "maintenance", "incident", "safety", "quality", "procurement")
+    if "management briefing" in normalized or sum(term in normalized for term in domains) >= 3:
+        return 10
+    return 6
 
 
 def _asset_evidence_response(context: dict[str, object]) -> str:
@@ -227,6 +260,7 @@ async def _run_authorized_task(
     repository = AssetRepository(db)
     asset_context = None
     asset_id: str | None = None
+    structured_asset_request = requires_structured_asset_assessment(payload.request)
     resolution_failures: list[str] = []
     for reference in extract_asset_references(payload.request):
         resolution = AssetResolver(repository).resolve(principal, reference)
@@ -234,31 +268,32 @@ async def _run_authorized_task(
             asset_id = resolution.asset.asset_id
             if event_callback:
                 await event_callback("asset_resolved", {"asset_id": asset_id, "reference": reference})
-            provider = APELSimulatorTelemetryProvider(
-                repository,
-                FreshnessPolicy(
-                    settings.telemetry_default_freshness_seconds,
-                    settings.telemetry_expired_seconds,
-                ),
-                default_scenario=settings.telemetry_scenario,
-            )
-            compiled = AssetContextService(repository, provider).compile(
-                principal, asset_id, payload.request,
-            )
-            asset_context = compiled.model_dump(mode="json")
-            if event_callback:
-                await event_callback("telemetry_loaded", {
-                    "asset_id": asset_id,
-                    "measurement_ids": [item.measurement_id for item in compiled.latest_measurements],
-                })
-                for warning in compiled.warnings:
-                    await event_callback("telemetry_warning", {"asset_id": asset_id, "code": warning.value})
-                for trend in compiled.trends:
-                    await event_callback("trend_calculated", {
-                        "asset_id": asset_id, "metric": trend.metric,
-                        "sample_count": trend.sample_count,
+            if structured_asset_request:
+                provider = APELSimulatorTelemetryProvider(
+                    repository,
+                    FreshnessPolicy(
+                        settings.telemetry_default_freshness_seconds,
+                        settings.telemetry_expired_seconds,
+                    ),
+                    default_scenario=settings.telemetry_scenario,
+                )
+                compiled = AssetContextService(repository, provider).compile(
+                    principal, asset_id, payload.request,
+                )
+                asset_context = compiled.model_dump(mode="json")
+                if event_callback:
+                    await event_callback("telemetry_loaded", {
+                        "asset_id": asset_id,
+                        "measurement_ids": [item.measurement_id for item in compiled.latest_measurements],
                     })
-                await event_callback("asset_context_ready", {"asset_id": asset_id})
+                    for warning in compiled.warnings:
+                        await event_callback("telemetry_warning", {"asset_id": asset_id, "code": warning.value})
+                    for trend in compiled.trends:
+                        await event_callback("trend_calculated", {
+                            "asset_id": asset_id, "metric": trend.metric,
+                            "sample_count": trend.sample_count,
+                        })
+                    await event_callback("asset_context_ready", {"asset_id": asset_id})
             break
         if resolution.status in {"ASSET_ACCESS_DENIED", "AMBIGUOUS_ASSET"}:
             resolution_failures.append(resolution.status)
@@ -273,7 +308,9 @@ async def _run_authorized_task(
             execution_mode=payload.execution_mode.value,
             principal=principal if settings.auth_mode.lower() == "local" else None,
         )
-        evidence_chunks = retriever.search(payload.request, 6, asset_id=asset_id)
+        evidence_chunks = retriever.search(
+            payload.request, _authorized_evidence_limit(payload.request), asset_id=asset_id,
+        )
     evidence = [item.to_dict() for item in evidence_chunks]
     if asset_context:
         routing = ModelRouter(ModelRegistry(settings.models_config)).route(
@@ -334,6 +371,8 @@ async def _run_authorized_task(
         state.warnings.append("No authorized organizational evidence matched this request.")
     state.context_metrics = {
         "authorized_asset_context": bool(asset_context),
+        "resolved_asset_id": asset_id,
+        "structured_asset_assessment": structured_asset_request,
         "authorized_evidence_count": len(evidence),
         "authorization_scope": "authenticated-principal",
     }
