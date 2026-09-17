@@ -53,12 +53,14 @@ class Settings(BaseSettings):
     model_footprints_path: Path = BACKEND_DIR / "data" / "model_footprints.json"
     model_footprint_safety_multiplier: float = 1.10
     model_adaptive_residency_enabled: bool = True
-    model_idle_timeout_seconds: int = 300
+    # CPU-laptop default: preserve fast conversational follow-ups without holding a 3+ GB model
+    # resident for many minutes when system RAM is already under heavy pressure.
+    model_idle_timeout_seconds: int = 60
     model_keep_alive: str | None = None
     model_generation_timeout_seconds: float = 600.0
     model_prewarm_on_startup: bool = False
     model_prewarm_ids: str = "general"
-    model_prewarm_keep_alive: str = "15m"
+    model_prewarm_keep_alive: str = "60s"
     cache_enabled: bool = True
     cache_default_ttl_seconds: int | None = None
     hybrid_dense_top_k: int = 30
