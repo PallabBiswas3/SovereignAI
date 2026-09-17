@@ -19,7 +19,12 @@ class ModelFootprintProfile(BaseModel):
     ollama_reported_size_mb: float | None = Field(default=None, ge=0)
     ollama_reported_cpu_size_mb: float | None = Field(default=None, ge=0)
     context_length: int | None = Field(default=None, ge=0)
+    # Incremental OS-visible pressure expected when loading a non-resident model.
     admission_estimate_mb: float = Field(gt=0)
+    # Total resident footprint is tracked separately because mmap/file-backed pages can make
+    # process RSS substantially larger than the reduction in system available RAM.
+    resident_estimate_mb: float | None = Field(default=None, ge=0)
+    admission_basis: str = "legacy"
     safety_multiplier: float = Field(default=1.10, ge=1.0)
     source: str = "local-cpu-benchmark"
 
@@ -44,6 +49,10 @@ class ModelFootprintStore:
         profile = self.get(model)
         return profile.admission_estimate_mb if profile else None
 
+    def resident_estimate_mb(self, model: str) -> float | None:
+        profile = self.get(model)
+        return profile.resident_estimate_mb if profile else None
+
     def all(self) -> dict[str, ModelFootprintProfile]:
         output: dict[str, ModelFootprintProfile] = {}
         for key, raw in self._read().get("models", {}).items():
@@ -59,7 +68,7 @@ class ModelFootprintStore:
         data = self._read()
         models = data.setdefault("models", {})
         models[_model_key(profile.model)] = profile.model_dump(mode="json")
-        data["version"] = 1
+        data["version"] = 2
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with NamedTemporaryFile(
             "w", encoding="utf-8", delete=False, dir=self.path.parent, suffix=".tmp"
@@ -71,13 +80,13 @@ class ModelFootprintStore:
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
-            return {"version": 1, "models": {}}
+            return {"version": 2, "models": {}}
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return {"version": 1, "models": {}}
+            return {"version": 2, "models": {}}
         if not isinstance(data, dict):
-            return {"version": 1, "models": {}}
+            return {"version": 2, "models": {}}
         if not isinstance(data.get("models"), dict):
             data["models"] = {}
         return data
@@ -94,25 +103,38 @@ def build_measured_profile(
     sample_count: int = 1,
     safety_multiplier: float = 1.10,
 ) -> ModelFootprintProfile:
-    """Build a conservative admission estimate from observed CPU/RAM measurements.
+    """Build two distinct memory estimates from a local CPU benchmark.
 
-    The largest available signal is used because memory-mapped model pages, OS cache behavior,
-    and process accounting can make any single measurement under-report real pressure.
+    Admission should model *incremental system pressure*, not total process RSS. Ollama uses
+    memory mapping, so process RSS/model size can exceed the observed reduction in OS available
+    RAM. When an OS-visible delta is available we therefore use it for admission, with the
+    configured safety multiplier. The largest process/Ollama size remains available separately
+    as the resident footprint for reporting and eviction heuristics.
     """
 
-    candidates = [
+    observed_system_delta = _positive(system_ram_delta_mb)
+    resident_candidates = [
         value
         for value in (
-            system_ram_delta_mb,
             ollama_process_rss_delta_mb,
             ollama_reported_cpu_size_mb,
             ollama_reported_size_mb,
         )
-        if isinstance(value, (int, float)) and value > 0
+        if _positive(value) is not None
     ]
-    if not candidates:
+    resident_estimate = max(float(value) for value in resident_candidates) if resident_candidates else None
+
+    if observed_system_delta is not None:
+        admission_base = observed_system_delta
+        admission_basis = "system_ram_delta"
+    elif resident_estimate is not None:
+        # Fallback for platforms where a reliable system delta could not be measured.
+        admission_base = resident_estimate
+        admission_basis = "resident_size_fallback"
+    else:
         raise ValueError("At least one positive model-memory measurement is required")
-    estimate = max(candidates) * max(1.0, safety_multiplier)
+
+    multiplier = max(1.0, safety_multiplier)
     return ModelFootprintProfile(
         model=model,
         sample_count=sample_count,
@@ -121,9 +143,17 @@ def build_measured_profile(
         ollama_reported_size_mb=_round_optional(ollama_reported_size_mb),
         ollama_reported_cpu_size_mb=_round_optional(ollama_reported_cpu_size_mb),
         context_length=context_length,
-        admission_estimate_mb=round(estimate, 2),
-        safety_multiplier=max(1.0, safety_multiplier),
+        admission_estimate_mb=round(admission_base * multiplier, 2),
+        resident_estimate_mb=round(resident_estimate, 2) if resident_estimate is not None else None,
+        admission_basis=admission_basis,
+        safety_multiplier=multiplier,
     )
+
+
+def _positive(value: float | None) -> float | None:
+    if isinstance(value, (int, float)) and value > 0:
+        return float(value)
+    return None
 
 
 def _round_optional(value: float | None) -> float | None:
