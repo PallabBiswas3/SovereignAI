@@ -287,6 +287,9 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 - `GET /api/audit/{run_id}`
 - `GET /api/monitor/network`
 - `POST /api/evaluation/run`, `GET /api/evaluation/metrics`
+- `GET /api/integrations/health`, `POST /api/integrations/analyze`
+
+The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
 
 ## Known limitations and future work
 

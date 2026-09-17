@@ -336,7 +336,7 @@ export default function Home() {
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
       <button className="newTask" onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
-      <nav><a className="active">Workbench</a><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
+      <nav><a className="active">Workbench</a><Link href="/integrations">Integrated analysis</Link><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
     </aside>
