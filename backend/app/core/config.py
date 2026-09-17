@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     model_idle_timeout_seconds: int = 300
     model_keep_alive: str | None = None
     model_generation_timeout_seconds: float = 600.0
+    model_prewarm_on_startup: bool = False
+    model_prewarm_ids: str = "general"
+    model_prewarm_keep_alive: str = "15m"
     cache_enabled: bool = True
     cache_default_ttl_seconds: int | None = None
     hybrid_dense_top_k: int = 30
