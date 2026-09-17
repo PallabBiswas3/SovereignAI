@@ -18,9 +18,11 @@ from app.llm.base import (
 )
 from app.monitoring.network import LocalNetworkPolicy
 from app.resources.adaptive_residency import AdaptiveResidencyManager, ResidencyDecision
+from app.resources.context_planner import AdaptiveContextPlanner, ContextPlan
 from app.resources.cpu_tuning import CpuTuningProfile, CpuTuningStore
 from app.resources.footprints import ModelFootprintStore
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
+from app.resources.model_optimization import ModelOptimizationProfile, ModelOptimizationStore
 from app.resources.residency import OllamaResidencyManager
 from app.resources.runtime_profiles import GenerationRuntimeProfile, generation_runtime_profile
 from app.resources.scheduler import (
@@ -32,7 +34,7 @@ from app.resources.scheduler import (
 
 
 class OllamaProvider(LocalModelProvider):
-    """Local Ollama adapter with true NDJSON streaming and bounded admission."""
+    """Local Ollama adapter with CPU/RAM admission, tuning and adaptive context."""
 
     def __init__(
         self,
@@ -43,6 +45,8 @@ class OllamaProvider(LocalModelProvider):
         scheduler: ResourceScheduler | None = None,
         lifecycle: ModelLifecycleManager | None = None,
         cpu_tuning: CpuTuningStore | None = None,
+        context_planner: AdaptiveContextPlanner | None = None,
+        model_optimization: ModelOptimizationStore | None = None,
         role: str = "GENERAL",
         memory_requirement: str = "medium",
         execution_mode: str = "STANDARD",
@@ -63,9 +67,25 @@ class OllamaProvider(LocalModelProvider):
         self.priority = priority
         self.keep_alive = keep_alive or settings.model_keep_alive or f"{settings.model_idle_timeout_seconds}s"
         self.timeout_seconds = timeout_seconds or settings.model_generation_timeout_seconds
+
         self.adaptive_residency_enabled = settings.model_adaptive_residency_enabled
         self.cpu_tuning_enabled = settings.model_cpu_tuning_enabled
+        self.adaptive_context_enabled = settings.model_adaptive_context_enabled
+        self.model_optimization_enabled = settings.model_optimization_enabled
+
         self.cpu_tuning = cpu_tuning or CpuTuningStore(settings.model_cpu_tuning_path)
+        self.model_optimization = model_optimization or ModelOptimizationStore(settings.model_optimization_path)
+        buckets = tuple(
+            int(item.strip())
+            for item in str(settings.model_context_buckets).split(",")
+            if item.strip() and item.strip().isdigit()
+        ) or (2048, 4096, 8192, 16384)
+        self.context_planner = context_planner or AdaptiveContextPlanner(
+            buckets=buckets,
+            minimum_context=settings.model_context_minimum,
+            bytes_per_token=settings.model_context_bytes_per_token,
+            prompt_margin_tokens=settings.model_context_prompt_margin_tokens,
+        )
         self.footprints = ModelFootprintStore(settings.model_footprints_path)
         self.residency = OllamaResidencyManager(
             self.endpoint,
@@ -80,6 +100,10 @@ class OllamaProvider(LocalModelProvider):
             ram_reserve_fraction=settings.model_ram_reserve_fraction,
         )
         self._last_stats: dict[str, dict[str, object]] = {}
+
+    def _effective_model(self, model: str) -> tuple[str, ModelOptimizationProfile | None]:
+        optimization = self.model_optimization.get(model) if self.model_optimization_enabled else None
+        return (optimization.selected_model, optimization) if optimization else (model, None)
 
     def _job(self, model: str, decision: ResidencyDecision | None = None) -> ModelJob:
         resident = bool(decision and decision.target_was_resident)
@@ -113,14 +137,32 @@ class OllamaProvider(LocalModelProvider):
 
     def _runtime_options(
         self,
-        model: str,
+        requested_model: str,
+        effective_model: str,
         runtime_profile: GenerationRuntimeProfile,
-    ) -> tuple[dict[str, int | float], CpuTuningProfile | None]:
+        *,
+        prompt: str,
+        system: str | None,
+    ) -> tuple[dict[str, int | float], CpuTuningProfile | None, ContextPlan | None]:
         options = runtime_profile.ollama_options()
-        tuning = self.cpu_tuning.get(model) if self.cpu_tuning_enabled else None
+        context_plan: ContextPlan | None = None
+        if self.adaptive_context_enabled:
+            context_plan = self.context_planner.plan(
+                prompt=prompt,
+                system=system,
+                execution_mode=self.execution_mode,
+                profile_max_num_ctx=runtime_profile.num_ctx,
+                output_reserve_tokens=runtime_profile.num_predict,
+            )
+            options["num_ctx"] = context_plan.selected_num_ctx
+
+        tuning = None
+        if self.cpu_tuning_enabled:
+            tuning = self.cpu_tuning.get(effective_model) or self.cpu_tuning.get(requested_model)
         if tuning is not None:
+            # CPU tuning controls runner parallelism only; context remains request-adaptive.
             options.update(tuning.ollama_options())
-        return options, tuning
+        return options, tuning, context_plan
 
     @staticmethod
     def _direct_prompt(prompt: str, model: str) -> str:
@@ -139,6 +181,24 @@ class OllamaProvider(LocalModelProvider):
         if system:
             payload["system"] = system
         return payload
+
+    @staticmethod
+    def _attach_optimization_stats(
+        stats: dict[str, object],
+        *,
+        requested_model: str,
+        effective_model: str,
+        runtime_profile: GenerationRuntimeProfile,
+        cpu_tuning: CpuTuningProfile | None,
+        context_plan: ContextPlan | None,
+        optimization: ModelOptimizationProfile | None,
+    ) -> None:
+        stats["requested_model"] = requested_model
+        stats["effective_model"] = effective_model
+        stats["runtime_profile"] = runtime_profile.metrics()
+        stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
+        stats["context_plan"] = context_plan.to_dict() if context_plan else None
+        stats["model_optimization"] = optimization.model_dump(mode="json") if optimization else None
 
     async def generate(self, prompt: str, model: str, system: str | None = None) -> GenerationResult:
         pieces: list[str] = []
@@ -169,13 +229,19 @@ class OllamaProvider(LocalModelProvider):
     ) -> AsyncIterator[GenerationChunk]:
         if cancellation_event and cancellation_event.is_set():
             raise ModelGenerationCancelled("Local model generation was cancelled before it started.")
+
+        effective_model, optimization = self._effective_model(model)
         runtime_profile = generation_runtime_profile(self.execution_mode)
-        runtime_options, cpu_tuning = self._runtime_options(model, runtime_profile)
-        payload = self._base_payload(prompt, model, system)
-        payload.update({
-            "stream": True,
-            "options": runtime_options,
-        })
+        runtime_options, cpu_tuning, context_plan = self._runtime_options(
+            model,
+            effective_model,
+            runtime_profile,
+            prompt=prompt,
+            system=system,
+        )
+        payload = self._base_payload(prompt, effective_model, system)
+        payload.update({"stream": True, "options": runtime_options})
+
         started = monotonic()
         first_token_at: float | None = None
         owns_client = self.client is None
@@ -183,14 +249,14 @@ class OllamaProvider(LocalModelProvider):
             timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False
         )
         try:
-            residency_decision = await self._prepare_residency(model)
-            async with self.scheduler.acquire_model(self._job(model, residency_decision)) as permit:
+            residency_decision = await self._prepare_residency(effective_model)
+            async with self.scheduler.acquire_model(self._job(effective_model, residency_decision)) as permit:
                 was_loaded = (
                     residency_decision.target_was_resident
                     if residency_decision is not None
-                    else await self._is_model_loaded(client, model)
+                    else await self._is_model_loaded(client, effective_model)
                 )
-                self.lifecycle.begin(model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
+                self.lifecycle.begin(effective_model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
                 try:
                     async with client.stream(
                         "POST", f"{self.endpoint}/api/generate", json=payload
@@ -205,10 +271,8 @@ class OllamaProvider(LocalModelProvider):
                             token = str(item.get("response", ""))
                             if token:
                                 first_token_at = first_token_at or monotonic()
-                                self.lifecycle.mark_busy(model)
-                                yield GenerationChunk(
-                                    text=token, model=model, provider="ollama", done=False
-                                )
+                                self.lifecycle.mark_busy(effective_model)
+                                yield GenerationChunk(text=token, model=model, provider="ollama", done=False)
                             if item.get("done"):
                                 stats = self._runtime_stats(
                                     item,
@@ -217,13 +281,20 @@ class OllamaProvider(LocalModelProvider):
                                     was_loaded=was_loaded,
                                     queue_wait_seconds=permit.queue_wait_seconds,
                                 )
-                                stats["runtime_profile"] = runtime_profile.metrics()
-                                stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
+                                self._attach_optimization_stats(
+                                    stats,
+                                    requested_model=model,
+                                    effective_model=effective_model,
+                                    runtime_profile=runtime_profile,
+                                    cpu_tuning=cpu_tuning,
+                                    context_plan=context_plan,
+                                    optimization=optimization,
+                                )
                                 stats["resource_admission"] = permit.model_dump(mode="json")
                                 if residency_decision is not None:
                                     stats["residency_decision"] = residency_decision.to_dict()
                                 self._last_stats[model] = stats
-                                self.lifecycle.complete(model, stats)
+                                self.lifecycle.complete(effective_model, stats)
                                 yield GenerationChunk(
                                     text="",
                                     model=model,
@@ -234,15 +305,24 @@ class OllamaProvider(LocalModelProvider):
                                 return
                     raise ValueError("Ollama stream ended without a completion record")
                 except ModelGenerationCancelled:
-                    self.lifecycle.fail(model, "Generation cancelled by caller or disconnected client.")
+                    self.lifecycle.fail(effective_model, "Generation cancelled by caller or disconnected client.")
                     raise
                 except (httpx.HTTPError, asyncio.TimeoutError, KeyError, json.JSONDecodeError, ValueError) as exc:
-                    self.lifecycle.fail(model, str(exc))
+                    self.lifecycle.fail(effective_model, str(exc))
                     if not self.allow_fallback:
                         raise RuntimeError(f"Local inference unavailable: {exc}") from exc
-                    stats = self._failure_stats(started, first_token_at, was_loaded, permit.queue_wait_seconds, exc)
-                    stats["runtime_profile"] = runtime_profile.metrics()
-                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
+                    stats = self._failure_stats(
+                        started, first_token_at, was_loaded, permit.queue_wait_seconds, exc
+                    )
+                    self._attach_optimization_stats(
+                        stats,
+                        requested_model=model,
+                        effective_model=effective_model,
+                        runtime_profile=runtime_profile,
+                        cpu_tuning=cpu_tuning,
+                        context_plan=context_plan,
+                        optimization=optimization,
+                    )
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
@@ -362,12 +442,20 @@ class OllamaProvider(LocalModelProvider):
         finally:
             if owns_client:
                 await client.aclose()
+
+        optimization = self.model_optimization.get(model) if model and self.model_optimization_enabled else None
+        effective_model = optimization.selected_model if optimization else model
+        tuning = None
+        if model and self.cpu_tuning_enabled:
+            tuning = self.cpu_tuning.get(effective_model or "") or self.cpu_tuning.get(model)
         return {
             "model": model,
+            "effective_model": effective_model,
             "running_models": running_models,
             "last_generation": self._last_stats.get(model or "", {}),
-            "lifecycle": self.lifecycle.get(model).model_dump(mode="json") if model else None,
-            "cpu_tuning": self.cpu_tuning.get(model).model_dump(mode="json") if model and self.cpu_tuning.get(model) else None,
+            "lifecycle": self.lifecycle.get(effective_model).model_dump(mode="json") if effective_model else None,
+            "cpu_tuning": tuning.model_dump(mode="json") if tuning else None,
+            "model_optimization": optimization.model_dump(mode="json") if optimization else None,
             "runtime_error": runtime_error,
         }
 
@@ -390,28 +478,32 @@ class OllamaProvider(LocalModelProvider):
     async def generate_json(
         self, prompt: str, model: str, schema: dict[str, Any], system: str | None = None
     ) -> StructuredGenerationResult:
+        effective_model, optimization = self._effective_model(model)
         runtime_profile = generation_runtime_profile(self.execution_mode, structured=True)
-        runtime_options, cpu_tuning = self._runtime_options(model, runtime_profile)
-        payload = self._base_payload(prompt, model, system)
-        payload.update({
-            "format": schema,
-            "stream": False,
-            "options": runtime_options,
-        })
+        runtime_options, cpu_tuning, context_plan = self._runtime_options(
+            model,
+            effective_model,
+            runtime_profile,
+            prompt=prompt,
+            system=system,
+        )
+        payload = self._base_payload(prompt, effective_model, system)
+        payload.update({"format": schema, "stream": False, "options": runtime_options})
+
         started = monotonic()
         owns_client = self.client is None
         client = self.client or httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False
         )
         try:
-            residency_decision = await self._prepare_residency(model)
-            async with self.scheduler.acquire_model(self._job(model, residency_decision)) as permit:
+            residency_decision = await self._prepare_residency(effective_model)
+            async with self.scheduler.acquire_model(self._job(effective_model, residency_decision)) as permit:
                 was_loaded = (
                     residency_decision.target_was_resident
                     if residency_decision is not None
-                    else await self._is_model_loaded(client, model)
+                    else await self._is_model_loaded(client, effective_model)
                 )
-                self.lifecycle.begin(model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
+                self.lifecycle.begin(effective_model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
                 try:
                     response = await client.post(f"{self.endpoint}/api/generate", json=payload)
                     response.raise_for_status()
@@ -433,13 +525,20 @@ class OllamaProvider(LocalModelProvider):
                         was_loaded=was_loaded,
                         queue_wait_seconds=permit.queue_wait_seconds,
                     )
-                    stats["runtime_profile"] = runtime_profile.metrics()
-                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
+                    self._attach_optimization_stats(
+                        stats,
+                        requested_model=model,
+                        effective_model=effective_model,
+                        runtime_profile=runtime_profile,
+                        cpu_tuning=cpu_tuning,
+                        context_plan=context_plan,
+                        optimization=optimization,
+                    )
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
                     self._last_stats[model] = stats
-                    self.lifecycle.complete(model, stats)
+                    self.lifecycle.complete(effective_model, stats)
                     return StructuredGenerationResult(
                         text=text,
                         data=data,
@@ -448,14 +547,21 @@ class OllamaProvider(LocalModelProvider):
                         runtime_stats=stats,
                     )
                 except (httpx.HTTPError, KeyError, json.JSONDecodeError, ValueError) as exc:
-                    self.lifecycle.fail(model, str(exc))
+                    self.lifecycle.fail(effective_model, str(exc))
                     if not self.allow_fallback:
                         raise RuntimeError(f"Local structured inference unavailable: {exc}") from exc
                     stats = self._failure_stats(
                         started, None, was_loaded, permit.queue_wait_seconds, exc
                     )
-                    stats["runtime_profile"] = runtime_profile.metrics()
-                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
+                    self._attach_optimization_stats(
+                        stats,
+                        requested_model=model,
+                        effective_model=effective_model,
+                        runtime_profile=runtime_profile,
+                        cpu_tuning=cpu_tuning,
+                        context_plan=context_plan,
+                        optimization=optimization,
+                    )
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
