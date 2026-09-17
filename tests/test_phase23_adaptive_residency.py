@@ -66,8 +66,27 @@ def test_measured_footprint_store_round_trip(tmp_path) -> None:
     store.save(profile)
     loaded = store.get("QWEN3:4B-INSTRUCT")
     assert loaded is not None
-    assert loaded.admission_estimate_mb == 3630.0
-    assert store.admission_estimate_mb("qwen3:4b-instruct") == 3630.0
+    assert loaded.admission_estimate_mb == 3410.0
+    assert loaded.resident_estimate_mb == 3300.0
+    assert loaded.admission_basis == "system_ram_delta"
+    assert store.admission_estimate_mb("qwen3:4b-instruct") == 3410.0
+
+
+def test_resident_size_is_fallback_when_system_delta_is_unavailable(tmp_path) -> None:
+    store = ModelFootprintStore(tmp_path / "footprints.json")
+    profile = build_measured_profile(
+        "qwen3:4b-instruct",
+        system_ram_delta_mb=None,
+        ollama_process_rss_delta_mb=2800,
+        ollama_reported_size_mb=3300,
+        ollama_reported_cpu_size_mb=3300,
+        context_length=4096,
+        safety_multiplier=1.10,
+    )
+    store.save(profile)
+    assert profile.admission_estimate_mb == 3630.0
+    assert profile.resident_estimate_mb == 3300.0
+    assert profile.admission_basis == "resident_size_fallback"
 
 
 def test_resident_target_is_not_double_charged(tmp_path) -> None:
