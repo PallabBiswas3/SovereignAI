@@ -18,6 +18,7 @@ from app.llm.base import (
 )
 from app.monitoring.network import LocalNetworkPolicy
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
+from app.resources.runtime_profiles import generation_runtime_profile
 from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_scheduler
 
 
@@ -110,10 +111,11 @@ class OllamaProvider(LocalModelProvider):
     ) -> AsyncIterator[GenerationChunk]:
         if cancellation_event and cancellation_event.is_set():
             raise ModelGenerationCancelled("Local model generation was cancelled before it started.")
+        runtime_profile = generation_runtime_profile(self.execution_mode)
         payload = self._base_payload(prompt, model, system)
         payload.update({
             "stream": True,
-            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1280},
+            "options": runtime_profile.ollama_options(),
         })
         started = monotonic()
         first_token_at: float | None = None
@@ -151,6 +153,7 @@ class OllamaProvider(LocalModelProvider):
                                     was_loaded=was_loaded,
                                     queue_wait_seconds=permit.queue_wait_seconds,
                                 )
+                                stats["runtime_profile"] = runtime_profile.metrics()
                                 self._last_stats[model] = stats
                                 self.lifecycle.complete(model, stats)
                                 yield GenerationChunk(
@@ -170,6 +173,7 @@ class OllamaProvider(LocalModelProvider):
                     if not self.allow_fallback:
                         raise RuntimeError(f"Local inference unavailable: {exc}") from exc
                     stats = self._failure_stats(started, first_token_at, was_loaded, permit.queue_wait_seconds, exc)
+                    stats["runtime_profile"] = runtime_profile.metrics()
                     self._last_stats[model] = stats
                     fallback = (
                         "Local model generation was unavailable or exceeded its timeout. The request was "
@@ -313,11 +317,12 @@ class OllamaProvider(LocalModelProvider):
     async def generate_json(
         self, prompt: str, model: str, schema: dict[str, Any], system: str | None = None
     ) -> StructuredGenerationResult:
+        runtime_profile = generation_runtime_profile(self.execution_mode, structured=True)
         payload = self._base_payload(prompt, model, system)
         payload.update({
             "format": schema,
             "stream": False,
-            "options": {"temperature": 0.1, "num_ctx": 8192, "num_predict": 4096},
+            "options": runtime_profile.ollama_options(),
         })
         started = monotonic()
         owns_client = self.client is None
@@ -349,6 +354,7 @@ class OllamaProvider(LocalModelProvider):
                         was_loaded=was_loaded,
                         queue_wait_seconds=permit.queue_wait_seconds,
                     )
+                    stats["runtime_profile"] = runtime_profile.metrics()
                     self._last_stats[model] = stats
                     self.lifecycle.complete(model, stats)
                     return StructuredGenerationResult(
@@ -362,15 +368,17 @@ class OllamaProvider(LocalModelProvider):
                     self.lifecycle.fail(model, str(exc))
                     if not self.allow_fallback:
                         raise RuntimeError(f"Local structured inference unavailable: {exc}") from exc
+                    stats = self._failure_stats(
+                        started, None, was_loaded, permit.queue_wait_seconds, exc
+                    )
+                    stats["runtime_profile"] = runtime_profile.metrics()
                     return StructuredGenerationResult(
                         text="",
                         data=None,
                         model=model,
                         provider="deterministic-unavailable",
                         fallback=True,
-                        runtime_stats=self._failure_stats(
-                            started, None, was_loaded, permit.queue_wait_seconds, exc
-                        ),
+                        runtime_stats=stats,
                     )
         finally:
             if owns_client:
