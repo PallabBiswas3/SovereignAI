@@ -13,6 +13,7 @@ on:
       - "backend/app/main.py"
       - "tests/test_phase20_runtime_foundation.py"
       - "tests/test_phase21_residency.py"
+      - "tests/test_phase22_cpu_ram_scheduler.py"
       - ".github/workflows/runtime-checks.yml"
 
 jobs:
@@ -30,4 +31,4 @@ jobs:
           pip install pytest httpx pydantic pydantic-settings sqlalchemy PyYAML psutil
       - name: Run Local AI Runtime tests
         run: |
-          pytest -q tests/test_phase20_runtime_foundation.py tests/test_phase21_residency.py
+          pytest -q tests/test_phase20_runtime_foundation.py tests/test_phase21_residency.py tests/test_phase22_cpu_ram_scheduler.py
