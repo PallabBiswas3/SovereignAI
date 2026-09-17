@@ -1,0 +1,30 @@
+experiment:
+  name: phase5_ragtruth_claims_deterministic
+  split: test
+  max_records: null
+  save_enriched_max_records: 100
+
+data:
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+extraction:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  max_claims: 30
+  min_claim_chars: 8
+  split_semicolons: true
+
+verification:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  min_anchor_overlap_for_conflict: 0.45
+  min_anchor_tokens_for_conflict: 1
+  support_confidence: 0.98
+  conflict_confidence: 0.90
+  entity_support_confidence: 0.92
+
+output:
+  directory: results/phase5
+  summary_file: phase5_summary.json
+  enriched_file: enriched_records_sample.jsonl

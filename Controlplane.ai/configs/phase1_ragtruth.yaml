@@ -1,0 +1,44 @@
+experiment:
+  name: phase1_ragtruth_baselines
+  split: test
+  max_records: 100
+  output_dir: results/phase1
+
+dataset:
+  loader: ragtruth
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+nli:
+  model: cross-encoder/nli-deberta-v3-small
+  device: null
+  batch_size: 16
+  max_length: 512
+
+generator:
+  model: Qwen/Qwen2.5-1.5B-Instruct
+  device_map: auto
+  torch_dtype: auto
+
+baselines:
+  retrieval_nli:
+    enabled: true
+    top_k: 2
+    max_chunk_chars: 900
+    max_sentences: 20
+    hallucination_threshold: 0.70
+
+  llm_judge:
+    enabled: false
+    max_context_chars: 12000
+    max_new_tokens: 120
+
+  self_consistency:
+    enabled: false
+    n_samples: 3
+    temperature: 0.8
+    max_new_tokens: 256
+    max_context_chars: 9000
+    hallucination_threshold: 0.55
+    require_model_match: true
+    record_model_aliases: []

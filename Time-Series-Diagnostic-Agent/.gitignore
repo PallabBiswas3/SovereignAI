@@ -1,0 +1,26 @@
+# Python caches and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local environments and packaging artifacts
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Local editor settings
+.vscode/
+.idea/
+
+# Downloaded benchmark datasets and generated reports
+/data/
+/outputs/

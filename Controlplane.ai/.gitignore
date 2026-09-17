@@ -1,0 +1,75 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging output
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments and local environment variables
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Downloaded third-party datasets (use the download scripts instead)
+data/raw/
+
+# Generated experiment, audit, feedback, and evaluation output. Keep only the
+# directory guide; all actual run artifacts stay local.
+results/*
+!results/README.md
+data/controlplane/benchmark_v1/reviewer_private/
+*.log
+
+# Binary model artifacts and common ML checkpoints
+models/**/*.joblib
+models/**/*.pkl
+models/**/*.pickle
+models/**/*.pt
+models/**/*.pth
+models/**/*.ckpt
+models/**/*.safetensors
+models/**/*.onnx
+
+# Local model/download caches
+.cache/
+huggingface/
+wandb/
+mlruns/
+
+# Streamlit secrets must never be committed
+.streamlit/secrets.toml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak

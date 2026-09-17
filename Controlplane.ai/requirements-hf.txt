@@ -1,0 +1,6 @@
+# Runtime dependencies for the Hugging Face Docker Space.
+-e .
+streamlit>=1.37
+transformers>=4.45
+torch>=2.1
+sentencepiece>=0.2

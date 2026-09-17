@@ -1,0 +1,41 @@
+name: Phase 0-5 Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - upgrade/adaptive-evidence-agent-phase0
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci --include=optional
+          npm install --no-save @rollup/rollup-linux-x64-gnu
+
+      - name: Build client and server
+        run: npm run build
+
+      - name: Test retrieval metrics
+        run: npm run test:metrics --workspace=server
+
+      - name: Test BM25 and RRF core
+        run: npm run test:retrieval-core --workspace=server
+
+      - name: Test adaptive agent policy
+        run: npm run test:agent-policy --workspace=server
+
+      - name: Test verification policy
+        run: npm run test:verification-policy --workspace=server

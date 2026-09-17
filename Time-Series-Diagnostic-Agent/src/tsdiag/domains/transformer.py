@@ -1,0 +1,87 @@
+from ..contracts import DataKind, DomainPack, TaskKind, ToolContract
+
+
+TRANSFORMER_PACK = DomainPack(
+    key="transformer",
+    title="Power Transformer Multisensor Vibration Diagnostics",
+    data_kind=DataKind.MULTISENSOR_WAVEFORM,
+    tasks=(TaskKind.FAULT_DIAGNOSIS, TaskKind.CONDITION_MONITORING),
+    required_metadata=("sampling_rate_hz", "sensor_positions"),
+    optional_metadata=("load", "fault_catalog", "raw_waveform_model", "trained_image_model"),
+    tools=(
+        ToolContract(
+            "multisensor_sync_check",
+            "Verify synchronous acquisition, equal sampling and channel integrity.",
+            ("signal_matrix", "sampling_rate_hz", "sensor_positions"),
+            outputs=("quality_flags", "sync_error", "channel_statistics"),
+            evidence_fields=("quality_flags", "sync_error"),
+        ),
+        ToolContract(
+            "wavelet_denoising",
+            "Suppress broadband sensor noise while retaining transient/cyclostationary content.",
+            ("signal_matrix",),
+            optional_inputs=("wavelet", "level", "threshold_rule"),
+            outputs=("denoised_signal_matrix", "denoising_metadata"),
+            evidence_fields=("denoising_metadata",),
+        ),
+        ToolContract(
+            "cross_correlation_analysis",
+            "Measure synchrony and shared fault information across sensor positions.",
+            ("denoised_signal_matrix",),
+            outputs=("pairwise_correlations", "correlation_energy"),
+            evidence_fields=("pairwise_correlations",),
+        ),
+        ToolContract(
+            "correlation_sensor_weighting",
+            "Assign fusion weights from inter-sensor correlation energy.",
+            ("correlation_energy",),
+            outputs=("sensor_weights",),
+            evidence_fields=("sensor_weights",),
+        ),
+        ToolContract(
+            "multisensor_fusion",
+            "Fuse synchronized vibration channels using evidence-backed sensor weights.",
+            ("denoised_signal_matrix", "sensor_weights"),
+            outputs=("fused_waveform",),
+        ),
+        ToolContract(
+            "envelope_sanity_check",
+            "Verify that multisensor fusion retains meaningful harmonic/impact structure.",
+            ("fused_waveform", "sampling_rate_hz"),
+            outputs=("envelope_spectrum", "harmonic_structure"),
+            evidence_fields=("harmonic_structure",),
+        ),
+        ToolContract(
+            "fast_spectral_correlation",
+            "Extract cyclostationary spectral-correlation structure associated with periodic faults.",
+            ("fused_waveform", "sampling_rate_hz"),
+            outputs=("spectral_correlation_map", "cyclic_frequency_axis", "carrier_frequency_axis"),
+            evidence_fields=("spectral_correlation_map",),
+        ),
+        ToolContract(
+            "spectral_correlation_representation",
+            "Convert Fast-SC output into a normalized feature/image representation.",
+            ("spectral_correlation_map",),
+            outputs=("feature_image", "representation_metadata"),
+        ),
+        ToolContract(
+            "transformer_fault_classifier",
+            "Classify transformer mechanical faults from the spectral-correlation representation.",
+            ("feature_image",),
+            optional_inputs=("raw_waveform_model", "trained_image_model", "fault_catalog"),
+            outputs=("fault_probabilities", "predicted_fault"),
+            evidence_fields=("fault_probabilities",),
+            implementation="LearnedModelAgent",
+        ),
+        ToolContract(
+            "transformer_decision",
+            "Fuse classifier result with multisensor/cyclostationary evidence and abstain if inconsistent.",
+            ("predicted_fault", "fault_probabilities", "sensor_weights"),
+            optional_inputs=("harmonic_structure",),
+            outputs=("fault_label", "confidence", "abstain_reason"),
+            evidence_fields=("fault_label", "sensor_weights", "fault_probabilities"),
+        ),
+    ),
+    outputs=("condition", "fault_label", "confidence", "sensor_weights", "cyclostationary_evidence", "tool_trace"),
+    benchmark_targets=("accuracy", "macro_f1", "cross_load_accuracy", "abstention_rate", "sensor_ablation_drop"),
+)

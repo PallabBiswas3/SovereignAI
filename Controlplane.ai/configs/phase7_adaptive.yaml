@@ -1,0 +1,85 @@
+experiment:
+  name: phase7_adaptive_verification
+  split: test
+  max_records: 100
+  output_dir: results/phase7
+  save_enriched_max_records: 25
+
+dataset:
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+# RAGTruth is ordered by source/generator. Sampling the first N records gives
+# a biased smoke set, so evaluation uses a reproducible label-stratified draw.
+sampling:
+  method: stratified_random
+  seed: 42
+
+artifacts:
+  risk_model: models/phase2/selected_model.joblib
+  phase2_manifest: models/phase2/manifest.json
+  calibrator: models/phase3/selected_calibrator.joblib
+  routing_thresholds: models/phase3/thresholds.json
+  nli_thresholds: models/phase6/selected_nli_thresholds.json
+
+extraction:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  max_claims: 30
+  min_claim_chars: 8
+  split_semicolons: true
+
+deterministic_verification:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  min_anchor_overlap_for_conflict: 0.45
+  min_anchor_tokens_for_conflict: 1
+  support_confidence: 0.98
+  conflict_confidence: 0.90
+  entity_support_confidence: 0.92
+
+retrieval:
+  top_k: 3
+  max_chunk_chars: 700
+  ngram_min: 1
+  ngram_max: 2
+  min_score: 0.05
+
+nli:
+  model_name: cross-encoder/nli-deberta-v3-small
+  device: null
+  batch_size: 16
+  max_length: 512
+
+dispatcher:
+  lightweight_max_nli_claims: 3
+  deep_max_nli_claims: 20
+  agent_min_claim_priority: 0.75
+  agent_max_claims: 5
+  # Shared across all escalated claims in one response. The per-claim agent
+  # budget below remains a secondary guardrail.
+  agent_response_latency_budget_ms: 10000
+  important_unknown_threshold: 0.75
+  # Phase 9: retain only verified claims, safely abstain for low-impact cases,
+  # and reserve humans for consequential unresolved responses.
+  auto_remediation_enabled: true
+  remediation_min_supported_confidence: 0.90
+  auto_abstain_nonconsequential: true
+
+agent:
+  enabled: true
+  approved_corpus_path: null
+  max_iterations: 3
+  max_search_calls: 3
+  max_nli_pairs: 20
+  max_sources: 5
+  top_k_per_search: 3
+  max_total_latency_ms: 10000
+  max_cost: 0.02
+  search_cost_per_call: 0.0
+  entailment_threshold: 0.88
+  contradiction_threshold: 0.88
+  decision_margin: 0.20
+  min_authority_score: 0.60
+  min_retrieval_score: 0.10
+  require_citations: true

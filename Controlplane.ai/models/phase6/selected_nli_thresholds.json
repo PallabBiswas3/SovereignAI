@@ -1,0 +1,36 @@
+{
+  "entailment_threshold": 0.95,
+  "contradiction_threshold": 0.8,
+  "decision_margin": 0.1,
+  "min_contradiction_retrieval_score": 0.1,
+  "evidence_conflict_threshold": 0.85,
+  "min_contradiction_evidence_count": 2,
+  "selection_rule": "fallback_minimum_safety_penalty_no_candidate_met_all_constraints",
+  "validation_metrics": {
+    "entailment_threshold": 0.95,
+    "contradiction_threshold": 0.8,
+    "decision_margin": 0.1,
+    "phase5_unknown_claims": 1992,
+    "nli_supported": 358,
+    "nli_contradicted": 14,
+    "nli_unknown": 1620,
+    "nli_resolved": 372,
+    "nli_resolution_rate": 0.18674698795180722,
+    "final_status_counts": {
+      "unknown": 1620,
+      "supported": 548,
+      "contradicted": 14
+    },
+    "conflict_span_detection_recall": 0.07291666666666667,
+    "n_conflict_spans": 96,
+    "baseless_all_unknown_rate": 0.9281437125748503,
+    "n_baseless_spans": 167,
+    "nli_supported_hallucination_overlap_rate": 0.0446927374301676,
+    "nli_supported_hallucination_overlap_count": 16,
+    "nli_supported_predictions": 358,
+    "nli_contradiction_conflict_alignment": 0.42857142857142855,
+    "nli_contradiction_aligned_count": 6,
+    "nli_contradiction_predictions": 14
+  },
+  "source": "results\\phase6_1\\phase6_1_summary.json"
+}

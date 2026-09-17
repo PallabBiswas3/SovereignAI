@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "time-series-diagnostic-agent"
+version = "0.4.0"
+description = "Modular industrial time-series diagnostic agent platform"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scipy>=1.11",
+  "scikit-learn>=1.3",
+  "joblib>=1.3",
+  "statsmodels>=0.14",
+  "PyWavelets>=1.5",
+  "matplotlib>=3.8",
+  "openpyxl>=3.1"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+deep = ["torch>=2.2"]
+api = ["fastapi>=0.110,<1", "uvicorn[standard]>=0.27,<1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tsdiag = ["config/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

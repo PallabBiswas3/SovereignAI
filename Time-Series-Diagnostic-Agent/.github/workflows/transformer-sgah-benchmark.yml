@@ -1,0 +1,119 @@
+name: SGAH Transformer Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/tsdiag/datasets/transformer_sgah.py'
+      - 'src/tsdiag/benchmarks/transformer_sgah.py'
+      - 'src/tsdiag/domains/domain_steps.py'
+      - 'src/tsdiag/domains/verification.py'
+      - 'tests/test_transformer_sgah_dataset.py'
+      - '.github/workflows/transformer-sgah-benchmark.yml'
+
+concurrency:
+  group: sgah-transformer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sgah-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+      - name: Run SGAH schema and representation tests
+        run: pytest -q tests/test_transformer_sgah_dataset.py tests/test_domain_verification.py
+
+  sgah-real-data:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    needs: sgah-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Restore pinned SGAH cache
+        id: sgah-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/sgah
+          key: sgah-bbe1020e3fade83f-v1
+
+      - name: Download pinned SGAH files on cache miss
+        if: steps.sgah-cache.outputs.cache-hit != 'true'
+        run: |
+          python - <<'PY'
+          from tsdiag.datasets.transformer_sgah import download_sgah
+          paths = download_sgah('data/sgah')
+          for path in paths:
+              print(path, path.stat().st_size)
+          PY
+
+      - name: Validate whole-event SGAH layout
+        run: |
+          python - <<'PY'
+          import json
+          from tsdiag.datasets.transformer_sgah import validate_sgah_root
+          manifest = validate_sgah_root('data/sgah')
+          print(json.dumps(manifest, indent=2))
+          if any(row['event_count'] < 5 for row in manifest):
+              raise SystemExit(f'Unexpectedly small SGAH class: {manifest}')
+          PY
+
+      - name: Save SGAH cache
+        if: steps.sgah-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/sgah
+          key: ${{ steps.sgah-cache.outputs.cache-primary-key }}
+
+      - name: Run frozen transformer-fault benchmark
+        run: |
+          mkdir -p outputs/transformer_sgah
+          python - <<'PY'
+          import json
+          from tsdiag.benchmarks.transformer_sgah import run_sgah_transformer_benchmark
+
+          payload = run_sgah_transformer_benchmark(
+              'data/sgah',
+              output_dir='outputs/transformer_sgah',
+          )
+          print(json.dumps(payload['manifest'], indent=2))
+          print(json.dumps(payload['development'], indent=2))
+          print(json.dumps(payload['summary'], indent=2))
+          print(json.dumps(payload['by_class'], indent=2))
+
+          if payload['failures']:
+              raise SystemExit(f"Benchmark failures: {payload['failures'][:5]}")
+          summary = payload['summary']
+          if summary['case_count'] <= 0 or summary['positive_count'] <= 0:
+              raise SystemExit(f"Invalid frozen test manifest: {summary}")
+          if summary['recall'] is None or summary['recall'] < 0.60:
+              raise SystemExit(f"Transformer-fault recall gate failed: {summary['recall']}")
+          if summary['balanced_accuracy'] is None or summary['balanced_accuracy'] < 0.70:
+              raise SystemExit(f"Balanced-accuracy gate failed: {summary['balanced_accuracy']}")
+          if summary['normal_false_positive_rate'] is None or summary['normal_false_positive_rate'] > 0.15:
+              raise SystemExit(f"Normal false-positive gate failed: {summary['normal_false_positive_rate']}")
+          if summary['competing_fault_false_positive_rate'] is None or summary['competing_fault_false_positive_rate'] > 0.30:
+              raise SystemExit(f"Competing-fault false-positive gate failed: {summary['competing_fault_false_positive_rate']}")
+          PY
+
+      - name: Upload SGAH benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-sgah-benchmark
+          path: outputs/transformer_sgah/**
+          if-no-files-found: warn

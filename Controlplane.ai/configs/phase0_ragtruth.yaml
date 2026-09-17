@@ -1,0 +1,14 @@
+# Phase 0 smoke-test config: proves the schema + loader + benchmark
+# harness work end-to-end on real RAGTruth data before any real risk
+# model or verifier exists.
+
+experiment:
+  name: phase0_ragtruth_smoke
+  split: test
+  max_records: null   # null = use the full split
+  output_dir: results/phase0
+
+dataset:
+  loader: ragtruth
+  root: data/raw/ragtruth
+  include_low_quality: false

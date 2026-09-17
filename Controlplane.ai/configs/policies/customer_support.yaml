@@ -1,0 +1,84 @@
+id: customer_support
+version: "1.1"
+name: Customer Support Assistant
+description: Customer-facing policy with strict output privacy controls and CPU-friendly verification latency.
+geography: global
+industry: general
+# Standard DeBERTa verification can take around 10 seconds on CPU. The budget
+# is observational until completion; consequential requests escalate only when
+# this full 30-second allowance is exceeded.
+latency_budget_ms: 30000
+default_action: allow
+
+checks:
+  privacy:
+    enabled: true
+    depth: quick
+    settings:
+      scan_prompt: true
+      scan_conversation: false
+  bias:
+    enabled: true
+    depth: quick
+  hallucination:
+    enabled: true
+    depth: standard
+    settings:
+      # Enable after retraining the persisted estimator in the active sklearn environment.
+      use_trained_risk: true
+      risk_model: models/phase2/selected_model.joblib
+      risk_manifest: models/phase2/manifest.json
+      risk_threshold: 0.72
+  conversation:
+    enabled: true
+    depth: quick
+
+rules:
+  - id: customer-secret-block
+    description: Credentials and other critical secrets must never be returned.
+    when:
+      category: privacy
+      severity_at_least: critical
+    action: block
+  - id: customer-pii-redact
+    description: Redact personal data from customer-facing output.
+    when:
+      category: privacy
+      severity_at_least: medium
+      location_prefix: response
+    action: redact
+  - id: customer-input-pii-warn
+    description: Warn when a customer prompt contains sensitive identifiers.
+    when:
+      category: privacy
+      severity_at_least: medium
+      location_prefix: prompt
+    action: allow_with_warning
+  - id: customer-bias-warn
+    description: Surface potentially biased customer-facing language.
+    when:
+      category: bias
+      severity_at_least: medium
+    action: allow_with_warning
+  - id: customer-contradiction-block
+    description: A claim confirmed as contradicted must not reach the customer.
+    when:
+      category: hallucination
+      status: contradicted
+    action: block
+  - id: customer-hallucination-warn
+    description: Warn when grounded factuality checks identify material risk.
+    when:
+      category: hallucination
+      severity_at_least: medium
+    action: allow_with_warning
+  - id: customer-control-failure-warn
+    description: A failed safety control cannot silently pass.
+    when:
+      category: policy
+      subtype: detector_failure
+    action: allow_with_warning
+
+warning_template: Verify this response before relying on factual or decision-relevant claims.
+blocked_response: This response was blocked because it contains restricted sensitive information or a confirmed factual contradiction.
+review_response: This response is awaiting review by a support supervisor.

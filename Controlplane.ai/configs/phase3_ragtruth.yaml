@@ -1,0 +1,20 @@
+experiment:
+  name: phase3_ragtruth_calibration_thresholds
+  random_state: 42
+  split_candidates: 30
+  ece_bins: 10
+  max_test_records: null
+  output_dir: models/phase3
+
+phase2:
+  config: configs/phase2_ragtruth.yaml
+  manifest: models/phase2/manifest.json
+  selected_model: models/phase2/selected_model.joblib
+
+thresholds:
+  max_fast_hallucination_rate: 0.03
+  min_hallucination_recall_outside_fast: 0.98
+  min_fast_count: 25
+  min_agentic_hallucination_rate: 0.75
+  min_agentic_count: 25
+  grid_points: 300

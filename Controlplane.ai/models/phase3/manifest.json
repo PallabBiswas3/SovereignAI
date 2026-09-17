@@ -1,0 +1,80 @@
+{
+  "selected_risk_model": "logreg",
+  "selected_calibrator": "platt",
+  "calibrator_selection_rule": "lowest Brier score on calibration-selection split; ECE breaks ties",
+  "subset_sizes": {
+    "phase2_validation": 2989,
+    "calibration_fit": 1490,
+    "calibration_select": 749,
+    "routing_tune": 750,
+    "official_test": 2675
+  },
+  "hallucination_rates": {
+    "calibration_fit": 0.4469798657718121,
+    "calibration_select": 0.4485981308411215,
+    "routing_tune": 0.4493333333333333,
+    "official_test": 0.3525233644859813
+  },
+  "calibrator_selection_metrics": {
+    "identity": {
+      "ece": 0.0530503496318777,
+      "brier_score": 0.18668790090819595
+    },
+    "platt": {
+      "ece": 0.04373419295390301,
+      "brier_score": 0.18551251137836072
+    },
+    "isotonic": {
+      "ece": 0.035678112196591324,
+      "brier_score": 0.1899032154894499
+    }
+  },
+  "thresholds": {
+    "tau1": 0.030767057986026143,
+    "tau2": 0.5635750462195223,
+    "constraints": {
+      "max_fast_hallucination_rate": 0.03,
+      "min_hallucination_recall_outside_fast": 0.98,
+      "min_fast_count": 25,
+      "min_agentic_hallucination_rate": 0.75,
+      "min_agentic_count": 25,
+      "grid_points": 300
+    },
+    "routing_tune": {
+      "tau1": 0.030767057986026143,
+      "tau2": 0.5635750462195223,
+      "fast_path_fraction": 0.0,
+      "fast_path_hallucination_rate": 0.0,
+      "hallucination_recall_outside_fast_path": 1.0,
+      "agentic_fraction": 0.3413333333333333,
+      "agentic_hallucination_rate": 0.75,
+      "lightweight_fraction": 0.6586666666666666
+    }
+  },
+  "official_test": {
+    "raw_calibration": {
+      "ece": 0.0983909782286838,
+      "brier_score": 0.17648969786113808
+    },
+    "calibrated": {
+      "ece": 0.07216525351320575,
+      "brier_score": 0.17138801915257684
+    },
+    "routing": {
+      "n": 2675,
+      "tau1": 0.030767057986026143,
+      "tau2": 0.5635750462195223,
+      "fast_path_fraction": 0.0007476635514018691,
+      "fast_path_count": 2,
+      "fast_path_hallucination_rate": 0.0,
+      "hallucination_recall_outside_fast_path": 1.0,
+      "lightweight_fraction": 0.6732710280373831,
+      "lightweight_count": 1801,
+      "lightweight_hallucination_rate": 0.1932259855635758,
+      "agentic_fraction": 0.325981308411215,
+      "agentic_count": 872,
+      "agentic_hallucination_rate": 0.6823394495412844
+    }
+  },
+  "note": "tau1/tau2 are Phase-3 provisional routing thresholds. Re-optimize later when real lightweight/agentic cost and accuracy are available."
+}

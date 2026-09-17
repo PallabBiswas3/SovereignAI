@@ -1,0 +1,22 @@
+{
+  "tau1": 0.030767057986026143,
+  "tau2": 0.5635750462195223,
+  "constraints": {
+    "max_fast_hallucination_rate": 0.03,
+    "min_hallucination_recall_outside_fast": 0.98,
+    "min_fast_count": 25,
+    "min_agentic_hallucination_rate": 0.75,
+    "min_agentic_count": 25,
+    "grid_points": 300
+  },
+  "routing_tune": {
+    "tau1": 0.030767057986026143,
+    "tau2": 0.5635750462195223,
+    "fast_path_fraction": 0.0,
+    "fast_path_hallucination_rate": 0.0,
+    "hallucination_recall_outside_fast_path": 1.0,
+    "agentic_fraction": 0.3413333333333333,
+    "agentic_hallucination_rate": 0.75,
+    "lightweight_fraction": 0.6586666666666666
+  }
+}

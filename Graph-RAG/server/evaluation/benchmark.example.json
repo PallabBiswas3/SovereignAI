@@ -1,0 +1,29 @@
+[
+  {
+    "id": "q1-single-hop",
+    "query": "What method does the paper use?",
+    "answerable": true,
+    "category": "single-hop",
+    "relevantNodeIds": ["replace-with-node-id"],
+    "relevantChunkIds": ["replace-with-chunk-id"],
+    "notes": "Replace placeholder IDs with labels from your Supabase nodes/chunks tables."
+  },
+  {
+    "id": "q2-multi-hop",
+    "query": "How does method A relate to result B?",
+    "answerable": true,
+    "category": "multi-hop",
+    "relevantNodeIds": ["replace-with-node-a", "replace-with-node-b"],
+    "relevantChunkIds": ["replace-with-supporting-chunk"],
+    "notes": "Use all evidence items required to answer the question."
+  },
+  {
+    "id": "q3-unanswerable",
+    "query": "What evidence supports a fact that is absent from the uploaded documents?",
+    "answerable": false,
+    "category": "unanswerable",
+    "relevantNodeIds": [],
+    "relevantChunkIds": [],
+    "notes": "Unanswerable cases measure retrieval false positives."
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "name": "LitGraph AI",
+  "description": "A Graph-RAG powered research literature explorer that builds interactive knowledge graphs from papers and enables local model reasoning through Ollama.",
+  "requestFramePermissions": []
+}

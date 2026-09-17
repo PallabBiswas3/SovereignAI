@@ -1,0 +1,88 @@
+id: regulated_decision_support
+version: "1.0"
+name: Regulated Decision Support
+description: Safety-first policy for consequential workflows requiring human accountability.
+geography: global
+industry: regulated
+latency_budget_ms: 3000
+default_action: allow
+
+checks:
+  privacy:
+    enabled: true
+    depth: standard
+    settings:
+      scan_prompt: true
+      scan_conversation: true
+  bias:
+    enabled: true
+    depth: deep
+  hallucination:
+    enabled: true
+    depth: deep
+    settings:
+      use_trained_risk: true
+      risk_model: models/phase2/selected_model.joblib
+      risk_manifest: models/phase2/manifest.json
+      risk_threshold: 0.55
+  conversation:
+    enabled: true
+    depth: deep
+    settings:
+      prior_risk_threshold: 0.45
+
+rules:
+  - id: regulated-secret-block
+    description: Block critical secrets in regulated output.
+    when:
+      category: privacy
+      severity_at_least: critical
+    action: block
+  - id: regulated-sensitive-review
+    description: Sensitive output requires review rather than silent disclosure.
+    when:
+      category: privacy
+      severity_at_least: medium
+    action: human_review
+  - id: regulated-bias-review
+    description: Potential protected-attribute influence requires a human decision-maker.
+    when:
+      category: bias
+      severity_at_least: medium
+    action: human_review
+  - id: regulated-contradiction-review
+    description: Contradicted factual claims require review.
+    when:
+      category: hallucination
+      status: contradicted
+    action: human_review
+  - id: regulated-factuality-review
+    description: Material factuality risk in consequential output requires review.
+    when:
+      category: hallucination
+      severity_at_least: medium
+      consequential_only: true
+    action: human_review
+  - id: regulated-evidence-gap-review
+    description: Missing evidence in a consequential decision cannot be treated as correctness.
+    when:
+      category: hallucination
+      status: unknown
+      consequential_only: true
+    action: human_review
+  - id: regulated-conversation-review
+    description: Compounding conversation risk requires review.
+    when:
+      category: policy
+      subtype: compounding_conversation_risk
+    action: human_review
+  - id: regulated-control-failure-review
+    description: Fail closed to human review when a required detector fails.
+    when:
+      category: policy
+      subtype: detector_failure
+    action: human_review
+
+warning_template: This output is informational and must not replace the accountable human decision-maker.
+blocked_response: This response was blocked under the regulated decision-support policy.
+review_response: No automated recommendation is available. An accountable human reviewer must assess this case.

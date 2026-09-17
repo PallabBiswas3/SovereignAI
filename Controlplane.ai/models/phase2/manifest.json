@@ -1,0 +1,200 @@
+{
+  "artifact_provenance": {
+    "python_version": "3.11.4",
+    "numpy_version": "1.26.4",
+    "scikit_learn_version": "1.9.0",
+    "config_path": "configs\\phase2_ragtruth.yaml",
+    "config_sha256": "d796960d3c228172c73d9dfeb6170df96c8bfa306c29eabfe4fce27ae1da7eda",
+    "response_data_sha256": "bcc251fdd46341e8e9975879516a726b16dad5cb46bd5781dbcfc1ac0e01a640",
+    "source_data_sha256": "859f513630e520edc73a59a01bc75d4c2b6f0481cf39ad8c0761ff8bdc00a78f"
+  },
+  "selected_model": "logreg",
+  "selection_rule": "xgboost only if validation F1 gain >= 0.030",
+  "feature_names": [
+    "response_chars",
+    "response_words",
+    "response_sentences",
+    "avg_sentence_words",
+    "response_question_ratio",
+    "response_number_count",
+    "response_percent_count",
+    "response_currency_count",
+    "response_year_count",
+    "response_date_count",
+    "response_url_count",
+    "response_citation_count",
+    "response_entity_count",
+    "response_hedge_count",
+    "response_certainty_count",
+    "query_chars",
+    "query_words",
+    "query_entity_count",
+    "query_number_count",
+    "query_year_count",
+    "query_current_flag",
+    "query_citation_flag",
+    "lexical_context_overlap",
+    "min_sentence_lexical_support",
+    "mean_sentence_lexical_support",
+    "max_sentence_lexical_support",
+    "entity_support_ratio",
+    "number_support_ratio",
+    "date_support_ratio"
+  ],
+  "feature_config": {
+    "use_spacy": false,
+    "spacy_model": "en_core_web_sm",
+    "use_semantic_support": false,
+    "semantic_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "semantic_batch_size": 32,
+    "max_context_chars": 16000,
+    "max_context_chunks": 24,
+    "max_response_sentences": 20
+  },
+  "feature_importance": {
+    "logreg_coefficients": {
+      "lexical_context_overlap": -1.5352544784545898,
+      "response_words": 0.5844089984893799,
+      "mean_sentence_lexical_support": 0.5445655584335327,
+      "response_chars": -0.4645947515964508,
+      "min_sentence_lexical_support": -0.42955467104911804,
+      "max_sentence_lexical_support": 0.2527691125869751,
+      "response_sentences": -0.2497723400592804,
+      "query_chars": 0.21554172039031982,
+      "query_entity_count": 0.20473258197307587,
+      "date_support_ratio": -0.20038868486881256,
+      "avg_sentence_words": 0.18178637325763702,
+      "response_hedge_count": 0.18069759011268616,
+      "query_number_count": 0.17179062962532043,
+      "query_words": -0.1679731160402298,
+      "entity_support_ratio": 0.16135989129543304,
+      "response_date_count": 0.10400298982858658,
+      "response_citation_count": 0.10237275809049606,
+      "response_question_ratio": -0.09080743044614792,
+      "number_support_ratio": -0.07103513926267624,
+      "response_year_count": -0.06642106920480728,
+      "response_entity_count": -0.0641760304570198,
+      "query_year_count": 0.04371851682662964,
+      "response_number_count": -0.04138312116265297,
+      "query_current_flag": -0.03304946422576904,
+      "response_percent_count": -0.0286401454359293,
+      "query_citation_flag": 0.01502014510333538,
+      "response_currency_count": 0.009560737758874893,
+      "response_url_count": -0.0017729912651702762,
+      "response_certainty_count": 0.000595075311139226
+    },
+    "xgboost_importance": {
+      "lexical_context_overlap": 0.18682953715324402,
+      "response_hedge_count": 0.10621762275695801,
+      "date_support_ratio": 0.06205719709396362,
+      "min_sentence_lexical_support": 0.04661392793059349,
+      "number_support_ratio": 0.03835740312933922,
+      "response_words": 0.037463460117578506,
+      "response_entity_count": 0.03546564280986786,
+      "response_number_count": 0.03212443366646767,
+      "response_sentences": 0.029922841116786003,
+      "query_number_count": 0.02971789427101612,
+      "response_chars": 0.027926316484808922,
+      "max_sentence_lexical_support": 0.027510520070791245,
+      "query_year_count": 0.026587383821606636,
+      "avg_sentence_words": 0.026526039466261864,
+      "query_chars": 0.02622889168560505,
+      "query_entity_count": 0.02572687342762947,
+      "mean_sentence_lexical_support": 0.02393089048564434,
+      "entity_support_ratio": 0.023431135341525078,
+      "response_question_ratio": 0.023389942944049835,
+      "query_words": 0.02316274493932724,
+      "response_currency_count": 0.023020682856440544,
+      "query_citation_flag": 0.022728310897946358,
+      "response_certainty_count": 0.020144546404480934,
+      "response_year_count": 0.01972738280892372,
+      "query_current_flag": 0.019143547862768173,
+      "response_percent_count": 0.01893637888133526,
+      "response_date_count": 0.017108511179685593,
+      "response_url_count": 0.0,
+      "response_citation_count": 0.0
+    }
+  },
+  "n_fit": 11953,
+  "n_validation": 2989,
+  "n_test": 2675,
+  "fit_hallucination_rate": 0.448339329038735,
+  "validation_hallucination_rate": 0.44797591167614587,
+  "test_hallucination_rate": 0.3525233644859813,
+  "results": {
+    "logreg": {
+      "validation": {
+        "precision": 0.6702663786897048,
+        "recall": 0.6952949962658701,
+        "f1": 0.6825513196480938,
+        "false_positive_rate": 0.2775757575757576,
+        "false_negative_rate": 0.30470500373412995,
+        "n": 2989,
+        "auroc": 0.7952302713467763,
+        "auprc": 0.7539090500609826
+      },
+      "test": {
+        "precision": 0.6031606672519754,
+        "recall": 0.7285259809119831,
+        "f1": 0.659942363112392,
+        "false_positive_rate": 0.26096997690531176,
+        "false_negative_rate": 0.271474019088017,
+        "n": 2675,
+        "auroc": 0.8094369843186332,
+        "auprc": 0.7003633472900384
+      },
+      "latency_ms": {
+        "end_to_end_risk": {
+          "p50": 8.680850000018836,
+          "p95": 28.890829999994587,
+          "p99": 42.43227800003523,
+          "mean": 10.941367799998943
+        },
+        "model_only": {
+          "p50": 1.0371999999847503,
+          "p95": 2.284239999983125,
+          "p99": 4.033663999982759,
+          "mean": 1.188307800000075
+        },
+        "n": 500
+      }
+    },
+    "xgboost": {
+      "validation": {
+        "precision": 0.7170573969280517,
+        "recall": 0.6624346527259148,
+        "f1": 0.6886645962732919,
+        "false_positive_rate": 0.21212121212121213,
+        "false_negative_rate": 0.33756534727408516,
+        "n": 2989,
+        "auroc": 0.8156000633670536,
+        "auprc": 0.7895153339959081
+      },
+      "test": {
+        "precision": 0.6517412935323383,
+        "recall": 0.694591728525981,
+        "f1": 0.6724845995893224,
+        "false_positive_rate": 0.20207852193995382,
+        "false_negative_rate": 0.3054082714740191,
+        "n": 2675,
+        "auroc": 0.8214318951604015,
+        "auprc": 0.7429589621462411
+      },
+      "latency_ms": {
+        "end_to_end_risk": {
+          "p50": 12.907149999989542,
+          "p95": 45.90635999996938,
+          "p99": 101.55547000006207,
+          "mean": 19.346849400000337
+        },
+        "model_only": {
+          "p50": 1.9790500000453903,
+          "p95": 14.077864999967439,
+          "p99": 75.82392100000327,
+          "mean": 5.944858599998952
+        },
+        "n": 500
+      }
+    }
+  }
+}

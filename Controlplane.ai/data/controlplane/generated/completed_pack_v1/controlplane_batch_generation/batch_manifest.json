@@ -1,0 +1,802 @@
+[
+  {
+    "split": "development",
+    "batch_id": "dev-001",
+    "seed": 41001,
+    "count": 100,
+    "prompt_file": "prompts/dev-001.txt",
+    "output_file": "outputs/dev-001.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-002",
+    "seed": 41002,
+    "count": 100,
+    "prompt_file": "prompts/dev-002.txt",
+    "output_file": "outputs/dev-002.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-003",
+    "seed": 41003,
+    "count": 100,
+    "prompt_file": "prompts/dev-003.txt",
+    "output_file": "outputs/dev-003.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-004",
+    "seed": 41004,
+    "count": 100,
+    "prompt_file": "prompts/dev-004.txt",
+    "output_file": "outputs/dev-004.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-005",
+    "seed": 41005,
+    "count": 100,
+    "prompt_file": "prompts/dev-005.txt",
+    "output_file": "outputs/dev-005.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-006",
+    "seed": 41006,
+    "count": 100,
+    "prompt_file": "prompts/dev-006.txt",
+    "output_file": "outputs/dev-006.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-007",
+    "seed": 41007,
+    "count": 100,
+    "prompt_file": "prompts/dev-007.txt",
+    "output_file": "outputs/dev-007.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-008",
+    "seed": 41008,
+    "count": 100,
+    "prompt_file": "prompts/dev-008.txt",
+    "output_file": "outputs/dev-008.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-009",
+    "seed": 41009,
+    "count": 100,
+    "prompt_file": "prompts/dev-009.txt",
+    "output_file": "outputs/dev-009.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-010",
+    "seed": 41010,
+    "count": 100,
+    "prompt_file": "prompts/dev-010.txt",
+    "output_file": "outputs/dev-010.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-011",
+    "seed": 41011,
+    "count": 100,
+    "prompt_file": "prompts/dev-011.txt",
+    "output_file": "outputs/dev-011.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-012",
+    "seed": 41012,
+    "count": 100,
+    "prompt_file": "prompts/dev-012.txt",
+    "output_file": "outputs/dev-012.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-013",
+    "seed": 41013,
+    "count": 100,
+    "prompt_file": "prompts/dev-013.txt",
+    "output_file": "outputs/dev-013.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-014",
+    "seed": 41014,
+    "count": 100,
+    "prompt_file": "prompts/dev-014.txt",
+    "output_file": "outputs/dev-014.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-015",
+    "seed": 41015,
+    "count": 100,
+    "prompt_file": "prompts/dev-015.txt",
+    "output_file": "outputs/dev-015.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-016",
+    "seed": 41016,
+    "count": 100,
+    "prompt_file": "prompts/dev-016.txt",
+    "output_file": "outputs/dev-016.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-017",
+    "seed": 41017,
+    "count": 100,
+    "prompt_file": "prompts/dev-017.txt",
+    "output_file": "outputs/dev-017.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-018",
+    "seed": 41018,
+    "count": 100,
+    "prompt_file": "prompts/dev-018.txt",
+    "output_file": "outputs/dev-018.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-019",
+    "seed": 41019,
+    "count": 100,
+    "prompt_file": "prompts/dev-019.txt",
+    "output_file": "outputs/dev-019.jsonl"
+  },
+  {
+    "split": "development",
+    "batch_id": "dev-020",
+    "seed": 41020,
+    "count": 100,
+    "prompt_file": "prompts/dev-020.txt",
+    "output_file": "outputs/dev-020.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-001",
+    "seed": 42001,
+    "count": 100,
+    "prompt_file": "prompts/val-001.txt",
+    "output_file": "outputs/val-001.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-002",
+    "seed": 42002,
+    "count": 100,
+    "prompt_file": "prompts/val-002.txt",
+    "output_file": "outputs/val-002.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-003",
+    "seed": 42003,
+    "count": 100,
+    "prompt_file": "prompts/val-003.txt",
+    "output_file": "outputs/val-003.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-004",
+    "seed": 42004,
+    "count": 100,
+    "prompt_file": "prompts/val-004.txt",
+    "output_file": "outputs/val-004.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-005",
+    "seed": 42005,
+    "count": 100,
+    "prompt_file": "prompts/val-005.txt",
+    "output_file": "outputs/val-005.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-006",
+    "seed": 42006,
+    "count": 100,
+    "prompt_file": "prompts/val-006.txt",
+    "output_file": "outputs/val-006.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-007",
+    "seed": 42007,
+    "count": 100,
+    "prompt_file": "prompts/val-007.txt",
+    "output_file": "outputs/val-007.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-008",
+    "seed": 42008,
+    "count": 100,
+    "prompt_file": "prompts/val-008.txt",
+    "output_file": "outputs/val-008.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-009",
+    "seed": 42009,
+    "count": 100,
+    "prompt_file": "prompts/val-009.txt",
+    "output_file": "outputs/val-009.jsonl"
+  },
+  {
+    "split": "validation",
+    "batch_id": "val-010",
+    "seed": 42010,
+    "count": 100,
+    "prompt_file": "prompts/val-010.txt",
+    "output_file": "outputs/val-010.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-001",
+    "seed": 43001,
+    "count": 100,
+    "prompt_file": "prompts/test-001.txt",
+    "output_file": "outputs/test-001.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-002",
+    "seed": 43002,
+    "count": 100,
+    "prompt_file": "prompts/test-002.txt",
+    "output_file": "outputs/test-002.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-003",
+    "seed": 43003,
+    "count": 100,
+    "prompt_file": "prompts/test-003.txt",
+    "output_file": "outputs/test-003.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-004",
+    "seed": 43004,
+    "count": 100,
+    "prompt_file": "prompts/test-004.txt",
+    "output_file": "outputs/test-004.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-005",
+    "seed": 43005,
+    "count": 100,
+    "prompt_file": "prompts/test-005.txt",
+    "output_file": "outputs/test-005.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-006",
+    "seed": 43006,
+    "count": 100,
+    "prompt_file": "prompts/test-006.txt",
+    "output_file": "outputs/test-006.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-007",
+    "seed": 43007,
+    "count": 100,
+    "prompt_file": "prompts/test-007.txt",
+    "output_file": "outputs/test-007.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-008",
+    "seed": 43008,
+    "count": 100,
+    "prompt_file": "prompts/test-008.txt",
+    "output_file": "outputs/test-008.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-009",
+    "seed": 43009,
+    "count": 100,
+    "prompt_file": "prompts/test-009.txt",
+    "output_file": "outputs/test-009.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-010",
+    "seed": 43010,
+    "count": 100,
+    "prompt_file": "prompts/test-010.txt",
+    "output_file": "outputs/test-010.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-011",
+    "seed": 43011,
+    "count": 100,
+    "prompt_file": "prompts/test-011.txt",
+    "output_file": "outputs/test-011.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-012",
+    "seed": 43012,
+    "count": 100,
+    "prompt_file": "prompts/test-012.txt",
+    "output_file": "outputs/test-012.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-013",
+    "seed": 43013,
+    "count": 100,
+    "prompt_file": "prompts/test-013.txt",
+    "output_file": "outputs/test-013.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-014",
+    "seed": 43014,
+    "count": 100,
+    "prompt_file": "prompts/test-014.txt",
+    "output_file": "outputs/test-014.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-015",
+    "seed": 43015,
+    "count": 100,
+    "prompt_file": "prompts/test-015.txt",
+    "output_file": "outputs/test-015.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-016",
+    "seed": 43016,
+    "count": 100,
+    "prompt_file": "prompts/test-016.txt",
+    "output_file": "outputs/test-016.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-017",
+    "seed": 43017,
+    "count": 100,
+    "prompt_file": "prompts/test-017.txt",
+    "output_file": "outputs/test-017.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-018",
+    "seed": 43018,
+    "count": 100,
+    "prompt_file": "prompts/test-018.txt",
+    "output_file": "outputs/test-018.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-019",
+    "seed": 43019,
+    "count": 100,
+    "prompt_file": "prompts/test-019.txt",
+    "output_file": "outputs/test-019.jsonl"
+  },
+  {
+    "split": "test",
+    "batch_id": "test-020",
+    "seed": 43020,
+    "count": 100,
+    "prompt_file": "prompts/test-020.txt",
+    "output_file": "outputs/test-020.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-001",
+    "seed": 44001,
+    "count": 200,
+    "prompt_file": "prompts/stress-001.txt",
+    "output_file": "outputs/stress-001.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-002",
+    "seed": 44002,
+    "count": 200,
+    "prompt_file": "prompts/stress-002.txt",
+    "output_file": "outputs/stress-002.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-003",
+    "seed": 44003,
+    "count": 200,
+    "prompt_file": "prompts/stress-003.txt",
+    "output_file": "outputs/stress-003.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-004",
+    "seed": 44004,
+    "count": 200,
+    "prompt_file": "prompts/stress-004.txt",
+    "output_file": "outputs/stress-004.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-005",
+    "seed": 44005,
+    "count": 200,
+    "prompt_file": "prompts/stress-005.txt",
+    "output_file": "outputs/stress-005.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-006",
+    "seed": 44006,
+    "count": 200,
+    "prompt_file": "prompts/stress-006.txt",
+    "output_file": "outputs/stress-006.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-007",
+    "seed": 44007,
+    "count": 200,
+    "prompt_file": "prompts/stress-007.txt",
+    "output_file": "outputs/stress-007.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-008",
+    "seed": 44008,
+    "count": 200,
+    "prompt_file": "prompts/stress-008.txt",
+    "output_file": "outputs/stress-008.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-009",
+    "seed": 44009,
+    "count": 200,
+    "prompt_file": "prompts/stress-009.txt",
+    "output_file": "outputs/stress-009.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-010",
+    "seed": 44010,
+    "count": 200,
+    "prompt_file": "prompts/stress-010.txt",
+    "output_file": "outputs/stress-010.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-011",
+    "seed": 44011,
+    "count": 200,
+    "prompt_file": "prompts/stress-011.txt",
+    "output_file": "outputs/stress-011.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-012",
+    "seed": 44012,
+    "count": 200,
+    "prompt_file": "prompts/stress-012.txt",
+    "output_file": "outputs/stress-012.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-013",
+    "seed": 44013,
+    "count": 200,
+    "prompt_file": "prompts/stress-013.txt",
+    "output_file": "outputs/stress-013.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-014",
+    "seed": 44014,
+    "count": 200,
+    "prompt_file": "prompts/stress-014.txt",
+    "output_file": "outputs/stress-014.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-015",
+    "seed": 44015,
+    "count": 200,
+    "prompt_file": "prompts/stress-015.txt",
+    "output_file": "outputs/stress-015.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-016",
+    "seed": 44016,
+    "count": 200,
+    "prompt_file": "prompts/stress-016.txt",
+    "output_file": "outputs/stress-016.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-017",
+    "seed": 44017,
+    "count": 200,
+    "prompt_file": "prompts/stress-017.txt",
+    "output_file": "outputs/stress-017.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-018",
+    "seed": 44018,
+    "count": 200,
+    "prompt_file": "prompts/stress-018.txt",
+    "output_file": "outputs/stress-018.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-019",
+    "seed": 44019,
+    "count": 200,
+    "prompt_file": "prompts/stress-019.txt",
+    "output_file": "outputs/stress-019.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-020",
+    "seed": 44020,
+    "count": 200,
+    "prompt_file": "prompts/stress-020.txt",
+    "output_file": "outputs/stress-020.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-021",
+    "seed": 44021,
+    "count": 200,
+    "prompt_file": "prompts/stress-021.txt",
+    "output_file": "outputs/stress-021.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-022",
+    "seed": 44022,
+    "count": 200,
+    "prompt_file": "prompts/stress-022.txt",
+    "output_file": "outputs/stress-022.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-023",
+    "seed": 44023,
+    "count": 200,
+    "prompt_file": "prompts/stress-023.txt",
+    "output_file": "outputs/stress-023.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-024",
+    "seed": 44024,
+    "count": 200,
+    "prompt_file": "prompts/stress-024.txt",
+    "output_file": "outputs/stress-024.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-025",
+    "seed": 44025,
+    "count": 200,
+    "prompt_file": "prompts/stress-025.txt",
+    "output_file": "outputs/stress-025.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-026",
+    "seed": 44026,
+    "count": 200,
+    "prompt_file": "prompts/stress-026.txt",
+    "output_file": "outputs/stress-026.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-027",
+    "seed": 44027,
+    "count": 200,
+    "prompt_file": "prompts/stress-027.txt",
+    "output_file": "outputs/stress-027.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-028",
+    "seed": 44028,
+    "count": 200,
+    "prompt_file": "prompts/stress-028.txt",
+    "output_file": "outputs/stress-028.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-029",
+    "seed": 44029,
+    "count": 200,
+    "prompt_file": "prompts/stress-029.txt",
+    "output_file": "outputs/stress-029.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-030",
+    "seed": 44030,
+    "count": 200,
+    "prompt_file": "prompts/stress-030.txt",
+    "output_file": "outputs/stress-030.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-031",
+    "seed": 44031,
+    "count": 200,
+    "prompt_file": "prompts/stress-031.txt",
+    "output_file": "outputs/stress-031.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-032",
+    "seed": 44032,
+    "count": 200,
+    "prompt_file": "prompts/stress-032.txt",
+    "output_file": "outputs/stress-032.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-033",
+    "seed": 44033,
+    "count": 200,
+    "prompt_file": "prompts/stress-033.txt",
+    "output_file": "outputs/stress-033.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-034",
+    "seed": 44034,
+    "count": 200,
+    "prompt_file": "prompts/stress-034.txt",
+    "output_file": "outputs/stress-034.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-035",
+    "seed": 44035,
+    "count": 200,
+    "prompt_file": "prompts/stress-035.txt",
+    "output_file": "outputs/stress-035.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-036",
+    "seed": 44036,
+    "count": 200,
+    "prompt_file": "prompts/stress-036.txt",
+    "output_file": "outputs/stress-036.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-037",
+    "seed": 44037,
+    "count": 200,
+    "prompt_file": "prompts/stress-037.txt",
+    "output_file": "outputs/stress-037.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-038",
+    "seed": 44038,
+    "count": 200,
+    "prompt_file": "prompts/stress-038.txt",
+    "output_file": "outputs/stress-038.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-039",
+    "seed": 44039,
+    "count": 200,
+    "prompt_file": "prompts/stress-039.txt",
+    "output_file": "outputs/stress-039.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-040",
+    "seed": 44040,
+    "count": 200,
+    "prompt_file": "prompts/stress-040.txt",
+    "output_file": "outputs/stress-040.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-041",
+    "seed": 44041,
+    "count": 200,
+    "prompt_file": "prompts/stress-041.txt",
+    "output_file": "outputs/stress-041.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-042",
+    "seed": 44042,
+    "count": 200,
+    "prompt_file": "prompts/stress-042.txt",
+    "output_file": "outputs/stress-042.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-043",
+    "seed": 44043,
+    "count": 200,
+    "prompt_file": "prompts/stress-043.txt",
+    "output_file": "outputs/stress-043.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-044",
+    "seed": 44044,
+    "count": 200,
+    "prompt_file": "prompts/stress-044.txt",
+    "output_file": "outputs/stress-044.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-045",
+    "seed": 44045,
+    "count": 200,
+    "prompt_file": "prompts/stress-045.txt",
+    "output_file": "outputs/stress-045.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-046",
+    "seed": 44046,
+    "count": 200,
+    "prompt_file": "prompts/stress-046.txt",
+    "output_file": "outputs/stress-046.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-047",
+    "seed": 44047,
+    "count": 200,
+    "prompt_file": "prompts/stress-047.txt",
+    "output_file": "outputs/stress-047.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-048",
+    "seed": 44048,
+    "count": 200,
+    "prompt_file": "prompts/stress-048.txt",
+    "output_file": "outputs/stress-048.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-049",
+    "seed": 44049,
+    "count": 200,
+    "prompt_file": "prompts/stress-049.txt",
+    "output_file": "outputs/stress-049.jsonl"
+  },
+  {
+    "split": "stress",
+    "batch_id": "stress-050",
+    "seed": 44050,
+    "count": 200,
+    "prompt_file": "prompts/stress-050.txt",
+    "output_file": "outputs/stress-050.jsonl"
+  }
+]

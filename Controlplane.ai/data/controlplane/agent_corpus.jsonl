@@ -1,0 +1,3 @@
+{"id":"account-record-001","name":"Authoritative Account Database","text":"The verified customer account balance is $8,000 as of August 23, 2026.","authority_score":1.0,"metadata":{"source_type":"internal_system_of_record"}}
+{"id":"refund-policy-2026","name":"Customer Refund Policy","text":"Refunds above $500 require supervisor approval and are not automatic.","authority_score":0.95,"metadata":{"source_type":"approved_policy"}}
+{"id":"support-hours-2026","name":"Customer Support Handbook","text":"Customer support operates from 9 AM to 5 PM on weekdays.","authority_score":0.9,"metadata":{"source_type":"approved_handbook"}}

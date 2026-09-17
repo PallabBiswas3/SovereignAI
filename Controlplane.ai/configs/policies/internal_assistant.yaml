@@ -1,0 +1,94 @@
+id: internal_assistant
+version: "1.0"
+name: Internal Knowledge Assistant
+description: Balanced internal policy emphasizing source grounding and auditability.
+geography: global
+industry: general
+latency_budget_ms: 1500
+default_action: allow
+
+checks:
+  privacy:
+    enabled: true
+    depth: quick
+    settings:
+      scan_prompt: true
+      scan_conversation: true
+  bias:
+    enabled: true
+    depth: standard
+  hallucination:
+    enabled: true
+    depth: standard
+    settings:
+      use_trained_risk: true
+      risk_model: models/phase2/selected_model.joblib
+      risk_manifest: models/phase2/manifest.json
+      risk_threshold: 0.65
+  conversation:
+    enabled: true
+    depth: standard
+    settings:
+      prior_risk_threshold: 0.60
+
+rules:
+  - id: internal-secret-block
+    description: Block critical credentials and secrets.
+    when:
+      category: privacy
+      severity_at_least: critical
+    action: block
+  - id: internal-sensitive-redact
+    description: Redact high-confidence sensitive identifiers from output.
+    when:
+      category: privacy
+      severity_at_least: medium
+      location_prefix: response
+    action: redact
+  - id: internal-input-sensitive-warn
+    description: Warn when sensitive data is supplied to the model.
+    when:
+      category: privacy
+      severity_at_least: medium
+      location_prefix: prompt
+    action: allow_with_warning
+  - id: internal-high-bias-review
+    description: Escalate strong bias signals to a reviewer.
+    when:
+      category: bias
+      severity_at_least: high
+    action: human_review
+  - id: internal-bias-warning
+    description: Warn on moderate bias signals.
+    when:
+      category: bias
+      severity_at_least: medium
+    action: allow_with_warning
+  - id: internal-contradiction-review
+    description: A claim confirmed as contradicted must be held for review.
+    when:
+      category: hallucination
+      status: contradicted
+    action: human_review
+  - id: internal-factuality-warning
+    description: Warn on material factuality risk.
+    when:
+      category: hallucination
+      severity_at_least: medium
+    action: allow_with_warning
+  - id: internal-compounding-review
+    description: Escalate risky claims propagated across conversation turns.
+    when:
+      category: policy
+      subtype: compounding_conversation_risk
+    action: human_review
+  - id: internal-control-failure-review
+    description: Review outputs when an enabled detector fails.
+    when:
+      category: policy
+      subtype: detector_failure
+    action: human_review
+
+warning_template: Internal content may be incomplete or unsupported; consult the cited source before acting.
+blocked_response: This response was blocked because it contains restricted sensitive information.
+review_response: This response is unavailable until an authorized reviewer completes the safety review.

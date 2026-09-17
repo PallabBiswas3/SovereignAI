@@ -1,0 +1,43 @@
+dataset: data/controlplane/benchmark_v1/validation_candidates.jsonl
+output: results/model_comparison/report.json
+max_claims: 100
+
+models:
+  - id: deberta_small
+    kind: transformers_nli
+    model_name: cross-encoder/nli-deberta-v3-small
+    enabled: true
+    estimated_input_per_million: 0.0
+    estimated_output_per_million: 0.0
+
+  - id: deberta_large
+    kind: transformers_nli
+    model_name: MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli
+    enabled: false
+    estimated_input_per_million: 0.0
+    estimated_output_per_million: 0.0
+
+  - id: terra_evidence_judge
+    kind: openai_evidence_judge
+    model_name: gpt-5.6-terra
+    reasoning_effort: low
+    enabled: false
+    estimated_input_per_million: 2.0
+    estimated_output_per_million: 12.0
+
+  - id: sol_evidence_judge
+    kind: openai_evidence_judge
+    model_name: gpt-5.6-sol
+    reasoning_effort: medium
+    enabled: false
+    estimated_input_per_million: 4.0
+    estimated_output_per_million: 20.0
+
+  - id: hybrid_deberta_terra
+    kind: hybrid
+    primary_model: cross-encoder/nli-deberta-v3-small
+    escalation_model: gpt-5.6-terra
+    reasoning_effort: low
+    enabled: false
+    estimated_input_per_million: 2.0
+    estimated_output_per_million: 12.0

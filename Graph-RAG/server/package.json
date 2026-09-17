@@ -1,0 +1,39 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node server.ts",
+    "dev": "ts-node-dev --respawn server.ts",
+    "build": "tsc",
+    "serve": "node dist/server.js",
+    "test:metrics": "ts-node evaluation/metrics.test.ts",
+    "test:retrieval-core": "ts-node evaluation/retrievalCore.test.ts",
+    "test:agent-policy": "ts-node evaluation/agentPolicy.test.ts",
+    "test:verification-policy": "ts-node verification/verificationPolicy.test.ts",
+    "test:claim-verifier": "ts-node verification/claimVerifier.test.ts",
+    "test:local-model": "ts-node evaluation/localModel.test.ts",
+    "eval:retrieval": "ts-node evaluation/runRetrievalBenchmark.ts",
+    "reindex:local": "ts-node scripts/reindexLocalEmbeddings.ts --apply"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "lowdb": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/lowdb": "^2.0.3",
+    "@types/node": "^25.2.3",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
+  }
+}

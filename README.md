@@ -89,6 +89,9 @@ stateDiagram-v2
 ## Repository map
 
 ```text
+Controlplane.ai/         privacy, factuality, and response-release policy service
+Graph-RAG/               evidence ingestion, retrieval, and grounded-claim service
+Time-Series-Diagnostic-Agent/ industrial sensor diagnostics and provenance
 config/                 model, policy, and tool registries
 backend/app/api/        typed HTTP endpoints
 backend/app/agent/      plan/state/executor/orchestrator
@@ -289,7 +292,7 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 - `POST /api/evaluation/run`, `GET /api/evaluation/metrics`
 - `GET /api/integrations/health`, `POST /api/integrations/analyze`
 
-The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
+The integrated analysis endpoint is the authenticated host boundary for the co-located Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The service topology and PowerShell launcher are maintained in this repository; see [the integrated-system architecture](docs/INTEGRATION_ARCHITECTURE.md).
 
 Automatic mode uses a latency-aware assurance policy. General Chat performs the input safety scan and a single local generation without cross-system calls. Authorized document questions use standard Graph-RAG verification. Controlled work, diagnostics, engineering, and finance use thorough verification with a bounded evidence retry. Graph claims use small, claim-specific, bounded verification requests, and phase timings are recorded in task runtime metrics.
 

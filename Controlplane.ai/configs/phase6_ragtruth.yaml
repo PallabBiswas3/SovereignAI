@@ -1,0 +1,47 @@
+experiment:
+  name: phase6_ragtruth_retrieval_nli
+  split: test
+  max_records: null
+  save_enriched_max_records: 100
+
+data:
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+extraction:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  max_claims: 30
+  min_claim_chars: 8
+  split_semicolons: true
+
+phase5_verification:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  min_anchor_overlap_for_conflict: 0.45
+  min_anchor_tokens_for_conflict: 1
+  support_confidence: 0.98
+  conflict_confidence: 0.90
+  entity_support_confidence: 0.92
+
+retrieval:
+  top_k: 3
+  max_chunk_chars: 700
+  ngram_min: 1
+  ngram_max: 2
+  min_score: 0.05
+
+nli:
+  model_name: cross-encoder/nli-deberta-v3-small
+  device: null
+  batch_size: 16
+  max_length: 512
+  entailment_threshold: 0.72
+  contradiction_threshold: 0.72
+  decision_margin: 0.10
+  thresholds_file: models/phase6/selected_nli_thresholds.json
+
+output:
+  directory: results/phase6
+  summary_file: phase6_summary.json
+  enriched_file: enriched_records_sample.jsonl

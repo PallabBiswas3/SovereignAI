@@ -1,0 +1,50 @@
+{
+  "total_records": 15000,
+  "batches": 100,
+  "splits": {
+    "development": 2000,
+    "validation": 1000,
+    "test": 2000,
+    "stress": 10000
+  },
+  "profiles": {
+    "customer_support": 5250,
+    "internal_assistant": 5250,
+    "regulated_decision_support": 4500
+  },
+  "actions": {
+    "allow": 3750,
+    "human_review": 4500,
+    "block": 1500,
+    "allow_with_warning": 3000,
+    "redact": 2250
+  },
+  "difficulty": {
+    "hard": 4500,
+    "easy": 4500,
+    "medium": 6000
+  },
+  "scenario_families": {
+    "negative_adversarial": 2250,
+    "conversation_policy": 1500,
+    "overlap_cross_risk": 3750,
+    "factual_grounding": 3750,
+    "bias": 1500,
+    "privacy": 2250
+  },
+  "records_with_factual_claims": 9000,
+  "record_level_factual_status": {
+    "unknown": 2250,
+    "contradicted": 1800,
+    "mixed": 1800,
+    "supported": 3150
+  },
+  "duplicate_field_audit": {
+    "prompt": 0,
+    "response": 0,
+    "context": 0,
+    "triple": 0
+  },
+  "semantic_validator_errors": 0,
+  "bundled_validator_returncode": 0
+}

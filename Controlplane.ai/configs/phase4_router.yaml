@@ -1,0 +1,20 @@
+experiment:
+  name: phase4_adaptive_router
+  output_dir: results/phase4
+
+artifacts:
+  risk_model: models/phase2/selected_model.joblib
+  phase2_manifest: models/phase2/manifest.json
+  calibrator: models/phase3/selected_calibrator.joblib
+  thresholds: models/phase3/thresholds.json
+
+ragtruth:
+  root: data/raw/ragtruth
+  include_low_quality: false
+  max_records: null
+
+halueval:
+  enabled: true
+  root: data/raw/halueval
+  task: qa
+  max_source_records: 1000

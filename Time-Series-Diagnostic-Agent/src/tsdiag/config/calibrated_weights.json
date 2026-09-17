@@ -1,0 +1,44 @@
+{
+  "status": "frozen_after_pr10_cross_validation",
+  "method": "4-fold fault-level cross-validation with label-blind candidate screening",
+  "candidate_screening": {
+    "method": "precomputed_or_shift_label_blind_screen",
+    "candidate_limit": 24
+  },
+  "feature_names": [
+    "contribution_score",
+    "pre_post_shift_score",
+    "onset_earliness_score",
+    "topology_upstreamness_score",
+    "fault_type_agreement_score",
+    "catalog_root_prior_score"
+  ],
+  "weights": {
+    "contribution_score": 0.0,
+    "pre_post_shift_score": 0.0,
+    "onset_earliness_score": 0.1,
+    "topology_upstreamness_score": 0.6,
+    "fault_type_agreement_score": 0.1,
+    "catalog_root_prior_score": 0.2
+  },
+  "margin_threshold": 0.0,
+  "max_abstention_rate": 0.35,
+  "max_false_confident_rate": 0.625,
+  "reference_cv_metrics": {
+    "top1_root_accuracy": 0.4375,
+    "raw_top1_root_accuracy": 0.5,
+    "top3_root_accuracy": 0.8125,
+    "abstention_rate": 0.0625,
+    "false_confident_rate": 0.5,
+    "cases": 16
+  },
+  "postmortem": {
+    "error_count": 8,
+    "candidate_omission_count": 0,
+    "weak_signal_errors": 7,
+    "downstream_over_weighting_errors": 1,
+    "early_noise_onset_errors": 0,
+    "catalog_ambiguity_errors": 0
+  },
+  "note": "Frozen from the final PR #10 real TEP fault-level cross-validation after separating label-blind candidate screening from ranking. All strict regression gates passed on the canonical Braatz benchmark. Future TEP-specific tuning is intentionally avoided."
+}

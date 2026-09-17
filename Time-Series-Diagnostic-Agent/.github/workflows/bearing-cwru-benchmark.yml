@@ -1,0 +1,144 @@
+name: CWRU Bearing Benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/tsdiag/datasets/bearing_cwru.py"
+      - "src/tsdiag/benchmarks/bearing_cwru.py"
+      - "src/tsdiag/domains/bearing_runner.py"
+      - "src/tsdiag/domains/bearing_plugin.py"
+      - "src/tsdiag/contracts.py"
+      - "src/tsdiag/execution.py"
+      - "src/tsdiag/pipeline.py"
+      - "src/tsdiag/registry.py"
+      - "src/tsdiag/tools/bearing.py"
+      - "src/tsdiag/tools/signal.py"
+      - "scripts/run_bearing_cwru_benchmark.py"
+      - "tests/test_bearing*"
+      - "tests/test_plugin_architecture.py"
+      - ".github/workflows/bearing-cwru-benchmark.yml"
+  pull_request:
+    paths:
+      - "src/tsdiag/datasets/bearing_cwru.py"
+      - "src/tsdiag/benchmarks/bearing_cwru.py"
+      - "src/tsdiag/domains/bearing_runner.py"
+      - "src/tsdiag/domains/bearing_plugin.py"
+      - "src/tsdiag/contracts.py"
+      - "src/tsdiag/execution.py"
+      - "src/tsdiag/pipeline.py"
+      - "src/tsdiag/registry.py"
+      - "src/tsdiag/tools/bearing.py"
+      - "src/tsdiag/tools/signal.py"
+      - "scripts/run_bearing_cwru_benchmark.py"
+      - "tests/test_bearing*"
+      - "tests/test_plugin_architecture.py"
+      - ".github/workflows/bearing-cwru-benchmark.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cwru-bearing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bearing-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Bearing tests
+        run: |
+          pytest -q tests/test_bearing_runner.py tests/test_bearing_cwru.py tests/test_plugin_architecture.py
+
+  cwru-real-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: bearing-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Restore CWRU data cache
+        id: cwru-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cwru_007_de
+          key: cwru-12k-drive-end-skf-007-v1
+
+      - name: Download fixed CWRU benchmark manifest on cache miss
+        if: steps.cwru-cache.outputs.cache-hit != 'true'
+        run: |
+          python - <<'PY'
+          from tsdiag.datasets.bearing_cwru import download_cwru_007_drive_end
+          paths = download_cwru_007_drive_end("data/cwru_007_de")
+          print(f"downloaded {len(paths)} CWRU files")
+          for p in paths:
+              print(p, p.stat().st_size)
+          PY
+
+      - name: Validate cached/downloaded CWRU manifest
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tsdiag.datasets.bearing_cwru import cwru_007_drive_end_manifest, load_cwru_drive_end
+          root = Path("data/cwru_007_de")
+          for record in cwru_007_drive_end_manifest():
+              path = root / record.filename
+              if not path.exists() or path.stat().st_size == 0:
+                  raise SystemExit(f"missing/empty CWRU file: {path}")
+              loaded = load_cwru_drive_end(path, record)
+              print(record.file_id, record.label, record.load_hp, loaded["signal"].shape, loaded["rpm"])
+          PY
+
+      - name: Save CWRU data cache
+        if: steps.cwru-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/cwru_007_de
+          key: ${{ steps.cwru-cache.outputs.cache-primary-key }}
+
+      - name: Run fixed real-data CWRU benchmark through public diagnose path
+        run: |
+          python scripts/run_bearing_cwru_benchmark.py \
+            --data-dir data/cwru_007_de \
+            --window-seconds 1.0 \
+            --max-windows 6 \
+            --minimum-confidence 0.45 \
+            --minimum-harmonics 2 \
+            --output-dir outputs/bearing_cwru
+
+      - name: Show benchmark summary
+        if: always()
+        run: |
+          if [ -f outputs/bearing_cwru/bearing_cwru_benchmark.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("outputs/bearing_cwru/bearing_cwru_benchmark.json")
+          payload = json.loads(p.read_text())
+          print(json.dumps(payload["summary"], indent=2))
+          if payload.get("failures"):
+              print(json.dumps(payload["failures"], indent=2))
+          PY
+          fi
+
+      - name: Upload CWRU bearing outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cwru-bearing-benchmark
+          path: outputs/bearing_cwru/**
+          if-no-files-found: warn

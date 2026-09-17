@@ -1,0 +1,145 @@
+name: CARE v6 Wind SCADA Benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/tsdiag/contracts.py"
+      - "src/tsdiag/execution.py"
+      - "src/tsdiag/pipeline.py"
+      - "src/tsdiag/registry.py"
+      - "src/tsdiag/result_contract.py"
+      - "src/tsdiag/datasets/wind_care.py"
+      - "src/tsdiag/tools/wind_scada.py"
+      - "src/tsdiag/domains/wind_physics.py"
+      - "src/tsdiag/detectors/**"
+      - "src/tsdiag/domains/wind_scada*"
+      - "src/tsdiag/evaluation/wind_scada.py"
+      - "src/tsdiag/benchmarks/wind_scada.py"
+      - "src/tsdiag/benchmarks/wind_scada_public.py"
+      - "scripts/run_wind_scada_benchmark.py"
+      - "tests/test_wind*"
+      - "tests/test_plugin_architecture.py"
+      - "tests/test_residual_changepoint.py"
+      - ".github/workflows/wind-scada-benchmark.yml"
+  pull_request:
+    paths:
+      - "src/tsdiag/contracts.py"
+      - "src/tsdiag/execution.py"
+      - "src/tsdiag/pipeline.py"
+      - "src/tsdiag/registry.py"
+      - "src/tsdiag/result_contract.py"
+      - "src/tsdiag/datasets/wind_care.py"
+      - "src/tsdiag/tools/wind_scada.py"
+      - "src/tsdiag/domains/wind_physics.py"
+      - "src/tsdiag/detectors/**"
+      - "src/tsdiag/domains/wind_scada*"
+      - "src/tsdiag/evaluation/wind_scada.py"
+      - "src/tsdiag/benchmarks/wind_scada.py"
+      - "src/tsdiag/benchmarks/wind_scada_public.py"
+      - "scripts/run_wind_scada_benchmark.py"
+      - "tests/test_wind*"
+      - "tests/test_plugin_architecture.py"
+      - "tests/test_residual_changepoint.py"
+      - ".github/workflows/wind-scada-benchmark.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: care-v6-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wind-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Wind SCADA tests
+        run: |
+          pytest -q \
+            tests/test_wind_scada.py \
+            tests/test_wind_scada_evaluation.py \
+            tests/test_wind_physics.py \
+            tests/test_residual_changepoint.py \
+            tests/test_plugin_architecture.py
+
+  care-v6-real-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: wind-unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Check disk
+        run: df -h
+
+      - name: Restore CARE v6 dataset cache
+        id: care-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: CARE_To_Compare.zip
+          key: care-v6-zenodo-15846963-md5-2547b58c21ac8c242d13232860cf500c
+
+      - name: Download official CARE v6 archive on cache miss
+        if: steps.care-cache.outputs.cache-hit != 'true'
+        run: |
+          curl --fail --location --retry 4 --retry-delay 10 \
+            --output CARE_To_Compare.zip \
+            "https://zenodo.org/records/15846963/files/CARE_To_Compare.zip?download=1"
+
+      - name: Validate CARE v6 archive
+        run: |
+          echo "2547b58c21ac8c242d13232860cf500c  CARE_To_Compare.zip" | md5sum --check --strict
+          ls -lh CARE_To_Compare.zip
+
+      - name: Save CARE v6 dataset cache
+        if: steps.care-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: CARE_To_Compare.zip
+          key: ${{ steps.care-cache.outputs.cache-primary-key }}
+
+      - name: Run complete 95-event CARE v6 benchmark through public diagnose path
+        run: |
+          python scripts/run_wind_scada_benchmark.py \
+            --data-dir CARE_To_Compare.zip \
+            --cusum-drift 0.5 \
+            --cusum-threshold 10.0 \
+            --output-dir outputs/wind_benchmark
+      - name: Show CARE v6 summary
+        if: always()
+        run: |
+          if [ -f outputs/wind_benchmark/care_v6_summary.md ]; then
+            cat outputs/wind_benchmark/care_v6_summary.md
+          fi
+          if [ -f outputs/wind_benchmark/wind_scada_benchmark.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("outputs/wind_benchmark/wind_scada_benchmark.json")
+          result = json.loads(p.read_text())
+          print(json.dumps(result["summary"], indent=2))
+          if result.get("failures"):
+              print("Failures:")
+              print(json.dumps(result["failures"], indent=2))
+          PY
+          fi
+      - name: Upload benchmark outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: care-v6-wind-benchmark
+          path: outputs/wind_benchmark/**
+          if-no-files-found: warn

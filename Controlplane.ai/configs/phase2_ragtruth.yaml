@@ -1,0 +1,25 @@
+experiment:
+  name: phase2_ragtruth_risk_v1
+  random_state: 42
+  validation_size: 0.20
+  split_candidates: 20
+  max_train_records: null
+  max_test_records: null
+  min_f1_gain_for_xgboost: 0.03
+  latency_sample_size: 500
+  model_dir: models/phase2
+
+dataset:
+  loader: ragtruth
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+features:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  use_semantic_support: false
+  semantic_model: sentence-transformers/all-MiniLM-L6-v2
+  semantic_batch_size: 32
+  max_context_chars: 16000
+  max_context_chunks: 24
+  max_response_sentences: 20

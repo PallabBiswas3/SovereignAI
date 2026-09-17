@@ -1,0 +1,109 @@
+name: C-MAPSS Turbofan Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/tsdiag/datasets/cmapss.py'
+      - 'src/tsdiag/benchmarks/turbofan_cmapss.py'
+      - 'src/tsdiag/tools/turbofan_rul.py'
+      - 'src/tsdiag/domains/turbofan_plugin.py'
+      - 'src/tsdiag/domains/domain_steps.py'
+      - 'src/tsdiag/domains/verification.py'
+      - 'src/tsdiag/domains/policies.py'
+      - 'src/tsdiag/pipeline.py'
+      - 'src/tsdiag/registry.py'
+      - 'scripts/run_turbofan_cmapss_public_benchmark.py'
+      - 'tests/test_cmapss_dataset.py'
+      - '.github/workflows/turbofan-cmapss-benchmark.yml'
+
+concurrency:
+  group: cmapss-turbofan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cmapss-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+      - name: Run C-MAPSS schema tests
+        run: pytest -q tests/test_cmapss_dataset.py
+
+  cmapss-real-data:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    needs: cmapss-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Restore C-MAPSS cache
+        id: cmapss-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cmapss
+          key: nasa-cmapss-fd001-fd004-v1
+
+      - name: Download fixed NASA C-MAPSS files on cache miss
+        if: steps.cmapss-cache.outputs.cache-hit != 'true'
+        run: |
+          python - <<'PY'
+          from tsdiag.datasets.cmapss import download_cmapss
+          paths = download_cmapss('data/cmapss')
+          print(f'downloaded {len(paths)} C-MAPSS files')
+          for p in paths:
+              print(p, p.stat().st_size)
+          PY
+
+      - name: Validate frozen C-MAPSS layout
+        run: |
+          python - <<'PY'
+          import json
+          from tsdiag.datasets.cmapss import CMAPSS_SUBSETS, validate_cmapss_subset
+          summaries = [validate_cmapss_subset('data/cmapss', subset) for subset in CMAPSS_SUBSETS]
+          print(json.dumps(summaries, indent=2))
+          expected = {
+              'FD001': (100, 100),
+              'FD002': (260, 259),
+              'FD003': (100, 100),
+              'FD004': (249, 248),
+          }
+          for row in summaries:
+              train_expected, test_expected = expected[row['subset']]
+              if row['train_units'] != train_expected or row['test_units'] != test_expected:
+                  raise SystemExit(f"Unexpected NASA manifest counts: {row}")
+          PY
+
+      - name: Save C-MAPSS cache
+        if: steps.cmapss-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/cmapss
+          key: ${{ steps.cmapss-cache.outputs.cache-primary-key }}
+
+      - name: Run frozen FD001-FD004 RUL benchmark through public diagnose path
+        run: |
+          mkdir -p outputs/turbofan_cmapss
+          python scripts/run_turbofan_cmapss_public_benchmark.py \
+            --data-dir data/cmapss \
+            --output-dir outputs/turbofan_cmapss
+
+      - name: Upload C-MAPSS benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: turbofan-cmapss-benchmark
+          path: outputs/turbofan_cmapss/**
+          if-no-files-found: warn

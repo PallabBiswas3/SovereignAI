@@ -1,0 +1,171 @@
+{
+  "dataset_version": "controlplane-nli-v1",
+  "annotation_status": "synthetic_candidate_unreviewed",
+  "seed": 42,
+  "source_files": [
+    "controlplane-nli-v1-train-b001.jsonl",
+    "controlplane-nli-v1-train-b002.jsonl",
+    "controlplane-nli-v1-train-b003.jsonl",
+    "controlplane-nli-v1-train-b004.jsonl",
+    "controlplane-nli-v1-train-b005.jsonl",
+    "controlplane-nli-v1-train-b006.jsonl"
+  ],
+  "raw_rows": 600,
+  "accepted_rows": 600,
+  "rejected_rows": 0,
+  "corrections": [
+    {
+      "id": "controlplane-nli-v1-train-b006-000084",
+      "old": {
+        "label_text": "neutral",
+        "label": 1
+      },
+      "new": {
+        "label_text": "entailment",
+        "label": 1
+      },
+      "reason": "Numeric label, evidence, and rationale consistently indicate entailment."
+    },
+    {
+      "id": "controlplane-nli-v1-train-b006-000088",
+      "old": {
+        "label_text": "neutral",
+        "label": 1
+      },
+      "new": {
+        "label_text": "entailment",
+        "label": 1
+      },
+      "reason": "Numeric label, evidence, and rationale consistently indicate entailment."
+    },
+    {
+      "id": "controlplane-nli-v1-train-b006-000092",
+      "old": {
+        "label_text": "neutral",
+        "label": 1
+      },
+      "new": {
+        "label_text": "entailment",
+        "label": 1
+      },
+      "reason": "Numeric label, evidence, and rationale consistently indicate entailment."
+    },
+    {
+      "id": "controlplane-nli-v1-train-b006-000096",
+      "old": {
+        "label_text": "neutral",
+        "label": 1
+      },
+      "new": {
+        "label_text": "entailment",
+        "label": 1
+      },
+      "reason": "Numeric label, evidence, and rationale consistently indicate entailment."
+    },
+    {
+      "id": "controlplane-nli-v1-train-b006-000100",
+      "old": {
+        "label_text": "neutral",
+        "label": 1
+      },
+      "new": {
+        "label_text": "entailment",
+        "label": 1
+      },
+      "reason": "Numeric label, evidence, and rationale consistently indicate entailment."
+    }
+  ],
+  "all": {
+    "rows": 600,
+    "families": 150,
+    "labels": {
+      "contradiction": 193,
+      "entailment": 222,
+      "neutral": 185
+    },
+    "profiles": {
+      "customer_support": 212,
+      "internal_assistant": 208,
+      "regulated_decision_support": 180
+    },
+    "difficulties": {
+      "easy": 184,
+      "hard": 184,
+      "medium": 232
+    },
+    "batches": {
+      "train-b001": 100,
+      "train-b002": 100,
+      "train-b003": 100,
+      "train-b004": 100,
+      "train-b005": 100,
+      "train-b006": 100
+    }
+  },
+  "train": {
+    "rows": 500,
+    "families": 125,
+    "labels": {
+      "contradiction": 161,
+      "entailment": 185,
+      "neutral": 154
+    },
+    "profiles": {
+      "customer_support": 176,
+      "internal_assistant": 176,
+      "regulated_decision_support": 148
+    },
+    "difficulties": {
+      "easy": 152,
+      "hard": 156,
+      "medium": 192
+    },
+    "batches": {
+      "train-b001": 84,
+      "train-b002": 84,
+      "train-b003": 84,
+      "train-b004": 84,
+      "train-b005": 84,
+      "train-b006": 80
+    }
+  },
+  "validation": {
+    "rows": 100,
+    "families": 25,
+    "labels": {
+      "contradiction": 32,
+      "entailment": 37,
+      "neutral": 31
+    },
+    "profiles": {
+      "customer_support": 36,
+      "internal_assistant": 32,
+      "regulated_decision_support": 32
+    },
+    "difficulties": {
+      "easy": 32,
+      "hard": 28,
+      "medium": 40
+    },
+    "batches": {
+      "train-b001": 16,
+      "train-b002": 16,
+      "train-b003": 16,
+      "train-b004": 16,
+      "train-b005": 16,
+      "train-b006": 20
+    }
+  },
+  "family_overlap": 0,
+  "label_mapping": {
+    "contradiction": 0,
+    "entailment": 1,
+    "neutral": 2
+  },
+  "notes": [
+    "All examples remain synthetic_candidate_unreviewed.",
+    "Five internally inconsistent batch-6 label_text values were corrected using their numeric labels, evidence, and rationales.",
+    "The split is source-family separated; no family occurs in both training and validation.",
+    "This structural audit does not replace human semantic label review."
+  ]
+}

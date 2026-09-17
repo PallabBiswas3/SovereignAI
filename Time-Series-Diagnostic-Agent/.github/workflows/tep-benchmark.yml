@@ -1,0 +1,123 @@
+name: Tennessee Eastman Benchmark
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/tsdiag/domains/process_runner.py"
+      - "src/tsdiag/benchmarks/tep.py"
+      - "src/tsdiag/tools/**"
+      - "src/tsdiag/config/**"
+      - "tests/test_process*"
+      - "tests/test_tep*"
+      - ".github/workflows/tep-benchmark.yml"
+  pull_request:
+    paths:
+      - "src/tsdiag/**"
+      - "tests/**"
+      - ".github/workflows/tep-benchmark.yml"
+  workflow_dispatch:
+
+jobs:
+  tep-real-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Run calibrated Braatz TEP benchmark
+        run: |
+          python -m tsdiag.benchmarks.tep \
+            --download \
+            --faults 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 \
+            --methods pca dpca \
+            --target-far 0.05 \
+            --alpha-grid 0.99,0.995,0.9975,0.999,0.9995 \
+            --persistence-grid 1,2,3,5 \
+            --lags-grid 1,2,3 \
+            --diagnostic-method dpca \
+            --diagnostic-faults 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 \
+            --diagnostic-top-k 24 \
+            --maxlag 1 \
+            --run-ablation \
+            --output outputs/tep_benchmark.json \
+            --artifact-dir outputs/tep_benchmark
+
+      - name: Enforce root-cause regression gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("outputs/tep_benchmark.json").read_text())
+          metrics = result["summary"]["root_rank_calibration"]
+          top1 = float(metrics["top1_root_accuracy"])
+          top3 = float(metrics["top3_root_accuracy"])
+          abstention = float(metrics["abstention_rate"])
+          false_confident = float(metrics["false_confident_rate"])
+
+          print(
+              f"TEP CV gates: top1={top1:.4f}, top3={top3:.4f}, "
+              f"abstention={abstention:.4f}, false_confident={false_confident:.4f}"
+          )
+
+          assert top1 > 0.375, f"Top-1 RCA regressed: {top1:.4f} <= 0.375"
+          assert top3 > 0.5625, f"Top-3 RCA regressed: {top3:.4f} <= 0.5625"
+          assert abstention <= 0.35, f"Abstention regressed: {abstention:.4f} > 0.35"
+          assert false_confident <= 0.625, (
+              f"False-confident rate regressed: {false_confident:.4f} > 0.625"
+          )
+          PY
+
+      - name: Show benchmark summary
+        if: always()
+        run: |
+          if [ -f outputs/tep_benchmark.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("outputs/tep_benchmark.json")
+          result = json.loads(p.read_text())
+          print(json.dumps(result["summary"], indent=2))
+          print("\nCalibration:")
+          print(json.dumps({k: v["config"] for k, v in result["calibration"].items()}, indent=2))
+          print("\nRoot-cause ablation:")
+          print(json.dumps(result.get("ablation", {}).get("summary", {}), indent=2))
+          print("\nPer-fault method rows:")
+          for row in result["faults"]:
+              if row["fault_id"] != 0:
+                  print(
+                      f"{row['method']} IDV({row['fault_id']:02d}) "
+                      f"DR={row['post_fault_detection_rate']:.3f} "
+                      f"FAR={row['pre_fault_false_alarm_rate']:.3f} "
+                      f"delay={row['detection_delay_samples']} "
+                      f"pred_fault={row.get('predicted_fault_id')} "
+                      f"root={row['predicted_root_cause']} "
+                      f"root_hit={row['localization_hit']}"
+                  )
+          PY
+          fi
+
+      - name: Upload benchmark result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tep-benchmark-result
+          path: |
+            outputs/tep_benchmark.json
+            outputs/tep_benchmark/**
+          if-no-files-found: warn

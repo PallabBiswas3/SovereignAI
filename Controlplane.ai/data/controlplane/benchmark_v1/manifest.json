@@ -1,0 +1,10 @@
+{
+  "status": "candidate_unreviewed",
+  "source": "data/controlplane/evaluation_v1.jsonl",
+  "counts": {
+    "development": 200,
+    "validation": 100,
+    "test": 400
+  },
+  "warning": "Synthetic variants require independent human review and adjudication before use as gold labels."
+}

@@ -1,0 +1,61 @@
+experiment:
+  name: phase6_1_nli_threshold_tuning
+
+data:
+  root: data/raw/ragtruth
+  include_low_quality: false
+
+validation:
+  validation_fraction: 0.10
+  random_state: 6061
+  split_candidates: 30
+  max_records: 300
+
+extraction:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  max_claims: 30
+  min_claim_chars: 8
+  split_semicolons: true
+
+phase5_verification:
+  use_spacy: false
+  spacy_model: en_core_web_sm
+  min_anchor_overlap_for_conflict: 0.45
+  min_anchor_tokens_for_conflict: 1
+  support_confidence: 0.98
+  conflict_confidence: 0.90
+  entity_support_confidence: 0.92
+
+retrieval:
+  top_k: 3
+  max_chunk_chars: 700
+  ngram_min: 1
+  ngram_max: 2
+  min_score: 0.05
+
+nli:
+  model_name: cross-encoder/nli-deberta-v3-small
+  device: null
+  batch_size: 16
+  max_length: 512
+
+sweep:
+  entailment_thresholds: [0.90, 0.95, 0.97, 0.99]
+  contradiction_thresholds: [0.80, 0.90, 0.95, 0.97, 0.99]
+  decision_margins: [0.10, 0.15, 0.20, 0.25]
+
+selection:
+  min_nli_resolved_claims: 25
+  max_nli_supported_hallucination_overlap_rate: 0.03
+  min_nli_contradiction_conflict_alignment: 0.10
+  min_baseless_all_unknown_rate: 0.80
+
+output:
+  directory: results/phase6_1
+  summary_file: phase6_1_summary.json
+  sweep_csv_file: threshold_sweep.csv
+  score_cache_file: nli_score_cache.json
+
+artifact:
+  thresholds_file: models/phase6/selected_nli_thresholds.json
