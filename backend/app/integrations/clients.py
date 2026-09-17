@@ -66,8 +66,11 @@ class JsonServiceClient:
 class GraphRagClient(JsonServiceClient):
     service_name = "graph-rag"
 
-    async def retrieve(self, query: str) -> dict[str, Any]:
-        return await self.request("POST", "/api/integration/retrieve", payload={"query": query})
+    async def retrieve(self, query: str, verification_mode: str = "thorough") -> dict[str, Any]:
+        return await self.request(
+            "POST", "/api/integration/retrieve",
+            payload={"query": query, "verification_mode": verification_mode},
+        )
 
 
 class DiagnosticAgentClient(JsonServiceClient):

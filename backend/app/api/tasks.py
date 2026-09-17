@@ -63,10 +63,10 @@ from app.assets.repository import AssetRepository
 from app.assets.resolver import AssetResolver
 from app.assets.telemetry import APELSimulatorTelemetryProvider, FreshnessPolicy
 from app.identity import ContentIdentityService
-from app.integrations.models import IntegratedAnalysisRequest
+from app.integrations.models import AssuranceLevel, IntegratedAnalysisRequest
 from app.integrations.clients import IntegrationServiceError
 from app.integrations.orchestrator import IndustrialIntegrationOrchestrator
-from app.integrations.routing import IntegrationRoutePlanner
+from app.integrations.routing import IntegrationRoutePlan, IntegrationRoutePlanner
 from app.integrations.task_adapter import (
     integrated_result_state, integration_unavailable_state, missing_input_state,
 )
@@ -107,6 +107,22 @@ def _chat_mode_selection(payload: CreateTaskRequest) -> ChatModeSelection:
         attachment_count=len(payload.attachments),
         workcell_id=payload.workcell_id,
     )
+
+
+def _integration_assurance_level(
+    payload: CreateTaskRequest,
+    chat_selection: ChatModeSelection,
+    plan: IntegrationRoutePlan,
+) -> AssuranceLevel:
+    if (
+        chat_selection.selected == ChatMode.controlled
+        or plan.diagnostic_domain is not None
+        or payload.use_case in {"engineering", "finance"}
+    ):
+        return AssuranceLevel.thorough
+    if chat_selection.selected == ChatMode.general:
+        return AssuranceLevel.fast
+    return AssuranceLevel.standard
 
 
 def _authorized_generation_prompt(
@@ -761,6 +777,7 @@ async def _execute_task(
             if event_callback:
                 await event_callback("service_plan_selected", integration_plan.model_dump(mode="json"))
             if integration_plan.missing_diagnostic_input:
+                assurance_level = _integration_assurance_level(payload, chat_selection, integration_plan)
                 draft = missing_input_state(
                     request=payload.request, routing=routing, selection=selection, plan=integration_plan,
                 ).final_response
@@ -770,6 +787,7 @@ async def _execute_task(
                             query=payload.request, candidate_response=draft,
                             include_graph_evidence=integration_plan.use_graph,
                             policy_profile=payload.use_case, consequential=True,
+                            assurance_level=assurance_level,
                         ),
                         principal_id=principal.user_id, organization_id=principal.organization_id,
                     )
@@ -784,12 +802,13 @@ async def _execute_task(
                         plan=integration_plan, error=str(exc),
                     )
             else:
+                assurance_level = _integration_assurance_level(payload, chat_selection, integration_plan)
                 try:
                     result = await IndustrialIntegrationOrchestrator(settings=settings).analyze(
                         IntegratedAnalysisRequest(
                             query=payload.request, include_graph_evidence=integration_plan.use_graph,
                             diagnostic=integration_plan.diagnostic, policy_profile=payload.use_case,
-                            consequential=True,
+                            consequential=True, assurance_level=assurance_level,
                         ),
                         principal_id=principal.user_id, organization_id=principal.organization_id,
                     )

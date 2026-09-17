@@ -291,7 +291,9 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 
 The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
 
-The default integration timeout is 180 seconds because local Graph-RAG retrieval and claim verification may run several bounded Ollama calls on CPU. Override it with `SOVEREIGN_INTEGRATION_TIMEOUT_SECONDS` when the deployment has different local hardware.
+Automatic mode uses a latency-aware assurance policy. General Chat performs the input safety scan and a single local generation without cross-system calls. Authorized document questions use standard Graph-RAG verification. Controlled work, diagnostics, engineering, and finance use thorough verification with a bounded evidence retry. Graph claims use small, claim-specific, bounded verification requests, and phase timings are recorded in task runtime metrics.
+
+The default integration timeout is 180 seconds to accommodate thorough local Graph-RAG verification on CPU. Override it with `SOVEREIGN_INTEGRATION_TIMEOUT_SECONDS` when the deployment has different local hardware.
 
 ## Known limitations and future work
 

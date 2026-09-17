@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class AssuranceLevel(str, Enum):
+    fast = "fast"
+    standard = "standard"
+    thorough = "thorough"
 
 
 class DiagnosticInvocation(BaseModel):
@@ -25,6 +32,7 @@ class IntegratedAnalysisRequest(BaseModel):
     diagnostic: DiagnosticInvocation | None = None
     policy_profile: str = Field(default="internal_assistant", pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
     consequential: bool = True
+    assurance_level: AssuranceLevel = AssuranceLevel.thorough
 
     @model_validator(mode="after")
     def require_evidence_or_candidate(self):
@@ -43,3 +51,4 @@ class IntegratedAnalysisResponse(BaseModel):
     diagnostic: dict[str, Any] | None = None
     controlplane: dict[str, Any] | None = None
     service_status: dict[str, str]
+    timings_ms: dict[str, float] = Field(default_factory=dict)

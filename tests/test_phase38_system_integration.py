@@ -12,12 +12,14 @@ class FakeGraph:
     def __init__(self, *, fail: bool = False):
         self.called = False
         self.fail = fail
+        self.verification_mode = None
 
     async def health(self):
         return {"status": "ok"}
 
-    async def retrieve(self, query):
+    async def retrieve(self, query, verification_mode="thorough"):
         self.called = True
+        self.verification_mode = verification_mode
         if self.fail:
             raise IntegrationServiceError("graph-rag", "offline")
         return {
@@ -98,6 +100,7 @@ def test_integrated_analysis_releases_only_after_controlplane_check():
     assert "bearing wear" in result.final_response
     assert controlplane.checked["context"]
     assert diagnostics.payload["run_context"]["source"] == "sovereign-ai"
+    assert graph.verification_mode == "thorough"
 
 
 def test_precheck_hold_prevents_evidence_calls():

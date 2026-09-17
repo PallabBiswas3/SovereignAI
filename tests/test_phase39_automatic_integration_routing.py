@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from app.integrations.models import IntegratedAnalysisResponse
 from app.integrations.routing import IntegrationRoutePlanner
 from app.integrations.task_adapter import integrated_result_state, missing_input_state
+from app.api.tasks import CreateTaskRequest, _integration_assurance_level
 from app.core.config import get_settings
+from app.orchestration.chat_mode import ChatModeSelector
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 
@@ -22,6 +24,29 @@ def test_internal_evidence_question_selects_graph_and_controlplane(tmp_path):
     assert plan.diagnostic is None
     assert plan.services == ["graph-rag", "controlplane"]
     assert plan.handles_request is True
+
+
+def test_assurance_level_balances_chat_latency_and_risk(tmp_path):
+    selector = ChatModeSelector()
+    planner = IntegrationRoutePlanner()
+
+    general = CreateTaskRequest(request="What causes pump cavitation?")
+    general_plan = planner.plan(general.request, [], tmp_path)
+    assert _integration_assurance_level(
+        general, selector.select(general.chat_mode, general.request), general_plan,
+    ).value == "fast"
+
+    evidence = CreateTaskRequest(request="What do our internal documents say about pump limits?")
+    evidence_plan = planner.plan(evidence.request, [], tmp_path)
+    assert _integration_assurance_level(
+        evidence, selector.select(evidence.chat_mode, evidence.request), evidence_plan,
+    ).value == "standard"
+
+    diagnostic = CreateTaskRequest(request="Diagnose bearing vibration")
+    diagnostic_plan = planner.plan(diagnostic.request, [], tmp_path)
+    assert _integration_assurance_level(
+        diagnostic, selector.select(diagnostic.chat_mode, diagnostic.request), diagnostic_plan,
+    ).value == "thorough"
 
 
 def test_diagnostic_intent_without_measurements_does_not_invent_input(tmp_path):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import monotonic
 from typing import Any
 from uuid import uuid4
 
@@ -53,6 +54,7 @@ class IndustrialIntegrationOrchestrator:
         principal_id: str,
         organization_id: str,
     ) -> IntegratedAnalysisResponse:
+        total_started = monotonic()
         run_id = f"integration-{uuid4()}"
         metadata = {
             "run_id": run_id,
@@ -60,6 +62,7 @@ class IndustrialIntegrationOrchestrator:
             "principal_id": principal_id,
             "organization_id": organization_id,
         }
+        precheck_started = monotonic()
         precheck = await self.controlplane.precheck({
             "id": f"{run_id}-precheck",
             "profile": request.policy_profile,
@@ -68,6 +71,7 @@ class IndustrialIntegrationOrchestrator:
             "industry": "industrial",
             "metadata": metadata,
         })
+        precheck_ms = (monotonic() - precheck_started) * 1000
         precheck_action = self._action(precheck)
         if precheck_action in HOLD_ACTIONS:
             return IntegratedAnalysisResponse(
@@ -77,11 +81,17 @@ class IndustrialIntegrationOrchestrator:
                 final_response=str(precheck.get("final_response") or "Request held by policy."),
                 precheck=precheck,
                 service_status={"controlplane": "available", "graph-rag": "not_called", "diagnostics": "not_called"},
+                timings_ms={
+                    "precheck": round(precheck_ms, 3),
+                    "evidence": 0.0,
+                    "release_check": 0.0,
+                    "total": round((monotonic() - total_started) * 1000, 3),
+                },
             )
 
         calls: list[tuple[str, Any]] = []
         if request.include_graph_evidence:
-            calls.append(("graph-rag", self.graph.retrieve(request.query)))
+            calls.append(("graph-rag", self.graph.retrieve(request.query, request.assurance_level.value)))
         if request.diagnostic is not None:
             diagnostic_payload = request.diagnostic.model_dump(mode="python")
             context = dict(diagnostic_payload.get("run_context") or {})
@@ -89,7 +99,9 @@ class IndustrialIntegrationOrchestrator:
             diagnostic_payload["run_context"] = context
             calls.append(("diagnostics", self.diagnostics.diagnose(diagnostic_payload)))
 
+        evidence_started = monotonic()
         call_results = await asyncio.gather(*(call for _, call in calls), return_exceptions=True)
+        evidence_ms = (monotonic() - evidence_started) * 1000
         evidence: dict[str, dict[str, Any] | None] = {"graph-rag": None, "diagnostics": None}
         service_status = {"controlplane": "available", "graph-rag": "not_requested", "diagnostics": "not_requested"}
         failures: list[str] = []
@@ -114,6 +126,7 @@ class IndustrialIntegrationOrchestrator:
             ensure_ascii=True,
             default=str,
         )[:50000]
+        release_started = monotonic()
         report = await self.controlplane.check({
             "id": f"{run_id}-release",
             "profile": request.policy_profile,
@@ -124,6 +137,7 @@ class IndustrialIntegrationOrchestrator:
             "industry": "industrial",
             "metadata": metadata,
         })
+        release_ms = (monotonic() - release_started) * 1000
         action = self._action(report)
         released = action in RELEASE_ACTIONS
         return IntegratedAnalysisResponse(
@@ -136,6 +150,12 @@ class IndustrialIntegrationOrchestrator:
             diagnostic=evidence["diagnostics"],
             controlplane=report,
             service_status=service_status,
+            timings_ms={
+                "precheck": round(precheck_ms, 3),
+                "evidence": round(evidence_ms, 3),
+                "release_check": round(release_ms, 3),
+                "total": round((monotonic() - total_started) * 1000, 3),
+            },
         )
 
     @staticmethod

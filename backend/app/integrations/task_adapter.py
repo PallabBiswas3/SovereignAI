@@ -133,6 +133,9 @@ def integrated_result_state(
             "service_plan": plan.services,
             "service_status": result.service_status,
             "route_confidence": plan.confidence,
+            "assurance_level": (graph.get("verification_mode") if plan.use_graph else None),
+            "integration_timings_ms": result.timings_ms,
+            "graph_timings_ms": graph.get("timings_ms") if plan.use_graph else None,
         },
         context_metrics={
             "integration_route": plan.model_dump(mode="json"),
