@@ -30,11 +30,33 @@ from fastapi.responses import JSONResponse
 from app.core.database import SessionLocal
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.resources.residency import OllamaResidencyManager
+from app.router.model_registry import ModelRegistry
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    settings = get_settings()
+    if settings.model_prewarm_on_startup:
+        try:
+            registry = ModelRegistry(settings.models_config)
+            requested_ids = [
+                item.strip() for item in settings.model_prewarm_ids.split(",") if item.strip()
+            ]
+            models = [registry.get(model_id) for model_id in requested_ids]
+            by_endpoint: dict[str, list[str]] = {}
+            for model in models:
+                by_endpoint.setdefault(model.endpoint, []).append(model.model_tag)
+            for endpoint, model_tags in by_endpoint.items():
+                await OllamaResidencyManager(
+                    endpoint,
+                    default_keep_alive=settings.model_prewarm_keep_alive,
+                ).warm_pool(model_tags)
+        except Exception:
+            # Startup must remain available even if Ollama is offline or a configured model is absent.
+            # Model readiness/status endpoints expose the underlying problem for diagnosis.
+            pass
     yield
 
 
