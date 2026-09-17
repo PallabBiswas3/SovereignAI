@@ -96,7 +96,7 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     pieces, stats = asyncio.run(run())
     assert pieces == ["Pump ", "ready."]
     assert requests[0]["stream"] is True
-    assert requests[0]["options"]["num_ctx"] == 8192
+    assert requests[0]["options"]["num_ctx"] == 2048
     assert requests[0]["options"]["num_predict"] == 1024
     assert requests[0]["keep_alive"]
     assert stats["token_count"] == 2
@@ -105,6 +105,9 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     assert stats["tokens_per_second"] == 2.0
     assert stats["warm_status"] == "cold"
     assert stats["runtime_profile"]["mode"] == "STANDARD"
+    assert stats["runtime_profile"]["num_ctx"] == 8192
+    assert stats["context_plan"]["selected_num_ctx"] == 2048
+    assert stats["context_plan"]["profile_max_num_ctx"] == 8192
 
 
 def test_latency_breakdown_separates_model_queue_and_application_overhead() -> None:
