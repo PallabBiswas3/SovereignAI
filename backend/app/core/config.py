@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     model_adaptive_residency_enabled: bool = True
     model_cpu_tuning_enabled: bool = True
     model_cpu_tuning_path: Path = BACKEND_DIR / "data" / "cpu_tuning.json"
+    model_adaptive_context_enabled: bool = True
+    model_context_buckets: str = "2048,4096,8192,16384"
+    model_context_minimum: int = 2048
+    model_context_bytes_per_token: float = 3.0
+    model_context_prompt_margin_tokens: int = 128
+    model_optimization_enabled: bool = True
+    model_optimization_path: Path = BACKEND_DIR / "data" / "model_optimization.json"
+    model_optimization_min_quality: float = 0.90
     # CPU-laptop default: preserve fast conversational follow-ups without holding a 3+ GB model
     # resident for many minutes when system RAM is already under heavy pressure.
     model_idle_timeout_seconds: int = 60
@@ -105,5 +113,6 @@ def get_settings() -> Settings:
     settings.organization_reports_root.mkdir(parents=True, exist_ok=True)
     settings.model_footprints_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_cpu_tuning_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.model_optimization_path.parent.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings
