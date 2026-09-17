@@ -43,8 +43,13 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_local_files_only: bool = True
     embedding_allow_hash_fallback: bool = True
+    # Deprecated compatibility setting. CPU-only systems should use model_max_concurrent_jobs.
     max_gpu_model_jobs: int = 1
     max_cpu_jobs: int = 2
+    model_max_concurrent_jobs: int | None = 1
+    model_ram_admission_enabled: bool = True
+    model_ram_reserve_mb: float = 1536.0
+    model_ram_reserve_fraction: float = 0.15
     model_idle_timeout_seconds: int = 300
     model_keep_alive: str | None = None
     model_generation_timeout_seconds: float = 600.0
