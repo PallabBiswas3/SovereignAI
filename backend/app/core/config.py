@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     model_ram_admission_enabled: bool = True
     model_ram_reserve_mb: float = 1536.0
     model_ram_reserve_fraction: float = 0.15
+    model_footprints_path: Path = BACKEND_DIR / "data" / "model_footprints.json"
+    model_footprint_safety_multiplier: float = 1.10
+    model_adaptive_residency_enabled: bool = True
     model_idle_timeout_seconds: int = 300
     model_keep_alive: str | None = None
     model_generation_timeout_seconds: float = 600.0
@@ -96,5 +99,6 @@ def get_settings() -> Settings:
     settings.knowledge_root.mkdir(parents=True, exist_ok=True)
     settings.organizations_root.mkdir(parents=True, exist_ok=True)
     settings.organization_reports_root.mkdir(parents=True, exist_ok=True)
+    settings.model_footprints_path.parent.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings
