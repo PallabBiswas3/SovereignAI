@@ -64,6 +64,7 @@ def test_ollama_provider_applies_cpu_tuning_without_overriding_runtime_budget(tm
             execution_mode="STANDARD",
         )
         provider.adaptive_residency_enabled = False
+        provider.adaptive_context_enabled = False
         chunks = [chunk async for chunk in provider.stream("test", "qwen3:4b-instruct")]
         await client.aclose()
         return chunks[-1].runtime_stats
