@@ -6,6 +6,7 @@ from time import monotonic
 
 from app.agent.state import AgentRunState, AgentStep
 from app.llm.base import LocalModelProvider
+from app.resources.latency import build_latency_breakdown
 
 
 PersistCallback = Callable[[AgentRunState], Awaitable[None]]
@@ -18,7 +19,7 @@ class AgentExecutor:
     Model providers may yield very small chunks. Persisting every provider chunk as an SSE/audit
     event can make the application path much slower than direct local inference, especially when the
     callback commits each event to SQLite. We therefore coalesce model output into short UI frames
-    while retaining the complete model text in memory.
+    while retaining the complete model text in memory and measuring application-side overhead.
     """
 
     TOKEN_EVENT_MAX_CHARS = 96
@@ -53,23 +54,32 @@ class AgentExecutor:
         if step.action == "prepare_code":
             return "Code task identified; execution requires the isolated sandbox tool."
         if step.action == "generate_response":
+            generation_started_at = monotonic()
             await self._emit("generation_started", {"model": self.model})
             pieces: list[str] = []
             pending_event_text: list[str] = []
             pending_event_chars = 0
             last_event_at = monotonic()
+            event_callback_seconds = 0.0
+            event_callback_count = 0
+            first_ui_frame_seconds: float | None = None
             fallback = False
             provider_name = "local"
 
             async def flush_model_tokens() -> None:
                 nonlocal pending_event_chars, last_event_at
+                nonlocal event_callback_seconds, event_callback_count, first_ui_frame_seconds
                 if not pending_event_text:
                     return
                 text = "".join(pending_event_text)
                 pending_event_text.clear()
                 pending_event_chars = 0
-                last_event_at = monotonic()
+                callback_started_at = monotonic()
                 await self._emit("model_token", {"text": text, "model": self.model})
+                event_callback_seconds += monotonic() - callback_started_at
+                event_callback_count += 1
+                first_ui_frame_seconds = first_ui_frame_seconds or (monotonic() - generation_started_at)
+                last_event_at = monotonic()
 
             async for chunk in self.provider.stream(
                 self.generation_prompt or run.request,
@@ -100,6 +110,15 @@ class AgentExecutor:
             run.final_response = "".join(pieces).strip()
             if not run.final_response:
                 raise RuntimeError("Local model returned no direct response")
+
+            generation_wall_seconds = monotonic() - generation_started_at
+            run.runtime_metrics["latency_breakdown"] = build_latency_breakdown(
+                run.runtime_metrics,
+                generation_wall_seconds=generation_wall_seconds,
+                event_callback_seconds=event_callback_seconds,
+                event_callback_count=event_callback_count,
+                first_ui_frame_seconds=first_ui_frame_seconds,
+            )
             await self._emit(
                 "generation_completed",
                 {"model": self.model, "provider": provider_name, "runtime_metrics": run.runtime_metrics},
