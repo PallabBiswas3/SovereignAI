@@ -23,6 +23,7 @@ class ModelJob(BaseModel):
     role: str = "GENERAL"
     memory_requirement: str = "medium"
     estimated_ram_mb: float | None = Field(default=None, gt=0)
+    resident: bool = False
     execution_mode: str = "STANDARD"
     priority: int = Field(default=50, ge=0, le=100)
 
@@ -80,8 +81,8 @@ class ResourceScheduler:
 
     Generative-model work remains serialized by default, which avoids competing CPU-bound
     generations on laptop hardware. Before admitting a model job, the scheduler protects a
-    configurable RAM reserve. If an exact model RAM estimate is supplied, that estimate is also
-    included in the admission requirement. Unknown model RAM is never guessed.
+    configurable RAM reserve. If a non-resident model has a measured RAM estimate, that estimate
+    is included in admission. A resident model is charged zero additional load memory.
     """
 
     def __init__(
@@ -124,12 +125,21 @@ class ResourceScheduler:
     def _admission_permit(self, waiter: _Waiter) -> ResourcePermit:
         hardware = self.hardware_probe.snapshot()
         reserve = self._effective_ram_reserve(hardware)
-        estimate = waiter.job.estimated_ram_mb
-        required_headroom = reserve + (estimate or 0.0)
-        admission_mode = "ram-aware" if estimate is not None else "serialized-unknown-model-ram"
+        if waiter.job.resident:
+            estimate: float | None = 0.0
+            required_headroom = reserve
+            admission_mode = "resident-no-load"
+        else:
+            estimate = waiter.job.estimated_ram_mb
+            required_headroom = reserve + (estimate or 0.0)
+            admission_mode = "ram-aware" if estimate is not None else "serialized-unknown-model-ram"
 
         if self.ram_admission_enabled and hardware.ram_available_mb < required_headroom:
-            estimate_text = f" + {estimate:.0f} MB model estimate" if estimate is not None else ""
+            estimate_text = (
+                f" + {estimate:.0f} MB model estimate"
+                if estimate is not None and estimate > 0
+                else ""
+            )
             raise ResourceAdmissionError(
                 "Local inference admission rejected: "
                 f"{hardware.ram_available_mb:.0f} MB RAM available, but "
