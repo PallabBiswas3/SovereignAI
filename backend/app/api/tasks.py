@@ -63,6 +63,13 @@ from app.assets.repository import AssetRepository
 from app.assets.resolver import AssetResolver
 from app.assets.telemetry import APELSimulatorTelemetryProvider, FreshnessPolicy
 from app.identity import ContentIdentityService
+from app.integrations.models import IntegratedAnalysisRequest
+from app.integrations.clients import IntegrationServiceError
+from app.integrations.orchestrator import IndustrialIntegrationOrchestrator
+from app.integrations.routing import IntegrationRoutePlanner
+from app.integrations.task_adapter import (
+    integrated_result_state, integration_unavailable_state, missing_input_state,
+)
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -737,6 +744,88 @@ async def _execute_task(
                 chat_mode=chat_selection.selected.value,
                 chat_mode_reason=chat_selection.reason,
             )
+        elif (
+            payload.chat_mode == ChatMode.automatic
+            and not payload.workcell_id
+            and not (
+                payload.attachments
+                and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop"))
+            )
+            and (integration_plan := IntegrationRoutePlanner().plan(
+                payload.request, payload.attachments, settings.workspace_root,
+            )).handles_request
+        ):
+            registry = ModelRegistry(settings.models_config)
+            routing = ModelRouter(registry).route(payload.request, payload.model_override)
+            selection = _mode_selection(payload, routing)
+            if event_callback:
+                await event_callback("service_plan_selected", integration_plan.model_dump(mode="json"))
+            if integration_plan.missing_diagnostic_input:
+                draft = missing_input_state(
+                    request=payload.request, routing=routing, selection=selection, plan=integration_plan,
+                ).final_response
+                try:
+                    result = await IndustrialIntegrationOrchestrator(settings=settings).analyze(
+                        IntegratedAnalysisRequest(
+                            query=payload.request, candidate_response=draft,
+                            include_graph_evidence=integration_plan.use_graph,
+                            policy_profile=payload.use_case, consequential=True,
+                        ),
+                        principal_id=principal.user_id, organization_id=principal.organization_id,
+                    )
+                    state = integrated_result_state(
+                        request=payload.request, routing=routing, selection=selection,
+                        plan=integration_plan, result=result,
+                    )
+                    state.warnings.append("Diagnostic execution was withheld because validated time-series input was not supplied.")
+                except IntegrationServiceError as exc:
+                    state = integration_unavailable_state(
+                        request=payload.request, routing=routing, selection=selection,
+                        plan=integration_plan, error=str(exc),
+                    )
+            else:
+                try:
+                    result = await IndustrialIntegrationOrchestrator(settings=settings).analyze(
+                        IntegratedAnalysisRequest(
+                            query=payload.request, include_graph_evidence=integration_plan.use_graph,
+                            diagnostic=integration_plan.diagnostic, policy_profile=payload.use_case,
+                            consequential=True,
+                        ),
+                        principal_id=principal.user_id, organization_id=principal.organization_id,
+                    )
+                except IntegrationServiceError as exc:
+                    state = integration_unavailable_state(
+                        request=payload.request, routing=routing, selection=selection,
+                        plan=integration_plan, error=str(exc),
+                    )
+                    result = None
+                if result is None:
+                    if event_callback:
+                        await event_callback("integration_unavailable", {
+                            "services": integration_plan.services,
+                            "status": "not_released",
+                        })
+                else:
+                    if event_callback:
+                        if integration_plan.use_graph:
+                            await event_callback("graph_evidence_retrieved", {
+                                "status": (result.graph_evidence or {}).get("status"),
+                                "chunks": len((result.graph_evidence or {}).get("chunks") or []),
+                                "claims": len((result.graph_evidence or {}).get("claims") or []),
+                            })
+                        if integration_plan.diagnostic is not None:
+                            await event_callback("diagnostic_completed", {
+                                "domain": integration_plan.diagnostic.domain,
+                                "decision": (result.diagnostic or {}).get("decision"),
+                                "confidence": (result.diagnostic or {}).get("confidence"),
+                            })
+                        await event_callback("controlplane_release_decided", {
+                            "status": result.status, "released": result.released,
+                        })
+                    state = integrated_result_state(
+                        request=payload.request, routing=routing, selection=selection,
+                        plan=integration_plan, result=result,
+                    )
         elif chat_selection.selected == ChatMode.controlled and (
             payload.workcell_id
             or (payload.attachments and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop")))
@@ -812,6 +901,13 @@ async def _execute_task(
         if final_decision == GovernanceDecision.require_human_approval:
             state.status = RunStatus.waiting_for_approval
             state.final_response = "The draft requires human review because its material claims did not meet the engineering grounding threshold."
+    controlplane_status = str(state.context_metrics.get("controlplane_status") or "")
+    if controlplane_status and controlplane_status != "released":
+        final_decision = (
+            GovernanceDecision.require_human_approval
+            if "human_review" in controlplane_status
+            else GovernanceDecision.block
+        )
     state.governance = {
         "decision": final_decision.value,
         "input_decision": input_decision.value,

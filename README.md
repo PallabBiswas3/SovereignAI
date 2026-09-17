@@ -289,7 +289,7 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 - `POST /api/evaluation/run`, `GET /api/evaluation/metrics`
 - `GET /api/integrations/health`, `POST /api/integrations/analyze`
 
-The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
+The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
 
 ## Known limitations and future work
 
