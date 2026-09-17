@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     graphrag_url: str = "http://127.0.0.1:3100"
     controlplane_url: str = "http://127.0.0.1:8100"
     diagnostics_url: str = "http://127.0.0.1:8200"
-    integration_timeout_seconds: float = 60.0
+    integration_timeout_seconds: float = 180.0
     integration_fail_closed: bool = True
 
 

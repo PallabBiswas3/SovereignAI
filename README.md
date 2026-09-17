@@ -291,6 +291,8 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 
 The integrated analysis endpoint is the authenticated host boundary for the sibling Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The workspace-level service topology and launcher live in the parent `Industrial_Architechture` repository.
 
+The default integration timeout is 180 seconds because local Graph-RAG retrieval and claim verification may run several bounded Ollama calls on CPU. Override it with `SOVEREIGN_INTEGRATION_TIMEOUT_SECONDS` when the deployment has different local hardware.
+
 ## Known limitations and future work
 
 - Ollama and Docker are not bundled; service/model availability is shown honestly.
