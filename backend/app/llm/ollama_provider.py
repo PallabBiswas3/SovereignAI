@@ -17,9 +17,17 @@ from app.llm.base import (
     StructuredGenerationResult,
 )
 from app.monitoring.network import LocalNetworkPolicy
+from app.resources.adaptive_residency import AdaptiveResidencyManager, ResidencyDecision
+from app.resources.footprints import ModelFootprintStore
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
+from app.resources.residency import OllamaResidencyManager
 from app.resources.runtime_profiles import generation_runtime_profile
-from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_scheduler
+from app.resources.scheduler import (
+    ModelJob,
+    ResourceAdmissionError,
+    ResourceScheduler,
+    get_resource_scheduler,
+)
 
 
 class OllamaProvider(LocalModelProvider):
@@ -53,16 +61,51 @@ class OllamaProvider(LocalModelProvider):
         self.priority = priority
         self.keep_alive = keep_alive or settings.model_keep_alive or f"{settings.model_idle_timeout_seconds}s"
         self.timeout_seconds = timeout_seconds or settings.model_generation_timeout_seconds
+        self.adaptive_residency_enabled = settings.model_adaptive_residency_enabled
+        self.footprints = ModelFootprintStore(settings.model_footprints_path)
+        self.residency = OllamaResidencyManager(
+            self.endpoint,
+            default_keep_alive=self.keep_alive,
+            timeout_seconds=self.timeout_seconds,
+            client=client,
+        )
+        self.adaptive_residency = AdaptiveResidencyManager(
+            self.residency,
+            self.footprints,
+            ram_reserve_mb=settings.model_ram_reserve_mb,
+            ram_reserve_fraction=settings.model_ram_reserve_fraction,
+        )
         self._last_stats: dict[str, dict[str, object]] = {}
 
-    def _job(self, model: str) -> ModelJob:
+    def _job(self, model: str, decision: ResidencyDecision | None = None) -> ModelJob:
+        resident = bool(decision and decision.target_was_resident)
+        estimated_ram_mb = (
+            decision.estimated_load_mb
+            if decision and not resident and decision.estimated_load_mb and decision.estimated_load_mb > 0
+            else None
+        )
         return ModelJob(
             model=model,
             role=self.role,
             memory_requirement=self.memory_requirement,
+            estimated_ram_mb=estimated_ram_mb,
+            resident=resident,
             execution_mode=self.execution_mode,
             priority=self.priority,
         )
+
+    async def _prepare_residency(self, model: str) -> ResidencyDecision | None:
+        if not self.adaptive_residency_enabled:
+            return None
+        decision = await self.adaptive_residency.reconcile_for(model)
+        if not decision.safe_to_load:
+            raise ResourceAdmissionError(
+                f"Local model '{model}' cannot be loaded safely: {decision.reason} "
+                f"Available RAM={decision.available_before_mb:.0f} MB, "
+                f"reserve={decision.reserve_mb:.0f} MB, "
+                f"measured model load={decision.estimated_load_mb or 0:.0f} MB."
+            )
+        return decision
 
     @staticmethod
     def _direct_prompt(prompt: str, model: str) -> str:
@@ -124,8 +167,13 @@ class OllamaProvider(LocalModelProvider):
             timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False
         )
         try:
-            async with self.scheduler.acquire_model(self._job(model)) as permit:
-                was_loaded = await self._is_model_loaded(client, model)
+            residency_decision = await self._prepare_residency(model)
+            async with self.scheduler.acquire_model(self._job(model, residency_decision)) as permit:
+                was_loaded = (
+                    residency_decision.target_was_resident
+                    if residency_decision is not None
+                    else await self._is_model_loaded(client, model)
+                )
                 self.lifecycle.begin(model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
                 try:
                     async with client.stream(
@@ -154,6 +202,9 @@ class OllamaProvider(LocalModelProvider):
                                     queue_wait_seconds=permit.queue_wait_seconds,
                                 )
                                 stats["runtime_profile"] = runtime_profile.metrics()
+                                stats["resource_admission"] = permit.model_dump(mode="json")
+                                if residency_decision is not None:
+                                    stats["residency_decision"] = residency_decision.to_dict()
                                 self._last_stats[model] = stats
                                 self.lifecycle.complete(model, stats)
                                 yield GenerationChunk(
@@ -174,6 +225,9 @@ class OllamaProvider(LocalModelProvider):
                         raise RuntimeError(f"Local inference unavailable: {exc}") from exc
                     stats = self._failure_stats(started, first_token_at, was_loaded, permit.queue_wait_seconds, exc)
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["resource_admission"] = permit.model_dump(mode="json")
+                    if residency_decision is not None:
+                        stats["residency_decision"] = residency_decision.to_dict()
                     self._last_stats[model] = stats
                     fallback = (
                         "Local model generation was unavailable or exceeded its timeout. The request was "
@@ -330,8 +384,13 @@ class OllamaProvider(LocalModelProvider):
             timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False
         )
         try:
-            async with self.scheduler.acquire_model(self._job(model)) as permit:
-                was_loaded = await self._is_model_loaded(client, model)
+            residency_decision = await self._prepare_residency(model)
+            async with self.scheduler.acquire_model(self._job(model, residency_decision)) as permit:
+                was_loaded = (
+                    residency_decision.target_was_resident
+                    if residency_decision is not None
+                    else await self._is_model_loaded(client, model)
+                )
                 self.lifecycle.begin(model, was_loaded=was_loaded, queue_depth=self.scheduler.queue_depth)
                 try:
                     response = await client.post(f"{self.endpoint}/api/generate", json=payload)
@@ -355,6 +414,9 @@ class OllamaProvider(LocalModelProvider):
                         queue_wait_seconds=permit.queue_wait_seconds,
                     )
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["resource_admission"] = permit.model_dump(mode="json")
+                    if residency_decision is not None:
+                        stats["residency_decision"] = residency_decision.to_dict()
                     self._last_stats[model] = stats
                     self.lifecycle.complete(model, stats)
                     return StructuredGenerationResult(
@@ -372,6 +434,9 @@ class OllamaProvider(LocalModelProvider):
                         started, None, was_loaded, permit.queue_wait_seconds, exc
                     )
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["resource_admission"] = permit.model_dump(mode="json")
+                    if residency_decision is not None:
+                        stats["residency_decision"] = residency_decision.to_dict()
                     return StructuredGenerationResult(
                         text="",
                         data=None,
