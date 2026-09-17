@@ -11,6 +11,7 @@ from app.llm.ollama_provider import OllamaProvider
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.rag.embeddings import CachedEmbeddingProvider, LocalHashEmbeddingProvider
 from app.resources.cache import CacheKeyBuilder, CacheNamespace, SQLiteCache
+from app.resources.latency import build_latency_breakdown
 from app.resources.lifecycle import ModelLifecycleManager, ModelLifecycleState
 from app.resources.scheduler import ModelJob, ResourceScheduler
 from app.router.schemas import TaskProfile
@@ -87,6 +88,34 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     assert stats["output_truncated"] is False
     assert stats["tokens_per_second"] == 2.0
     assert stats["warm_status"] == "cold"
+
+
+def test_latency_breakdown_separates_model_queue_and_application_overhead() -> None:
+    metrics = {
+        "total_duration_seconds": 4.0,
+        "queue_wait_seconds": 0.5,
+        "load_duration_seconds": 0.25,
+        "time_to_first_token_seconds": 0.6,
+        "tokens_per_second": 20.0,
+        "prompt_token_count": 100,
+        "token_count": 80,
+        "warm_status": "warm",
+    }
+    breakdown = build_latency_breakdown(
+        metrics,
+        generation_wall_seconds=5.0,
+        event_callback_seconds=0.3,
+        event_callback_count=8,
+        first_ui_frame_seconds=0.7,
+    )
+    assert breakdown["model_reported_total_seconds"] == 4.0
+    assert breakdown["queue_wait_seconds"] == 0.5
+    assert breakdown["application_overhead_seconds"] == 0.5
+    assert breakdown["application_overhead_percent"] == 10.0
+    assert breakdown["event_callback_seconds"] == 0.3
+    assert breakdown["event_callback_count"] == 8
+    assert breakdown["first_ui_frame_seconds"] == 0.7
+    assert breakdown["decode_tokens_per_second"] == 20.0
 
 
 def test_generation_honors_preexisting_cancellation() -> None:
