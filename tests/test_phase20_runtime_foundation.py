@@ -13,6 +13,7 @@ from app.rag.embeddings import CachedEmbeddingProvider, LocalHashEmbeddingProvid
 from app.resources.cache import CacheKeyBuilder, CacheNamespace, SQLiteCache
 from app.resources.latency import build_latency_breakdown
 from app.resources.lifecycle import ModelLifecycleManager, ModelLifecycleState
+from app.resources.runtime_profiles import generation_runtime_profile
 from app.resources.scheduler import ModelJob, ResourceScheduler
 from app.router.schemas import TaskProfile
 
@@ -39,6 +40,19 @@ def test_execution_mode_selection_is_explicit_and_auditable() -> None:
     assert deep.selected == ExecutionMode.deep
     assert explicit.selected == ExecutionMode.standard
     assert explicit.reason
+
+
+def test_runtime_profiles_bound_context_and_output_by_execution_depth() -> None:
+    fast = generation_runtime_profile("FAST")
+    standard = generation_runtime_profile("STANDARD")
+    deep = generation_runtime_profile("DEEP")
+    assert (fast.num_ctx, fast.num_predict) == (4096, 384)
+    assert (standard.num_ctx, standard.num_predict) == (8192, 1024)
+    assert (deep.num_ctx, deep.num_predict) == (16384, 1536)
+    assert fast.num_ctx < standard.num_ctx < deep.num_ctx
+    assert fast.num_predict < standard.num_predict < deep.num_predict
+    assert generation_runtime_profile("unknown").mode == "STANDARD"
+    assert generation_runtime_profile("FAST", structured=True).num_predict == 1024
 
 
 def test_instruction_models_receive_the_original_prompt() -> None:
@@ -73,6 +87,7 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
             client=client,
             scheduler=ResourceScheduler(),
             lifecycle=ModelLifecycleManager(),
+            execution_mode="STANDARD",
         )
         chunks = [chunk async for chunk in provider.stream("Inspect pump", "local:test")]
         await client.aclose()
@@ -81,13 +96,15 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     pieces, stats = asyncio.run(run())
     assert pieces == ["Pump ", "ready."]
     assert requests[0]["stream"] is True
-    assert requests[0]["options"]["num_predict"] == 1280
+    assert requests[0]["options"]["num_ctx"] == 8192
+    assert requests[0]["options"]["num_predict"] == 1024
     assert requests[0]["keep_alive"]
     assert stats["token_count"] == 2
     assert stats["done_reason"] == "stop"
     assert stats["output_truncated"] is False
     assert stats["tokens_per_second"] == 2.0
     assert stats["warm_status"] == "cold"
+    assert stats["runtime_profile"]["mode"] == "STANDARD"
 
 
 def test_latency_breakdown_separates_model_queue_and_application_overhead() -> None:
