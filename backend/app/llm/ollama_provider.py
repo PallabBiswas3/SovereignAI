@@ -18,10 +18,11 @@ from app.llm.base import (
 )
 from app.monitoring.network import LocalNetworkPolicy
 from app.resources.adaptive_residency import AdaptiveResidencyManager, ResidencyDecision
+from app.resources.cpu_tuning import CpuTuningProfile, CpuTuningStore
 from app.resources.footprints import ModelFootprintStore
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
 from app.resources.residency import OllamaResidencyManager
-from app.resources.runtime_profiles import generation_runtime_profile
+from app.resources.runtime_profiles import GenerationRuntimeProfile, generation_runtime_profile
 from app.resources.scheduler import (
     ModelJob,
     ResourceAdmissionError,
@@ -41,6 +42,7 @@ class OllamaProvider(LocalModelProvider):
         client: httpx.AsyncClient | None = None,
         scheduler: ResourceScheduler | None = None,
         lifecycle: ModelLifecycleManager | None = None,
+        cpu_tuning: CpuTuningStore | None = None,
         role: str = "GENERAL",
         memory_requirement: str = "medium",
         execution_mode: str = "STANDARD",
@@ -62,6 +64,8 @@ class OllamaProvider(LocalModelProvider):
         self.keep_alive = keep_alive or settings.model_keep_alive or f"{settings.model_idle_timeout_seconds}s"
         self.timeout_seconds = timeout_seconds or settings.model_generation_timeout_seconds
         self.adaptive_residency_enabled = settings.model_adaptive_residency_enabled
+        self.cpu_tuning_enabled = settings.model_cpu_tuning_enabled
+        self.cpu_tuning = cpu_tuning or CpuTuningStore(settings.model_cpu_tuning_path)
         self.footprints = ModelFootprintStore(settings.model_footprints_path)
         self.residency = OllamaResidencyManager(
             self.endpoint,
@@ -106,6 +110,17 @@ class OllamaProvider(LocalModelProvider):
                 f"measured model load={decision.estimated_load_mb or 0:.0f} MB."
             )
         return decision
+
+    def _runtime_options(
+        self,
+        model: str,
+        runtime_profile: GenerationRuntimeProfile,
+    ) -> tuple[dict[str, int | float], CpuTuningProfile | None]:
+        options = runtime_profile.ollama_options()
+        tuning = self.cpu_tuning.get(model) if self.cpu_tuning_enabled else None
+        if tuning is not None:
+            options.update(tuning.ollama_options())
+        return options, tuning
 
     @staticmethod
     def _direct_prompt(prompt: str, model: str) -> str:
@@ -155,10 +170,11 @@ class OllamaProvider(LocalModelProvider):
         if cancellation_event and cancellation_event.is_set():
             raise ModelGenerationCancelled("Local model generation was cancelled before it started.")
         runtime_profile = generation_runtime_profile(self.execution_mode)
+        runtime_options, cpu_tuning = self._runtime_options(model, runtime_profile)
         payload = self._base_payload(prompt, model, system)
         payload.update({
             "stream": True,
-            "options": runtime_profile.ollama_options(),
+            "options": runtime_options,
         })
         started = monotonic()
         first_token_at: float | None = None
@@ -202,6 +218,7 @@ class OllamaProvider(LocalModelProvider):
                                     queue_wait_seconds=permit.queue_wait_seconds,
                                 )
                                 stats["runtime_profile"] = runtime_profile.metrics()
+                                stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
                                 stats["resource_admission"] = permit.model_dump(mode="json")
                                 if residency_decision is not None:
                                     stats["residency_decision"] = residency_decision.to_dict()
@@ -225,6 +242,7 @@ class OllamaProvider(LocalModelProvider):
                         raise RuntimeError(f"Local inference unavailable: {exc}") from exc
                     stats = self._failure_stats(started, first_token_at, was_loaded, permit.queue_wait_seconds, exc)
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
@@ -349,6 +367,7 @@ class OllamaProvider(LocalModelProvider):
             "running_models": running_models,
             "last_generation": self._last_stats.get(model or "", {}),
             "lifecycle": self.lifecycle.get(model).model_dump(mode="json") if model else None,
+            "cpu_tuning": self.cpu_tuning.get(model).model_dump(mode="json") if model and self.cpu_tuning.get(model) else None,
             "runtime_error": runtime_error,
         }
 
@@ -372,11 +391,12 @@ class OllamaProvider(LocalModelProvider):
         self, prompt: str, model: str, schema: dict[str, Any], system: str | None = None
     ) -> StructuredGenerationResult:
         runtime_profile = generation_runtime_profile(self.execution_mode, structured=True)
+        runtime_options, cpu_tuning = self._runtime_options(model, runtime_profile)
         payload = self._base_payload(prompt, model, system)
         payload.update({
             "format": schema,
             "stream": False,
-            "options": runtime_profile.ollama_options(),
+            "options": runtime_options,
         })
         started = monotonic()
         owns_client = self.client is None
@@ -414,6 +434,7 @@ class OllamaProvider(LocalModelProvider):
                         queue_wait_seconds=permit.queue_wait_seconds,
                     )
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
@@ -434,6 +455,7 @@ class OllamaProvider(LocalModelProvider):
                         started, None, was_loaded, permit.queue_wait_seconds, exc
                     )
                     stats["runtime_profile"] = runtime_profile.metrics()
+                    stats["cpu_tuning"] = cpu_tuning.model_dump(mode="json") if cpu_tuning else None
                     stats["resource_admission"] = permit.model_dump(mode="json")
                     if residency_decision is not None:
                         stats["residency_decision"] = residency_decision.to_dict()
