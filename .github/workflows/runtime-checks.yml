@@ -1,0 +1,33 @@
+name: Local AI Runtime checks
+
+on:
+  push:
+    branches:
+      - perf/local-runtime-latency-phase1
+  pull_request:
+    paths:
+      - "backend/app/resources/**"
+      - "backend/app/llm/**"
+      - "backend/app/agent/executor.py"
+      - "backend/app/core/config.py"
+      - "backend/app/main.py"
+      - "tests/test_phase20_runtime_foundation.py"
+      - "tests/test_phase21_residency.py"
+      - ".github/workflows/runtime-checks.yml"
+
+jobs:
+  runtime-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lightweight runtime test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx pydantic pydantic-settings sqlalchemy PyYAML psutil
+      - name: Run Local AI Runtime tests
+        run: |
+          pytest -q tests/test_phase20_runtime_foundation.py tests/test_phase21_residency.py
