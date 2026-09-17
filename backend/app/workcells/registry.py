@@ -51,9 +51,11 @@ class WorkcellRegistry:
                     issues=[WorkcellValidationIssue(code="WORKCELL_LOAD_FAILED", message=str(exc))],
                 ))
 
-    def list(self) -> list[WorkcellCatalogEntry]:
+    def list(self, organization_id: str | None = None) -> list[WorkcellCatalogEntry]:
         entries: list[WorkcellCatalogEntry] = []
         for key, definition in sorted(self._definitions.items()):
+            if organization_id is not None and definition.manifest.organization_id not in {None, organization_id}:
+                continue
             validation = self._validations[key]
             entries.append(WorkcellCatalogEntry(
                 id=definition.manifest.id, name=definition.manifest.name,
@@ -62,11 +64,16 @@ class WorkcellRegistry:
                 required_tools=definition.manifest.required_tools,
                 status=validation.status, trust_status=validation.trust_status,
                 content_hash=definition.content_hash, validation=validation,
+                organization_id=definition.manifest.organization_id,
             ))
         return entries
 
-    def get(self, workcell_id: str, version: str | None = None, *, require_ready: bool = True) -> WorkcellDefinition:
-        matches = [(key, value) for key, value in self._definitions.items() if key[0] == workcell_id and (version is None or key[1] == version)]
+    def get(self, workcell_id: str, version: str | None = None, *, require_ready: bool = True, organization_id: str | None = None) -> WorkcellDefinition:
+        matches = [
+            (key, value) for key, value in self._definitions.items()
+            if key[0] == workcell_id and (version is None or key[1] == version)
+            and (organization_id is None or value.manifest.organization_id in {None, organization_id})
+        ]
         if not matches:
             raise KeyError(f"WORKCELL_NOT_FOUND: {workcell_id}")
         matches.sort(key=lambda item: item[0][1], reverse=True)
@@ -80,10 +87,11 @@ class WorkcellRegistry:
         definition = self.get(workcell_id, version, require_ready=False)
         return self._validations[(definition.manifest.id, definition.manifest.version)]
 
-    def resolve_for_task(self, task_class: str) -> WorkcellDefinition | None:
+    def resolve_for_task(self, task_class: str, organization_id: str | None = None) -> WorkcellDefinition | None:
         candidates = [
             definition for key, definition in self._definitions.items()
             if task_class in definition.manifest.task_classes and self._validations[key].valid
+            and (organization_id is None or definition.manifest.organization_id in {None, organization_id})
         ]
         if not candidates:
             return None

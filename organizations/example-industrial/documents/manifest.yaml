@@ -1,0 +1,10 @@
+schema_version: "1.0"
+documents:
+  - path: maintenance/EXAMPLE-Pump-001_Operating_Limits.md
+    access_rule_id: example-industrial-maintenance-documents
+    revision: Rev 1
+    approval_status: APPROVED
+    asset_ids: [EXAMPLE-Pump-001]
+    relationship: HAS_REQUIREMENT
+    metadata:
+      document_type: operating-limits

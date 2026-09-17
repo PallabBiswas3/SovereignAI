@@ -39,6 +39,15 @@ control is implemented. See [docs/SOVEREIGNAI_2_BATCH5.md](docs/SOVEREIGNAI_2_BA
 [docs/PLANT_DATA_CONNECTORS.md](docs/PLANT_DATA_CONNECTORS.md), and
 [docs/APEL_ASSET_DEMO.md](docs/APEL_ASSET_DEMO.md).
 
+New companies can be onboarded without Python changes through validated, versioned
+[Organization Packs](docs/ORGANIZATION_PACKS.md). Start with a non-mutating dry-run:
+
+```powershell
+python scripts\import_organization.py --pack organizations\example-industrial --dry-run
+```
+
+The architecture, security controls, test evidence, and production boundaries for this capability are recorded in [docs/SOVEREIGNAI_2_BATCH6.md](docs/SOVEREIGNAI_2_BATCH6.md).
+
 It is deliberately honest about runtime dependencies: model answers require a configured local Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
 ## Architecture

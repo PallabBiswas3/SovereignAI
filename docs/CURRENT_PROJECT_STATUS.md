@@ -17,7 +17,7 @@ For the detailed subsystem inventory and limitations, see [IMPLEMENTATION_STATUS
 | Semantic embeddings | Local `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions |
 | OCR | Local Tesseract/PDFium workflow passes scanned-PDF tests |
 | Docker sandbox | Docker CLI is installed, but the engine was stopped during final verification; no host execution fallback occurred |
-| Backend tests | 37 passed |
+| Backend tests | 135 collected; 134 passed, 1 expected Windows symlink skip |
 | Frontend | TypeScript and optimized production build passed |
 
 ## What each task path does
@@ -61,3 +61,9 @@ The offline benchmark contains 70 labeled cases: 20 routing, 20 RAG, 20 governan
 ## Fine-tuning status
 
 Fine-tuning is intentionally not implemented or required. The current priorities are local model integration, RAG, deterministic engineering controls, and larger evaluation sets. Consider LoRA only after collecting representative, permissioned examples and measuring a reproducible gap that prompting/RAG cannot solve.
+
+## Reusable organization onboarding
+
+Versioned Organization Packs now onboard organization structure, departments, workspaces, local or externally managed identities, access policies, assets, approved documents, and organization-scoped Workcells. Validation is fail-closed; dry-run is non-mutating; actual import is transactional, idempotent, and audited. A same-organization admin interface is available at `/admin/onboarding`, while first-time organization bootstrap remains a local CLI operation. See [ORGANIZATION_PACKS.md](ORGANIZATION_PACKS.md) and [SOVEREIGNAI_2_BATCH6.md](SOVEREIGNAI_2_BATCH6.md).
+
+Real corporate identity and plant-system adapters are not generic configuration: they require the target company's endpoints, certificates, account/group mappings, network zones, and acceptance approval. The existing plant connector boundary remains read-only.

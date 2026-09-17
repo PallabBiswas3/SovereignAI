@@ -86,12 +86,14 @@ class InspectionWorkflow:
         context_window: int = 32768,
         execution_mode: str = "STANDARD",
         asset_context: BaseModel | dict[str, Any] | None = None,
+        source_document_ids: set[str] | None = None,
     ) -> InspectionAnalysis:
         input_hashes = [
             hashlib.sha256(inspection_path.read_bytes()).hexdigest(),
             self.retriever.collection_version(),
             hashlib.sha256(task.encode("utf-8")).hexdigest(),
             hashlib.sha256(json.dumps(asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else asset_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
+            hashlib.sha256(json.dumps(sorted(source_document_ids or [])).encode("utf-8")).hexdigest(),
         ]
         workflow_version = "inspection-evidence-first-v2"
         if self.workcell_identity:
@@ -141,6 +143,10 @@ class InspectionWorkflow:
                 self.retriever, self.context_compiler.settings.max_retrieval_subqueries
             )
             deep_candidates = pipeline.search(task, execution_mode, 10)
+            if source_document_ids:
+                deep_candidates = [
+                    item for item in deep_candidates if item.document_id in source_document_ids
+                ]
             all_candidates.update({item.chunk_id: item for item in deep_candidates})
             retrieval_metrics.append({
                 "query": task,
@@ -158,6 +164,10 @@ class InspectionWorkflow:
                 }.values())
             else:
                 candidates = self.retriever.search(query, limit=20)
+            if source_document_ids:
+                candidates = [
+                    item for item in candidates if item.document_id in source_document_ids
+                ]
             candidates_by_metric[reading.metric] = candidates
             all_candidates.update({item.chunk_id: item for item in candidates})
             telemetry = getattr(self.retriever, "last_telemetry", None)

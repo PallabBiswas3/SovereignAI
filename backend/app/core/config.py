@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     tools_config: Path = PROJECT_DIR / "config" / "tools.yaml"
     access_config: Path = PROJECT_DIR / "config" / "access.yaml"
     workcells_root: Path = PROJECT_DIR / "workcells"
+    organizations_root: Path = PROJECT_DIR / "organizations"
+    organization_reports_root: Path = PROJECT_DIR / "workspace" / "onboarding_reports"
     unsigned_workcells_allowed: bool = True
     capsules_root: Path = PROJECT_DIR / "workspace" / "evidence_capsules"
     unsigned_capsules_allowed: bool = True
@@ -79,5 +81,7 @@ def get_settings() -> Settings:
         raise RuntimeError("SOVEREIGN_AUTH_MODE=disabled is forbidden in production")
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
     settings.knowledge_root.mkdir(parents=True, exist_ok=True)
+    settings.organizations_root.mkdir(parents=True, exist_ok=True)
+    settings.organization_reports_root.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings

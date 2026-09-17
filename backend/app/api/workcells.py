@@ -15,7 +15,10 @@ router = APIRouter(prefix="/api/workcells", tags=["workcells"])
 async def list_workcells(
     principal: Principal = Depends(require_permission(Permission.task_read)),
 ) -> list[dict[str, object]]:
-    return [item.model_dump(mode="json") for item in configured_workcell_registry(get_settings()).list()]
+    return [
+        item.model_dump(mode="json")
+        for item in configured_workcell_registry(get_settings()).list(principal.organization_id)
+    ]
 
 
 @router.get("/{workcell_id}")
@@ -25,7 +28,9 @@ async def get_workcell(
 ) -> dict[str, object]:
     registry = configured_workcell_registry(get_settings())
     try:
-        definition = registry.get(workcell_id, require_ready=False)
+        definition = registry.get(
+            workcell_id, require_ready=False, organization_id=principal.organization_id,
+        )
         validation = registry.validation(workcell_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

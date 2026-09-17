@@ -126,6 +126,7 @@ class WorkcellManifest(StrictModel):
     input_schema: WorkcellInputSchema = Field(default_factory=WorkcellInputSchema)
     output_schema: WorkcellOutputSchema = Field(default_factory=WorkcellOutputSchema)
     enabled: bool = True
+    organization_id: str | None = Field(default=None, min_length=2, max_length=100)
 
     @field_validator("required_tools", "optional_tools")
     @classmethod
@@ -210,3 +211,4 @@ class WorkcellCatalogEntry(BaseModel):
     trust_status: WorkcellTrustStatus
     content_hash: str | None = None
     validation: WorkcellValidationResult
+    organization_id: str | None = None

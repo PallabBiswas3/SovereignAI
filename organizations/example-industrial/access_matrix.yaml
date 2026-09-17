@@ -1,0 +1,13 @@
+schema_version: "1.0"
+asset_rules:
+  - id: example-industrial-maintenance-assets
+    workspace_id: example-industrial-plant-1-workspace
+    department_id: example-industrial-maintenance
+    classification: CONFIDENTIAL
+    allowed_roles: [ENGINEER, MANAGER, AUDITOR]
+document_rules:
+  - id: example-industrial-maintenance-documents
+    workspace_id: example-industrial-plant-1-workspace
+    department_id: example-industrial-maintenance
+    classification: CONFIDENTIAL
+    allowed_roles: [ENGINEER, MANAGER, AUDITOR]

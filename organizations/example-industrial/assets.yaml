@@ -1,0 +1,18 @@
+schema_version: "1.0"
+assets:
+  - id: EXAMPLE-Pump-001
+    canonical_name: Cooling Water Pump 1
+    asset_type: pump
+    plant_id: example-industrial-plant-1
+    area_id: example-industrial-utilities
+    unit_id: example-industrial-cooling-water
+    access_rule_id: example-industrial-maintenance-assets
+    criticality: HIGH
+    status: IN_SERVICE
+    manufacturer: Example Manufacturer
+    model: EX-100
+    design_parameters:
+      normal_vibration_max_mm_s_rms: 6.0
+      normal_discharge_pressure_bar: 5.0
+    tags: [cooling-water, rotating-equipment]
+    aliases: [EX-P-001]

@@ -27,6 +27,7 @@ class KnowledgeIngestionService:
         *,
         acl: DocumentACL | None = None,
         require_acl: bool = False,
+        commit: bool = True,
     ) -> KnowledgeDocument:
         if require_acl and acl is None:
             raise ValueError("ACCESS_SCOPE_REQUIRED")
@@ -73,7 +74,7 @@ class KnowledgeIngestionService:
                     record.metadata_json = json.dumps(chunk_metadata)
                 metadata_changed = True
             if metadata_changed:
-                self.session.commit()
+                self.session.commit() if commit else self.session.flush()
             if existing.embedding_provider != self.embeddings.provider_name:
                 records = self.session.query(KnowledgeChunkRecord).filter_by(
                     document_id=existing.id
@@ -83,7 +84,7 @@ class KnowledgeIngestionService:
                     record.embedding_json = json.dumps(vector)
                 existing.embedding_provider = self.embeddings.provider_name
                 existing.embedding_dimension = self.embeddings.dimension
-                self.session.commit()
+                self.session.commit() if commit else self.session.flush()
             return existing
         text = extract_text(path)
         chunks = self.chunker.chunk(text, metadata)
@@ -110,5 +111,5 @@ class KnowledgeIngestionService:
                 text=chunk.text, page=chunk.page, section=chunk.section,
                 metadata_json=json.dumps(chunk.metadata), embedding_json=json.dumps(vector),
             ))
-        self.session.commit()
+        self.session.commit() if commit else self.session.flush()
         return document

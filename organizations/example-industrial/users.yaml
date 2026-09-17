@@ -1,0 +1,19 @@
+schema_version: "1.0"
+identity_provider: local
+users:
+  - id: example-industrial-engineer-1
+    email: engineer@example-industrial.invalid
+    display_name: Example Maintenance Engineer
+    departments: [example-industrial-maintenance]
+    workspaces: [example-industrial-plant-1-workspace]
+    roles: [USER, ENGINEER]
+    clearance: CONFIDENTIAL
+    password_env: EXAMPLE_INDUSTRIAL_ENGINEER_PASSWORD
+  - id: example-industrial-admin-1
+    email: admin@example-industrial.invalid
+    display_name: Example Platform Administrator
+    departments: [example-industrial-it]
+    workspaces: [example-industrial-plant-1-workspace]
+    roles: [ADMIN]
+    clearance: RESTRICTED
+    password_env: EXAMPLE_INDUSTRIAL_ADMIN_PASSWORD

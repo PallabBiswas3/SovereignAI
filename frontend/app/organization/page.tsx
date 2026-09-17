@@ -27,10 +27,10 @@ export default function OrganizationPage() {
     }).catch((caught) => setError(caught instanceof Error ? caught.message : "Organization unavailable"));
   }, []);
   return <main className="monitorPage organizationPage">
-    <header className="monitorHeader"><div><small>SYNTHETIC ENTERPRISE DEMO</small><h1>{payload?.organization?.name ?? "Organization context"}</h1></div><Link href="/">Back to workbench</Link></header>
+    <header className="monitorHeader"><div><small>{payload?.metadata.fictional ? "SYNTHETIC ENTERPRISE DEMO" : "AUTHORIZED ORGANIZATION CONTEXT"}</small><h1>{payload?.organization?.name ?? "Organization context"}</h1></div><Link href="/">Back to workbench</Link></header>
     {error && <p className="error">{error}</p>}
     {payload && <>
-      <div className="sovereignHero"><div className="pulse"/><div><small>{payload.organization?.short_name} · COMPLETELY FICTIONAL</small><h2>{payload.metadata.plant?.name ?? payload.workspaces[0]?.name}</h2><p>{payload.metadata.plant?.areas?.join(" · ")}</p></div></div>
+      <div className="sovereignHero"><div className="pulse"/><div><small>{payload.organization?.short_name}{payload.metadata.fictional ? " · COMPLETELY FICTIONAL" : " · AUTHORIZED LOCAL DATA"}</small><h2>{payload.metadata.plant?.name ?? payload.workspaces[0]?.name}</h2><p>{payload.metadata.plant?.areas?.join(" · ")}</p></div></div>
       <div className="orgColumns"><section><label>DEPARTMENTS</label>{payload.departments.map((item) => <div className="orgRow" key={item.id}><b>{item.name}</b><small>{item.id}</small></div>)}</section><section><label>ASSETS</label>{payload.metadata.assets?.map((item) => <div className="orgRow" key={item.id}><b>{item.id}</b><small>{item.area} · {item.service}</small></div>)}</section></div>
       <section className="scenarioList"><label>AVAILABLE DEMONSTRATION SCENARIOS</label>{payload.metadata.scenarios?.map((item) => <article key={item.id}><b>{item.id}</b><p>“{item.prompt}”</p><small>{item.user} · {item.expected}</small></article>)}</section>
     </>}

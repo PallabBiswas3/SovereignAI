@@ -1,0 +1,28 @@
+schema_version: "1.0"
+organization:
+  id: example-industrial
+  name: Example Industrial Company Limited
+  short_name: EICL
+  metadata:
+    fictional: true
+    onboarding_note: Replace this example with company-approved identifiers and metadata.
+plants:
+  - id: example-industrial-plant-1
+    name: Plant 1
+areas:
+  - id: example-industrial-utilities
+    name: Utilities
+    plant_id: example-industrial-plant-1
+units:
+  - id: example-industrial-cooling-water
+    name: Cooling Water
+    plant_id: example-industrial-plant-1
+    area_id: example-industrial-utilities
+departments:
+  - id: example-industrial-maintenance
+    name: Maintenance
+  - id: example-industrial-it
+    name: Information Technology
+workspaces:
+  - id: example-industrial-plant-1-workspace
+    name: Plant 1 Operations

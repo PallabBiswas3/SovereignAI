@@ -398,19 +398,20 @@ async def _run_inspection_task_implementation(
     if not candidates:
         raise ValueError("Inspection workflow requires a PDF, Word, Markdown, or text inspection report")
     inspection = next((path for path in candidates if "inspection" in path.stem.lower()), candidates[0])
-    if uploaded_sops:
-        sop = uploaded_sops[0]
-    else:
+    sop = uploaded_sops[0] if uploaded_sops else None
+    if sop is None and settings.auth_mode.lower() != "local":
         sop_name = "Maintenance_SOP.pdf" if (settings.knowledge_root / "Maintenance_SOP.pdf").exists() else "Maintenance_SOP.md"
         sop = SafeWorkspace(settings.knowledge_root).resolve(sop_name, must_exist=True)
     embeddings = configured_embedding_provider()
     cache = get_cache_backend() if settings.cache_enabled else None
     scope = AuthorizationService.owned_scope(principal)
     secure_acl = DocumentACL(**scope.model_dump(exclude={"resource_id"})) if settings.auth_mode.lower() == "local" else None
-    document = KnowledgeIngestionService(db, embeddings).ingest(
-        sop, {"department": "maintenance", "classification": "internal"},
-        acl=secure_acl, require_acl=secure_acl is not None,
-    )
+    document = None
+    if sop is not None:
+        document = KnowledgeIngestionService(db, embeddings).ingest(
+            sop, {"department": "maintenance", "classification": "internal"},
+            acl=secure_acl, require_acl=secure_acl is not None,
+        )
     package_requested = any(phrase in payload.request.lower() for phrase in ("management package", "management pack", "docx xlsx pptx"))
     artifact_root = settings.workspace_root / "artifacts"
     output = (artifact_root / run_id / "approval_note.docx") if package_requested else (artifact_root / f"Approval_Note_{run_id[:8]}.docx")
@@ -456,23 +457,29 @@ async def _run_inspection_task_implementation(
         context_window=selected_model.context_length,
         execution_mode=selection.selected.value,
         asset_context=asset_context,
+        source_document_ids={document.id} if document else None,
     )
     structured = analysis.evidence_bundle
     artifact_service = ArtifactService(db, artifact_root)
     artifact = artifact_service.register(output, run_id, scope=scope)
     artifact_records = [artifact]
-    extra_paths = [path for path in attachment_paths if path not in {inspection, sop}]
+    excluded = {inspection}
+    if sop is not None:
+        excluded.add(sop)
+    extra_paths = [path for path in attachment_paths if path not in excluded]
     evidence = [{
         "file": inspection.name, "media_type": "inspection/report", "processor": "deterministic-inspection",
         "summary": f"Extracted {len(analysis.findings)} supported measurements.",
         "provenance": {"file": inspection.name, "path": str(inspection)},
         "metadata": {"findings": analysis.findings},
-    }, {
-        "file": sop.name, "media_type": "knowledge/sop", "processor": "semantic-ingestion",
-        "summary": f"Indexed {document.chunk_count} provenance chunks.",
-        "provenance": {"file": sop.name, "path": str(sop)},
-        "metadata": {"document_id": document.id},
     }]
+    if sop is not None and document is not None:
+        evidence.append({
+            "file": sop.name, "media_type": "knowledge/sop", "processor": "semantic-ingestion",
+            "summary": f"Indexed {document.chunk_count} provenance chunks.",
+            "provenance": {"file": sop.name, "path": str(sop)},
+            "metadata": {"document_id": document.id},
+        })
     if extra_paths:
         vision = registry.get("vision")
         processed = await MultiFileEvidenceProcessor(
@@ -497,7 +504,8 @@ async def _run_inspection_task_implementation(
         f"Inspected {inspection.name}; scanned={bool(analysis.ocr)}.",
         (f"Local OCR completed at {analysis.ocr['mean_confidence']:.0%} confidence." if analysis.ocr else "Digital text extracted; OCR was not required."),
         f"Extracted {len(analysis.findings)} supported measurements.",
-        f"Ingested {document.filename} into {document.chunk_count} provenance chunks.",
+        (f"Ingested {document.filename} into {document.chunk_count} provenance chunks."
+         if document else "Used the authenticated organization's authorized maintenance corpus."),
         f"Retrieved {len(analysis.sources)} applicable SOP sections.",
         "Compared observed values against retrieved limits.",
         "Attached file, page, and section citations.",
@@ -735,13 +743,15 @@ async def _execute_task(
         ):
             workcells = configured_workcell_registry(settings)
             if payload.workcell_id:
-                definition = workcells.get(payload.workcell_id)
+                definition = workcells.get(
+                    payload.workcell_id, organization_id=principal.organization_id,
+                )
             else:
-                definition = workcells.resolve_for_task("engineering_inspection")
+                definition = workcells.resolve_for_task(
+                    "engineering_inspection", organization_id=principal.organization_id,
+                )
                 if definition is None:
                     raise ValueError("WORKCELL_NOT_FOUND: no ready engineering inspection Workcell")
-            if definition.manifest.id != "pump-inspection":
-                raise ValueError(f"WORKCELL_EXECUTION_FAILED: no trusted task adapter for {definition.manifest.id}")
             if event_callback:
                 await event_callback("workcell_selected", {
                     "workcell_id": definition.manifest.id,

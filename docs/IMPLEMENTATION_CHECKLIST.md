@@ -14,6 +14,7 @@
 | 10 — Live events | asynchronous task start, persisted structured SSE events, live frontend | SSE lifecycle test |
 | 11 — Sovereignty proof | strict endpoint policy, internal Compose network, pinned internal Ollama, active egress/Ollama verifier, scoped docs | policy/Compose tests; Compose config validation |
 | 12 — Evaluation | 20 routing + 20 RAG + 20 governance + 10 agent cases and expanded metrics | offline benchmark test |
+| 13 — Organization onboarding | strict versioned packs, dry-run validation, transactional/idempotent import, organization-scoped ACLs/assets/documents/Workcells, admin API and UI | Phase 37 security/import/API tests; complete regression |
 
 Final verification on 1 September 2026:
 
@@ -24,3 +25,11 @@ Final verification on 1 September 2026:
 - Ollama: reachable; both unique model tags installed; all three logical roles `READY`.
 - Benchmark: routing accuracy 0.95; semantic RAG Recall@1/Recall@3/MRR 1.0; PII and injection F1 1.0; see evaluation API for full case-level output.
 - Docker: engine stopped on this workstation, so a live container execution success is not claimed. Safety behavior and bounded repair logic are tested.
+
+Latest Batch 6 verification on 3 September 2026:
+
+- Backend: 135 collected; 134 passed and one expected Windows symbolic-link test skipped.
+- Organization Pack dry-run: passed with no database mutation.
+- Frontend TypeScript: passed.
+- Frontend production build: passed, including `/admin/onboarding`.
+- Real AD/LDAP/OIDC and plant-system connections are site-specific integrations and are not claimed by this result.
