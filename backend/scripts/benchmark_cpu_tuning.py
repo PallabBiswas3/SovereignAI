@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
 from pathlib import Path
@@ -23,6 +24,16 @@ def ns_to_seconds(value: object) -> float | None:
     return float(value) / 1_000_000_000 if isinstance(value, (int, float)) else None
 
 
+def cpu_observation() -> dict[str, float | int | None]:
+    frequency = psutil.cpu_freq()
+    memory = psutil.virtual_memory()
+    return {
+        "cpu_percent": round(psutil.cpu_percent(interval=None), 2),
+        "current_frequency_mhz": round(float(frequency.current), 2) if frequency else None,
+        "available_ram_mb": round(memory.available / 1024 / 1024, 2),
+    }
+
+
 def run_once(
     client: httpx.Client,
     endpoint: str,
@@ -34,6 +45,9 @@ def run_once(
     num_ctx: int,
     num_predict: int,
     keep_alive: str,
+    round_index: int,
+    sequence_index: int,
+    measured: bool,
 ) -> dict[str, Any]:
     payload = {
         "model": model,
@@ -49,15 +63,20 @@ def run_once(
             "num_batch": num_batch,
         },
     }
+    before = cpu_observation()
     started = time.perf_counter()
     response = client.post(f"{endpoint}/api/generate", json=payload)
     wall = time.perf_counter() - started
     response.raise_for_status()
     data = response.json()
+    after = cpu_observation()
     eval_seconds = ns_to_seconds(data.get("eval_duration"))
     eval_count = int(data.get("eval_count", 0) or 0)
     prompt_seconds = ns_to_seconds(data.get("prompt_eval_duration"))
     return {
+        "round": round_index,
+        "sequence_index": sequence_index,
+        "measured": measured,
         "num_thread": num_thread,
         "num_batch": num_batch,
         "wall_seconds": round(wall, 6),
@@ -67,6 +86,8 @@ def run_once(
         "generated_tokens": eval_count,
         "tokens_per_second": round(eval_count / eval_seconds, 3) if eval_seconds and eval_count else None,
         "done_reason": str(data.get("done_reason") or "stop"),
+        "system_before": before,
+        "system_after": after,
     }
 
 
@@ -79,10 +100,12 @@ def main() -> int:
     parser.add_argument("--threads", default=None, help="Comma-separated thread counts. Defaults around the physical-core optimum region.")
     parser.add_argument("--batches", default="64,128")
     parser.add_argument("--warmups", type=int, default=1)
-    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--repeats", type=int, default=3, help="Measured interleaved rounds per configuration.")
     parser.add_argument("--num-ctx", type=int, default=4096)
     parser.add_argument("--num-predict", type=int, default=128)
     parser.add_argument("--keep-alive", default="60s")
+    parser.add_argument("--seed", type=int, default=20260918)
+    parser.add_argument("--cooldown-seconds", type=float, default=1.0)
     parser.add_argument("--output", type=Path, default=Path("workspace/qwen3_cpu_tuning.json"))
     parser.add_argument("--no-save-profile", action="store_true")
     args = parser.parse_args()
@@ -95,59 +118,88 @@ def main() -> int:
         center = max(1, physical // 2)
         threads = sorted({max(1, center - 1), center, min(physical, center + 1)})
     batches = sorted({max(1, int(item.strip())) for item in args.batches.split(",") if item.strip()})
+    candidates = [(num_thread, num_batch) for num_thread in threads for num_batch in batches]
 
     endpoint = args.endpoint.rstrip("/")
-    results: list[dict[str, Any]] = []
+    rng = random.Random(args.seed)
+    by_candidate: dict[tuple[int, int], dict[str, list[dict[str, Any]]]] = {
+        candidate: {"warmup_runs": [], "runs": []} for candidate in candidates
+    }
+    execution_order: list[dict[str, int]] = []
+    sequence_index = 0
+
     with httpx.Client(timeout=httpx.Timeout(settings.model_generation_timeout_seconds)) as client:
-        # Establish residency once. Each candidate also gets its own excluded warm-up because
-        # changing runner options may trigger runner reconfiguration/load overhead.
         preload = client.post(
             f"{endpoint}/api/generate",
             json={"model": args.model, "stream": False, "keep_alive": args.keep_alive},
         )
         preload.raise_for_status()
 
-        for num_thread in threads:
-            for num_batch in batches:
-                warmup_runs = [
-                    run_once(
-                        client,
-                        endpoint,
-                        model=args.model,
-                        prompt=args.prompt,
-                        num_thread=num_thread,
-                        num_batch=num_batch,
-                        num_ctx=args.num_ctx,
-                        num_predict=args.num_predict,
-                        keep_alive=args.keep_alive,
-                    )
-                    for _ in range(max(0, args.warmups))
-                ]
-                measured_runs = [
-                    run_once(
-                        client,
-                        endpoint,
-                        model=args.model,
-                        prompt=args.prompt,
-                        num_thread=num_thread,
-                        num_batch=num_batch,
-                        num_ctx=args.num_ctx,
-                        num_predict=args.num_predict,
-                        keep_alive=args.keep_alive,
-                    )
-                    for _ in range(max(1, args.repeats))
-                ]
-                valid_tps = [float(run["tokens_per_second"]) for run in measured_runs if run["tokens_per_second"] is not None]
-                results.append({
+        for round_index in range(1, max(1, args.repeats) + 1):
+            round_candidates = list(candidates)
+            rng.shuffle(round_candidates)
+            for num_thread, num_batch in round_candidates:
+                sequence_index += 1
+                execution_order.append({
+                    "round": round_index,
+                    "sequence_index": sequence_index,
                     "num_thread": num_thread,
                     "num_batch": num_batch,
-                    "median_tokens_per_second": round(median(valid_tps), 3) if valid_tps else None,
-                    "mean_tokens_per_second": round(mean(valid_tps), 3) if valid_tps else None,
-                    "median_wall_seconds": round(median(float(run["wall_seconds"]) for run in measured_runs), 6),
-                    "mean_prompt_eval_seconds": round(mean(float(run["prompt_eval_seconds"]) for run in measured_runs), 6),
-                    "warmup_runs": warmup_runs,
-                    "runs": measured_runs,
                 })
+                bucket = by_candidate[(num_thread, num_batch)]
+                for _ in range(max(0, args.warmups)):
+                    bucket["warmup_runs"].append(
+                        run_once(
+                            client,
+                            endpoint,
+                            model=args.model,
+                            prompt=args.prompt,
+                            num_thread=num_thread,
+                            num_batch=num_batch,
+                            num_ctx=args.num_ctx,
+                            num_predict=args.num_predict,
+                            keep_alive=args.keep_alive,
+                            round_index=round_index,
+                            sequence_index=sequence_index,
+                            measured=False,
+                        )
+                    )
+                bucket["runs"].append(
+                    run_once(
+                        client,
+                        endpoint,
+                        model=args.model,
+                        prompt=args.prompt,
+                        num_thread=num_thread,
+                        num_batch=num_batch,
+                        num_ctx=args.num_ctx,
+                        num_predict=args.num_predict,
+                        keep_alive=args.keep_alive,
+                        round_index=round_index,
+                        sequence_index=sequence_index,
+                        measured=True,
+                    )
+                )
+                if args.cooldown_seconds > 0:
+                    time.sleep(args.cooldown_seconds)
+
+    results: list[dict[str, Any]] = []
+    for num_thread, num_batch in candidates:
+        bucket = by_candidate[(num_thread, num_batch)]
+        measured_runs = bucket["runs"]
+        valid_tps = [float(run["tokens_per_second"]) for run in measured_runs if run["tokens_per_second"] is not None]
+        results.append({
+            "num_thread": num_thread,
+            "num_batch": num_batch,
+            "median_tokens_per_second": round(median(valid_tps), 3) if valid_tps else None,
+            "mean_tokens_per_second": round(mean(valid_tps), 3) if valid_tps else None,
+            "min_tokens_per_second": round(min(valid_tps), 3) if valid_tps else None,
+            "max_tokens_per_second": round(max(valid_tps), 3) if valid_tps else None,
+            "median_wall_seconds": round(median(float(run["wall_seconds"]) for run in measured_runs), 6),
+            "mean_prompt_eval_seconds": round(mean(float(run["prompt_eval_seconds"]) for run in measured_runs), 6),
+            "warmup_runs": bucket["warmup_runs"],
+            "runs": measured_runs,
+        })
 
     ranked = sorted(
         results,
@@ -184,12 +236,16 @@ def main() -> int:
             "num_ctx": args.num_ctx,
             "num_predict": args.num_predict,
             "keep_alive": args.keep_alive,
-            "warmups": max(0, args.warmups),
-            "repeats": max(1, args.repeats),
+            "warmups_per_visit": max(0, args.warmups),
+            "measured_rounds": max(1, args.repeats),
             "threads": threads,
             "batches": batches,
             "ranking_metric": "median_tokens_per_second",
+            "methodology": "seeded_interleaved_rounds_v2",
+            "seed": args.seed,
+            "cooldown_seconds": max(0.0, args.cooldown_seconds),
         },
+        "execution_order": execution_order,
         "best": best,
         "saved_profile": saved_profile.model_dump(mode="json") if saved_profile else None,
         "ranked_results": ranked,
