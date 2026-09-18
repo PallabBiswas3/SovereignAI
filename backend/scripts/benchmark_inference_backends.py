@@ -154,6 +154,44 @@ def _summary(runs: list[dict[str, Any]]) -> dict[str, float | None]:
     }
 
 
+def _llama_server_identity(client: httpx.Client, endpoint: str) -> list[str] | None:
+    try:
+        health = client.get(f"{endpoint}/health", timeout=2.0)
+        health.raise_for_status()
+        models_response = client.get(f"{endpoint}/v1/models", timeout=2.0)
+        models_response.raise_for_status()
+        models = [item for item in models_response.json().get("data", []) if isinstance(item, dict)]
+        if not models:
+            return None
+        return [str(item.get("id") or "") for item in models]
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+def _discover_llama_endpoint(
+    client: httpx.Client,
+    requested_endpoint: str,
+    expected_model: str,
+    *,
+    explicit_endpoint: bool,
+) -> tuple[str, list[str] | None]:
+    requested = requested_endpoint.rstrip("/")
+    ids = _llama_server_identity(client, requested)
+    if ids is not None:
+        return requested, ids
+    if explicit_endpoint:
+        return requested, None
+
+    # The Windows launcher automatically moves off 8080 when it is occupied. Search the same
+    # localhost-only range so the benchmark remains a one-command workflow.
+    for port in range(8081, 8101):
+        candidate = f"http://127.0.0.1:{port}"
+        ids = _llama_server_identity(client, candidate)
+        if ids is not None and expected_model in ids:
+            return candidate, ids
+    return requested, None
+
+
 def main() -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(description="Compare Ollama and llama.cpp on the same local model and persist the validated backend winner.")
@@ -170,12 +208,19 @@ def main() -> int:
     args = parser.parse_args()
 
     ollama = args.ollama_endpoint.rstrip("/")
-    llama = args.llama_cpp_endpoint.rstrip("/")
+    llama_requested = args.llama_cpp_endpoint.rstrip("/")
     tuning = CpuTuningStore(settings.model_cpu_tuning_path).get(args.model)
     thread = tuning.num_thread if tuning else None
     batch = tuning.num_batch if tuning else None
 
     with httpx.Client(timeout=httpx.Timeout(settings.model_generation_timeout_seconds)) as client:
+        llama, discovered_ids = _discover_llama_endpoint(
+            client,
+            llama_requested,
+            args.model,
+            explicit_endpoint="--llama-cpp-endpoint" in sys.argv,
+        )
+
         tags = client.get(f"{ollama}/api/tags")
         tags.raise_for_status()
         installed = {str(item.get("name") or item.get("model") or "") for item in tags.json().get("models", []) if isinstance(item, dict)}
@@ -212,14 +257,9 @@ def main() -> int:
         llama_runs: list[dict[str, Any]] = []
         llama_summary: dict[str, float | None] = {"median_tokens_per_second": None, "median_wall_seconds": None}
         try:
-            health = client.get(f"{llama}/health")
-            health.raise_for_status()
-            models_response = client.get(f"{llama}/v1/models")
-            models_response.raise_for_status()
-            models = [item for item in models_response.json().get("data", []) if isinstance(item, dict)]
-            if not models:
-                raise RuntimeError("llama.cpp server reports no loaded model")
-            reported_ids = [str(item.get("id") or "") for item in models]
+            reported_ids = discovered_ids or _llama_server_identity(client, llama)
+            if not reported_ids:
+                raise RuntimeError(f"No compatible llama.cpp server found at {llama_requested} or localhost ports 8081-8100")
             if llama_model is None:
                 llama_model = args.model if args.model in reported_ids else reported_ids[0]
             llama_identity_matches = llama_model == args.model and llama_model in reported_ids
@@ -260,6 +300,8 @@ def main() -> int:
 
     report = {
         "model": args.model,
+        "llama_cpp_endpoint_requested": llama_requested,
+        "llama_cpp_endpoint_used": llama,
         "llama_cpp_model": llama_model,
         "llama_cpp_identity_matches": llama_identity_matches,
         "selection_rules": {
