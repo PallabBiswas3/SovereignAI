@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from statistics import mean, median
+from statistics import median
 from typing import Any
 from urllib.parse import urlparse
 
@@ -17,6 +17,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 SYSTEM_PROMPT = "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources."
 DEFAULT_PROMPT = "Explain in four concise technical points why an outer-race bearing fault creates periodic vibration impulses."
+DEFAULT_MODEL = "qwen3:4b-instruct"
 
 
 def _require_local(url: str) -> None:
@@ -27,6 +28,14 @@ def _require_local(url: str) -> None:
 
 def _median(values: list[float]) -> float | None:
     return round(median(values), 6) if values else None
+
+
+def _response_error(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except Exception:
+        return response.text.strip()[:2000]
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _chat_call(
@@ -48,7 +57,10 @@ def _chat_call(
             "The local /api/chat endpoint requires authentication. Run this benchmark with the development "
             "auth-disabled configuration or extend the script with your local session cookie."
         )
-    response.raise_for_status()
+    if not response.is_success:
+        raise RuntimeError(
+            f"SovereignAI /api/chat returned HTTP {response.status_code}: {_response_error(response)}"
+        )
     data = response.json()
     runtime = data.get("runtime_metrics") if isinstance(data.get("runtime_metrics"), dict) else {}
     return {
@@ -59,6 +71,47 @@ def _chat_call(
         "provider": data.get("provider"),
         "fallback": bool(data.get("fallback")),
         "runtime_metrics": runtime,
+    }
+
+
+def _prewarm_model(
+    client: httpx.Client,
+    ollama_url: str,
+    *,
+    model: str,
+    keep_alive: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Warm the target model before chat calibration so Phase 11 measures the warm path by design."""
+    payload = {
+        "model": model,
+        "prompt": "/no_think\nReply with exactly READY.",
+        "stream": False,
+        "think": False,
+        "keep_alive": keep_alive,
+        "options": {
+            "num_ctx": 2048,
+            "num_predict": 8,
+            "temperature": 0.0,
+        },
+    }
+    started = time.perf_counter()
+    response = client.post(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        json=payload,
+        timeout=timeout_seconds,
+    )
+    wall = time.perf_counter() - started
+    if not response.is_success:
+        raise RuntimeError(
+            f"Ollama prewarm failed with HTTP {response.status_code}: {_response_error(response)}"
+        )
+    data = response.json()
+    return {
+        "model": model,
+        "wall_seconds": round(wall, 6),
+        "load_duration_seconds": round(float(data.get("load_duration", 0) or 0) / 1_000_000_000, 6),
+        "response": str(data.get("response") or "").strip(),
     }
 
 
@@ -92,7 +145,10 @@ def _direct_ollama_stream(
         json=payload,
         timeout=timeout_seconds,
     ) as response:
-        response.raise_for_status()
+        if not response.is_success:
+            raise RuntimeError(
+                f"Direct Ollama returned HTTP {response.status_code}: {_response_error(response)}"
+            )
         for line in response.iter_lines():
             if not line.strip():
                 continue
@@ -194,6 +250,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Paired warm-path SovereignAI /api/chat versus direct Ollama latency benchmark.")
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model to pre-warm before /api/chat calibration.")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--keep-alive", default="60s")
@@ -212,6 +269,14 @@ def main() -> int:
         ollama_health = client.get(f"{args.ollama_url.rstrip('/')}/api/tags", timeout=5.0)
         ollama_health.raise_for_status()
 
+        prewarm = _prewarm_model(
+            client,
+            args.ollama_url,
+            model=args.model,
+            keep_alive=args.keep_alive,
+            timeout_seconds=args.timeout,
+        )
+
         calibration = _chat_call(
             client,
             args.api_url,
@@ -222,6 +287,12 @@ def main() -> int:
         if calibration["fallback"]:
             raise RuntimeError("Calibration /api/chat request fell back instead of using the local model")
         direct_settings = _direct_settings_from_chat(calibration)
+        if direct_settings["effective_model"].lower() != args.model.lower():
+            raise RuntimeError(
+                "The routed /api/chat model differs from the model pre-warmed by this benchmark: "
+                f"prewarmed={args.model}, routed={direct_settings['effective_model']}. "
+                "Pass --model with the routed model or use a prompt that routes to GENERAL."
+            )
         conversation_id = str(calibration["conversation_id"])
 
         # Warm the direct path once with exactly the runtime settings emitted by /api/chat.
@@ -294,11 +365,12 @@ def main() -> int:
     )
 
     report = {
-        "benchmark_design": "paired-e2e-warm-path-v1",
+        "benchmark_design": "paired-e2e-warm-path-v2",
         "prompt": args.prompt,
         "api_url": args.api_url,
         "ollama_url": args.ollama_url,
         "repeats": repeats,
+        "prewarm": prewarm,
         "calibration": {
             "model": calibration["model"],
             "provider": calibration["provider"],
@@ -312,9 +384,9 @@ def main() -> int:
             "median_application_overhead_fraction": round(overhead_fraction, 4) if overhead_fraction is not None else None,
         },
         "interpretation_note": (
-            "This is a warm-path paired benchmark. Direct Ollama uses the effective model, context, output budget, "
-            "temperature and CPU tuning emitted by the calibration /api/chat request. Compare endpoint phase timings "
-            "and provider-generation timings before changing persistence, routing or SSE behavior."
+            "This is a warm-path paired benchmark. The target model is explicitly pre-warmed before /api/chat "
+            "calibration so the backend RAM admission controller evaluates it as resident. Direct Ollama then uses "
+            "the effective model, context, output budget, temperature and CPU tuning emitted by calibration."
         ),
     }
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
