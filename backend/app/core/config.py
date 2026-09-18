@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     model_backend_selection_enabled: bool = True
     model_backend_selection_path: Path = BACKEND_DIR / "data" / "backend_selection.json"
     model_backend_min_speedup: float = 1.05
+    model_kv_cache_optimization_enabled: bool = True
+    model_kv_cache_optimization_path: Path = BACKEND_DIR / "data" / "kv_cache_optimization.json"
+    model_kv_cache_min_quality: float = 0.95
+    model_kv_cache_max_tps_regression: float = 0.05
+    model_kv_cache_min_ram_saving_mb: float = 128.0
     allow_deterministic_fallback: bool = True
     max_upload_mb: int = 25
     embedding_provider: str = "semantic"
@@ -122,5 +127,6 @@ def get_settings() -> Settings:
     settings.model_cpu_tuning_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_optimization_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_backend_selection_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.model_kv_cache_optimization_path.parent.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings
