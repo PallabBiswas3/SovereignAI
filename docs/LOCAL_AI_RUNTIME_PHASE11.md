@@ -108,6 +108,25 @@ The benchmark reports:
 - load time
 - decode throughput
 
+### Windows loopback hostname finding
+
+A controlled hostname A/B benchmark exposed a real Windows-local latency penalty in the model registry configuration.
+
+Before this fix, `config/models.yaml` used `http://localhost:11434` while the standalone runtime benchmarks used `http://127.0.0.1:11434`. Twelve alternating trials against the same warm Ollama server showed:
+
+- `/api/ps` median request time via `localhost`: **269.768 ms**
+- `/api/ps` median request time via `127.0.0.1`: **5.385 ms**
+- median `/api/ps` lifecycle penalty: **263.498 ms**
+- one-token `/api/generate` median request time via `localhost`: **382.034 ms**
+- one-token `/api/generate` median request time via `127.0.0.1`: **111.480 ms**
+- median generation lifecycle penalty: **272.020 ms**
+- median Ollama-reported model time remained close: **108.855 ms** (`localhost`) vs **101.366 ms** (`127.0.0.1`)
+- non-model request overhead was approximately **272.311 ms** via `localhost` vs **8.147 ms** via IPv4 loopback.
+
+This isolates the large delay to the hostname/network path on the target Windows environment rather than the model's inference work. The local model registry now uses `http://127.0.0.1:11434` consistently for general, coder and vision Ollama models.
+
+This also explains why the earlier metric `endpoint_total - Ollama total_duration` exaggerated apparent SovereignAI application overhead: part of that difference was transport/hostname overhead outside Ollama's reported model duration.
+
 ### Run
 
 Start Ollama using the validated f16 profile, start the SovereignAI backend locally, then from the repository root run:
