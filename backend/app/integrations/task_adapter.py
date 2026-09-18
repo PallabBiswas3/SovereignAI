@@ -90,18 +90,34 @@ def integrated_result_state(
         verification="ControlPlane evaluated the request before evidence services ran.",
     )]
     if plan.use_graph:
+        graph_available = result.service_status.get("graph-rag") == "available"
         steps.append(AgentStep(
             id=len(steps) + 1, action="graph_rag_retrieve", title="Retrieve graph-linked evidence",
-            status=StepStatus.completed,
-            observation=f"Graph-RAG returned {len(chunks)} source chunks and {len(graph_claims)} supported claims.",
-            verification=str((graph.get("verification") or {}).get("summary") or graph.get("status") or "completed"),
+            status=StepStatus.completed if graph_available else StepStatus.failed,
+            observation=(
+                f"Graph-RAG returned {len(chunks)} source chunks and {len(graph_claims)} supported claims."
+                if graph_available else "Graph-RAG was unavailable after bounded retry attempts."
+            ),
+            verification=(
+                str((graph.get("verification") or {}).get("summary") or graph.get("status") or "completed")
+                if graph_available else "No graph evidence was represented as successfully retrieved."
+            ),
+            error=None if graph_available else "Graph-RAG service unavailable.",
         ))
     if plan.diagnostic is not None:
+        diagnostic_available = result.service_status.get("diagnostics") == "available"
         steps.append(AgentStep(
             id=len(steps) + 1, action="diagnose_time_series", title=f"Run {plan.diagnostic.domain} diagnostics",
-            status=StepStatus.completed,
-            observation=f"Diagnostic decision: {diagnostic.get('decision', 'unknown')}.",
-            verification=f"Confidence: {diagnostic.get('confidence', 'not reported')}.",
+            status=StepStatus.completed if diagnostic_available else StepStatus.failed,
+            observation=(
+                f"Diagnostic decision: {diagnostic.get('decision', 'unknown')}."
+                if diagnostic_available else "Diagnostic service was unavailable after bounded retry attempts."
+            ),
+            verification=(
+                f"Confidence: {diagnostic.get('confidence', 'not reported')}."
+                if diagnostic_available else "No diagnostic output was represented as successfully produced."
+            ),
+            error=None if diagnostic_available else "Time-series diagnostic service unavailable.",
         ))
     steps.append(AgentStep(
         id=len(steps) + 1, action="controlplane_release", title="Verify and release the response",
@@ -113,6 +129,10 @@ def integrated_result_state(
     warnings: list[str] = []
     if not result.released:
         warnings.append("ControlPlane withheld automatic release; human review is required.")
+    if plan.use_graph and result.service_status.get("graph-rag") == "unavailable":
+        warnings.append("Graph-RAG was unavailable; no graph evidence was claimed as retrieved.")
+    if plan.diagnostic is not None and result.service_status.get("diagnostics") == "unavailable":
+        warnings.append("The time-series diagnostic service was unavailable; no diagnosis was claimed as completed.")
     if graph.get("status") == "abstained":
         warnings.append("Graph-RAG abstained because it found insufficient supported document evidence.")
     if diagnostic.get("abstained"):

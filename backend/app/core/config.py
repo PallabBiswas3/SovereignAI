@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     controlplane_url: str = "http://127.0.0.1:8100"
     diagnostics_url: str = "http://127.0.0.1:8200"
     integration_timeout_seconds: float = 180.0
+    integration_max_retries: int = 2
+    integration_retry_backoff_seconds: float = 0.25
+    integration_retry_backoff_max_seconds: float = 2.0
     integration_fail_closed: bool = True
 
 
