@@ -39,15 +39,22 @@ async def integrated_analysis(
             organization_id=principal.organization_id,
         )
     except IntegrationServiceError as exc:
+        failure_meta = {
+            "service": exc.service,
+            "failed_services": exc.failed_services,
+            "status_code": exc.status_code,
+            "attempts": exc.attempts,
+            "retryable": exc.retryable,
+        }
         AuditLogger(db, principal).log(
             "integration:unavailable",
             "INTEGRATION_FAILED_CLOSED",
             "Industrial integration stopped because a required service was unavailable.",
-            {"service": exc.service, "status_code": exc.status_code},
+            failure_meta,
         )
         raise HTTPException(
             status_code=503,
-            detail={"code": "INTEGRATION_SERVICE_UNAVAILABLE", "service": exc.service},
+            detail={"code": "INTEGRATION_SERVICE_UNAVAILABLE", **failure_meta},
         ) from exc
 
     AuditLogger(db, principal).log(

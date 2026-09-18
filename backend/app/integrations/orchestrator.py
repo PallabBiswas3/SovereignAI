@@ -28,9 +28,9 @@ class IndustrialIntegrationOrchestrator:
         self.settings = settings or get_settings()
         client_options = {
             "timeout": self.settings.integration_timeout_seconds,
-            "max_retries": self.settings.integration_max_retries,
-            "retry_backoff_seconds": self.settings.integration_retry_backoff_seconds,
-            "retry_backoff_max_seconds": self.settings.integration_retry_backoff_max_seconds,
+            "max_retries": getattr(self.settings, "integration_max_retries", 2),
+            "retry_backoff_seconds": getattr(self.settings, "integration_retry_backoff_seconds", 0.25),
+            "retry_backoff_max_seconds": getattr(self.settings, "integration_retry_backoff_max_seconds", 2.0),
         }
         self.graph = graph or GraphRagClient(self.settings.graphrag_url, **client_options)
         self.diagnostics = diagnostics or DiagnosticAgentClient(self.settings.diagnostics_url, **client_options)
@@ -100,7 +100,15 @@ class IndustrialIntegrationOrchestrator:
         if request.diagnostic is not None:
             diagnostic_payload = request.diagnostic.model_dump(mode="python")
             context = dict(diagnostic_payload.get("run_context") or {})
+            context_metadata = dict(context.get("metadata") or {})
+            # Older benchmark payloads used a top-level synthetic flag, while the
+            # diagnostic tool contract permits extensible caller metadata only
+            # under run_context.metadata. Normalize that compatibility field here.
+            if "synthetic" in context:
+                context_metadata["synthetic"] = bool(context.pop("synthetic"))
             context.update({"run_id": run_id, "source": "sovereign-ai"})
+            if context_metadata:
+                context["metadata"] = context_metadata
             diagnostic_payload["run_context"] = context
             calls.append(("diagnostics", self.diagnostics.diagnose(diagnostic_payload)))
 
@@ -109,17 +117,33 @@ class IndustrialIntegrationOrchestrator:
         evidence_ms = (monotonic() - evidence_started) * 1000
         evidence: dict[str, dict[str, Any] | None] = {"graph-rag": None, "diagnostics": None}
         service_status = {"controlplane": "available", "graph-rag": "not_requested", "diagnostics": "not_requested"}
-        failures: list[str] = []
+        failures: list[tuple[str, Exception]] = []
         for (name, _), result in zip(calls, call_results):
             if isinstance(result, Exception):
                 service_status[name] = "unavailable"
-                failures.append(f"{name}: {result}")
+                failures.append((name, result))
             else:
                 service_status[name] = "available"
                 evidence[name] = result
 
         if failures and self.settings.integration_fail_closed:
-            raise IntegrationServiceError("integration", "; ".join(failures))
+            if len(failures) == 1:
+                name, failure = failures[0]
+                if isinstance(failure, IntegrationServiceError):
+                    raise failure
+                raise IntegrationServiceError(name, f"{name} integration failed: {failure}") from failure
+
+            failed_services = [name for name, _ in failures]
+            detail = "; ".join(f"{name}: {failure}" for name, failure in failures)
+            raise IntegrationServiceError(
+                "multiple",
+                detail,
+                failed_services=failed_services,
+                retryable=any(
+                    isinstance(failure, IntegrationServiceError) and failure.retryable
+                    for _, failure in failures
+                ),
+            )
 
         candidate = request.candidate_response or self._compose_candidate(
             request.query,
