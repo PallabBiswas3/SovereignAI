@@ -17,6 +17,7 @@ class BackendSelectionProfile(BaseModel):
     model: str
     backend: BackendName
     endpoint: str
+    backend_model: str | None = None
     quality_score: float | None = Field(default=None, ge=0.0, le=1.0)
     median_tokens_per_second: float | None = Field(default=None, gt=0)
     median_wall_seconds: float | None = Field(default=None, gt=0)
