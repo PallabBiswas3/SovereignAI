@@ -4,13 +4,14 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import Conversation, Message, get_db
 from app.llm.provider_factory import create_local_model_provider
+from app.resources.scheduler import ResourceAdmissionError
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.router.schemas import RoutingDecision
@@ -71,11 +72,26 @@ async def chat(
     provider_setup_seconds = perf_counter() - provider_started
 
     generation_started = perf_counter()
-    result = await provider.generate(
-        payload.message,
-        selected.model_tag,
-        "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources.",
-    )
+    try:
+        result = await provider.generate(
+            payload.message,
+            selected.model_tag,
+            "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources.",
+        )
+    except ResourceAdmissionError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LOCAL_MODEL_RESOURCE_ADMISSION_REJECTED",
+                "message": str(exc),
+                "model": selected.model_tag,
+                "hint": (
+                    "Free RAM or pre-warm the selected local model before retrying. "
+                    "Warm-path benchmarks should load the model before calling /api/chat."
+                ),
+            },
+        ) from exc
     generation_seconds = perf_counter() - generation_started
 
     persistence_started = perf_counter()
