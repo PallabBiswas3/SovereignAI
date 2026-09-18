@@ -29,6 +29,47 @@ def _median(values: list[float]) -> float | None:
     return round(median(values), 6) if values else None
 
 
+def _ensure_warm(sync_client: httpx.Client, endpoint: str, model: str, keep_alive: str) -> dict[str, Any]:
+    started = perf_counter()
+    response = sync_client.post(
+        f"{endpoint.rstrip('/')}/api/generate",
+        json={
+            "model": model,
+            "prompt": "/no_think\nReply with exactly READY.",
+            "stream": False,
+            "think": False,
+            "keep_alive": keep_alive,
+            "options": {
+                "num_ctx": 2048,
+                "num_predict": 1,
+                "temperature": 0.0,
+            },
+        },
+    )
+    wall = perf_counter() - started
+    response.raise_for_status()
+    data = response.json()
+
+    ps = sync_client.get(f"{endpoint.rstrip('/')}/api/ps")
+    ps.raise_for_status()
+    resident_names = {
+        str(item.get("name") or item.get("model") or "")
+        for item in ps.json().get("models", [])
+        if isinstance(item, dict)
+    }
+    resident = model in resident_names or f"{model}:latest" in resident_names
+    if not resident:
+        raise RuntimeError(f"{model} did not become resident after benchmark prewarm")
+
+    return {
+        "wall_seconds": round(wall, 6),
+        "load_duration_seconds": round(float(data.get("load_duration", 0) or 0) / 1_000_000_000, 6),
+        "response": str(data.get("response") or "").strip(),
+        "keep_alive": keep_alive,
+        "resident_after": resident,
+    }
+
+
 async def _measure_preflight(
     *,
     endpoint: str,
@@ -72,21 +113,12 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     _require_local(args.ollama_url)
     repeats = max(3, int(args.repeats))
 
-    # Verify the server and target model residency first. This benchmark is intentionally warm-path only.
-    with httpx.Client(timeout=5.0, follow_redirects=False) as sync_client:
+    # Warm the target outside the measured section so this benchmark is self-contained and repeatable.
+    # The longer keep-alive prevents the model from expiring while the fresh-vs-shared client rounds run.
+    with httpx.Client(timeout=args.timeout, follow_redirects=False) as sync_client:
         tags = sync_client.get(f"{args.ollama_url.rstrip('/')}/api/tags")
         tags.raise_for_status()
-        ps = sync_client.get(f"{args.ollama_url.rstrip('/')}/api/ps")
-        ps.raise_for_status()
-        resident_names = {
-            str(item.get("name") or item.get("model") or "")
-            for item in ps.json().get("models", [])
-            if isinstance(item, dict)
-        }
-    if args.model not in resident_names and f"{args.model}:latest" not in resident_names:
-        raise RuntimeError(
-            f"{args.model} is not resident. Pre-warm it before running this warm-path benchmark."
-        )
+        prewarm = _ensure_warm(sync_client, args.ollama_url, args.model, args.keep_alive)
 
     current_path: list[dict[str, Any]] = []
     shared_path: list[dict[str, Any]] = []
@@ -142,10 +174,11 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     return {
-        "benchmark_design": "provider-preflight-fresh-vs-shared-http-client-v1",
+        "benchmark_design": "provider-preflight-fresh-vs-shared-http-client-v2-self-warm",
         "model": args.model,
         "ollama_url": args.ollama_url,
         "repeats": repeats,
+        "prewarm": prewarm,
         "current_fresh_client_runs": current_path,
         "shared_client_runs": shared_path,
         "summary": {
@@ -155,9 +188,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             "shared_vs_current_preflight_ratio": round(ratio, 4) if ratio is not None else None,
         },
         "interpretation_note": (
-            "The current /api/chat path constructs a new OllamaProvider without an injected AsyncClient. "
-            "That makes the residency /api/ps check use a short-lived HTTP client. The shared-client arm "
-            "uses one AsyncClient across rounds while keeping the same residency and scheduler policy."
+            "The target model is pre-warmed outside the measured section. The current /api/chat path constructs "
+            "a new OllamaProvider without an injected AsyncClient, so the residency /api/ps check uses a "
+            "short-lived HTTP client. The shared-client arm reuses one AsyncClient across rounds while keeping "
+            "the same residency and scheduler policy."
         ),
     }
 
@@ -169,6 +203,7 @@ def main() -> int:
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
     parser.add_argument("--model", default="qwen3:4b-instruct")
     parser.add_argument("--repeats", type=int, default=8)
+    parser.add_argument("--keep-alive", default="15m")
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--output", type=Path, default=Path("workspace/provider_preflight.json"))
     args = parser.parse_args()
