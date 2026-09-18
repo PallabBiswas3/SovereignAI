@@ -154,6 +154,64 @@ def _summary(runs: list[dict[str, Any]]) -> dict[str, float | None]:
     }
 
 
+def _paired_interleaved_performance(
+    client: httpx.Client,
+    *,
+    ollama_endpoint: str,
+    llama_endpoint: str,
+    ollama_model: str,
+    llama_model: str,
+    repeats: int,
+    num_ctx: int,
+    num_thread: int | None,
+    num_batch: int | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], float | None]:
+    """Measure paired A/B rounds while alternating request order to reduce thermal/order bias."""
+    # Excluded warmups put both runners into their normal steady-state paths before measured rounds.
+    _ollama_generate(
+        client, ollama_endpoint, ollama_model, PERF_PROMPT,
+        num_ctx=num_ctx, num_predict=128, num_thread=num_thread, num_batch=num_batch,
+    )
+    _llama_cpp_generate(client, llama_endpoint, llama_model, PERF_PROMPT, num_predict=128)
+
+    ollama_runs: list[dict[str, Any]] = []
+    llama_runs: list[dict[str, Any]] = []
+    rounds: list[dict[str, Any]] = []
+    ratios: list[float] = []
+    for index in range(max(2, repeats)):
+        order = ("ollama", "llama_cpp") if index % 2 == 0 else ("llama_cpp", "ollama")
+        results: dict[str, dict[str, Any]] = {}
+        for backend in order:
+            if backend == "ollama":
+                results[backend] = _ollama_generate(
+                    client, ollama_endpoint, ollama_model, PERF_PROMPT,
+                    num_ctx=num_ctx, num_predict=128,
+                    num_thread=num_thread, num_batch=num_batch,
+                )
+            else:
+                results[backend] = _llama_cpp_generate(
+                    client, llama_endpoint, llama_model, PERF_PROMPT, num_predict=128,
+                )
+        ollama_run = results["ollama"]
+        llama_run = results["llama_cpp"]
+        ollama_runs.append(ollama_run)
+        llama_runs.append(llama_run)
+        ollama_tps = float(ollama_run.get("tokens_per_second") or 0.0)
+        llama_tps = float(llama_run.get("tokens_per_second") or 0.0)
+        ratio = llama_tps / ollama_tps if ollama_tps > 0 and llama_tps > 0 else None
+        if ratio is not None:
+            ratios.append(ratio)
+        rounds.append({
+            "round": index + 1,
+            "order": list(order),
+            "ollama_tokens_per_second": ollama_run.get("tokens_per_second"),
+            "llama_cpp_tokens_per_second": llama_run.get("tokens_per_second"),
+            "llama_cpp_vs_ollama_ratio": round(ratio, 4) if ratio is not None else None,
+        })
+    paired_ratio = round(median(ratios), 4) if ratios else None
+    return ollama_runs, llama_runs, rounds, paired_ratio
+
+
 def _llama_server_identity(client: httpx.Client, endpoint: str) -> list[str] | None:
     try:
         health = client.get(f"{endpoint}/health", timeout=2.0)
@@ -182,8 +240,6 @@ def _discover_llama_endpoint(
     if explicit_endpoint:
         return requested, None
 
-    # The Windows launcher automatically moves off 8080 when it is occupied. Search the same
-    # localhost-only range so the benchmark remains a one-command workflow.
     for port in range(8081, 8101):
         candidate = f"http://127.0.0.1:{port}"
         ids = _llama_server_identity(client, candidate)
@@ -200,7 +256,7 @@ def main() -> int:
     parser.add_argument("--llama-cpp-endpoint", default=settings.llama_cpp_url)
     parser.add_argument("--llama-cpp-model", default=None, help="Model id reported by llama.cpp /v1/models. For automatic promotion it must equal --model.")
     parser.add_argument("--num-ctx", type=int, default=settings.llama_cpp_context_size)
-    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--repeats", type=int, default=4, help="Paired interleaved A/B rounds; alternating order reduces thermal bias.")
     parser.add_argument("--min-quality", type=float, default=settings.model_optimization_min_quality)
     parser.add_argument("--min-speedup", type=float, default=settings.model_backend_min_speedup)
     parser.add_argument("--output", type=Path, default=Path("workspace/backend_comparison.json"))
@@ -228,25 +284,9 @@ def main() -> int:
             raise RuntimeError(f"Ollama model '{args.model}' is not installed")
 
         ollama_quality, ollama_cases = _backend_quality(
-            _ollama_generate,
-            client,
-            ollama,
-            args.model,
-            num_ctx=args.num_ctx,
-            num_thread=thread,
-            num_batch=batch,
+            _ollama_generate, client, ollama, args.model,
+            num_ctx=args.num_ctx, num_thread=thread, num_batch=batch,
         )
-        ollama_runs = _performance(
-            _ollama_generate,
-            client,
-            ollama,
-            args.model,
-            repeats=args.repeats,
-            num_ctx=args.num_ctx,
-            num_thread=thread,
-            num_batch=batch,
-        )
-        ollama_summary = _summary(ollama_runs)
 
         llama_available = False
         llama_identity_matches = False
@@ -255,7 +295,9 @@ def main() -> int:
         llama_quality = 0.0
         llama_cases: list[dict[str, Any]] = []
         llama_runs: list[dict[str, Any]] = []
-        llama_summary: dict[str, float | None] = {"median_tokens_per_second": None, "median_wall_seconds": None}
+        ollama_runs: list[dict[str, Any]] = []
+        interleaved_rounds: list[dict[str, Any]] = []
+        paired_speed_ratio: float | None = None
         try:
             reported_ids = discovered_ids or _llama_server_identity(client, llama)
             if not reported_ids:
@@ -264,21 +306,38 @@ def main() -> int:
                 llama_model = args.model if args.model in reported_ids else reported_ids[0]
             llama_identity_matches = llama_model == args.model and llama_model in reported_ids
             llama_quality, llama_cases = _backend_quality(_llama_cpp_generate, client, llama, llama_model)
-            llama_runs = _performance(_llama_cpp_generate, client, llama, llama_model, repeats=args.repeats)
-            llama_summary = _summary(llama_runs)
             llama_available = True
+            ollama_runs, llama_runs, interleaved_rounds, paired_speed_ratio = _paired_interleaved_performance(
+                client,
+                ollama_endpoint=ollama,
+                llama_endpoint=llama,
+                ollama_model=args.model,
+                llama_model=llama_model,
+                repeats=args.repeats,
+                num_ctx=args.num_ctx,
+                num_thread=thread,
+                num_batch=batch,
+            )
         except Exception as exc:
             llama_error = str(exc)
+            ollama_runs = _performance(
+                _ollama_generate, client, ollama, args.model,
+                repeats=args.repeats, num_ctx=args.num_ctx,
+                num_thread=thread, num_batch=batch,
+            )
 
+    ollama_summary = _summary(ollama_runs)
+    llama_summary = _summary(llama_runs) if llama_runs else {"median_tokens_per_second": None, "median_wall_seconds": None}
     ollama_tps = float(ollama_summary["median_tokens_per_second"] or 0.0)
     llama_tps = float(llama_summary["median_tokens_per_second"] or 0.0)
-    speedup = llama_tps / ollama_tps if ollama_tps > 0 and llama_tps > 0 else 0.0
+    median_speedup = llama_tps / ollama_tps if ollama_tps > 0 and llama_tps > 0 else 0.0
+    decision_speedup = paired_speed_ratio if paired_speed_ratio is not None else median_speedup
     quality_floor = max(float(args.min_quality), ollama_quality - 0.05)
     use_llama = (
         llama_available
         and llama_identity_matches
         and llama_quality >= quality_floor
-        and speedup >= float(args.min_speedup)
+        and decision_speedup >= float(args.min_speedup)
     )
     selected_backend = "llama_cpp" if use_llama else "ollama"
     selected_endpoint = llama if use_llama else ollama
@@ -293,13 +352,14 @@ def main() -> int:
         quality_score=selected_quality,
         median_tokens_per_second=(float(selected_summary["median_tokens_per_second"]) if selected_summary["median_tokens_per_second"] else None),
         median_wall_seconds=(float(selected_summary["median_wall_seconds"]) if selected_summary["median_wall_seconds"] else None),
-        speedup_vs_ollama=(speedup if use_llama else 1.0),
+        speedup_vs_ollama=(decision_speedup if use_llama else 1.0),
     )
     if not args.no_save_profile:
         BackendSelectionStore(settings.model_backend_selection_path).save(profile)
 
     report = {
         "model": args.model,
+        "benchmark_design": "paired-interleaved-v2",
         "llama_cpp_endpoint_requested": llama_requested,
         "llama_cpp_endpoint_used": llama,
         "llama_cpp_model": llama_model,
@@ -309,6 +369,7 @@ def main() -> int:
             "minimum_quality": args.min_quality,
             "quality_floor_vs_ollama": round(quality_floor, 3),
             "minimum_speedup": args.min_speedup,
+            "decision_metric": "median paired llama_cpp/ollama throughput ratio",
         },
         "ollama": {"quality_score": ollama_quality, "quality_cases": ollama_cases, "summary": ollama_summary, "runs": ollama_runs},
         "llama_cpp": {
@@ -319,7 +380,9 @@ def main() -> int:
             "summary": llama_summary,
             "runs": llama_runs,
         },
-        "speedup_vs_ollama": round(speedup, 3) if speedup else None,
+        "interleaved_rounds": interleaved_rounds,
+        "median_speedup_from_backend_medians": round(median_speedup, 4) if median_speedup else None,
+        "paired_speed_ratio_llama_vs_ollama": paired_speed_ratio,
         "selected": profile.model_dump(mode="json"),
     }
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
