@@ -184,7 +184,6 @@ def _run_one(
             after_load = _memory_snapshot()
             resident = _resident_model(client, endpoint, model)
 
-            # Performance is deliberately measured before the expensive long-context canary.
             perf = _generate(
                 client, endpoint, model=model, prompt=PERF_PROMPT,
                 num_ctx=num_ctx, num_predict=128, num_thread=num_thread, num_batch=num_batch,
@@ -318,8 +317,8 @@ def main() -> int:
 
     baseline_quality = median(f16_quality_scores)
     candidate_quality = median(q8_quality_scores)
-    baseline_long = all(f16_long_pass) if args.run_long_context else True
-    candidate_long = all(q8_long_pass) if args.run_long_context else True
+    baseline_long = all(f16_long_pass) if args.run_long_context else False
+    candidate_long = all(q8_long_pass) if args.run_long_context else False
     confirmation = evaluate_context_confirmation(
         model=args.model,
         context_length=args.num_ctx,
@@ -341,6 +340,7 @@ def main() -> int:
         "model": args.model,
         "benchmark_design": "paired-isolated-kv-confirmation-v1",
         "num_ctx": args.num_ctx,
+        "long_context_executed": args.run_long_context,
         "cpu_tuning": tuning.model_dump(mode="json") if tuning else None,
         "rounds": rounds,
         "summary": {
@@ -356,7 +356,8 @@ def main() -> int:
         "runtime_default_changed": False,
         "runtime_note": (
             "This experiment records per-context evidence only. It never changes the global Ollama KV cache profile. "
-            "A context-aware server/runtime design should be implemented only after confirmation passes."
+            "Without --run-long-context the run is preliminary and cannot set confirmed=true. "
+            "A context-aware server/runtime design should be implemented only after full confirmation passes."
         ),
     }
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
