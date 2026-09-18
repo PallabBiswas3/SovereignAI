@@ -17,6 +17,7 @@ on:
       - "backend/scripts/benchmark_model_optimization.py"
       - "backend/scripts/benchmark_inference_backends.py"
       - "backend/scripts/benchmark_kv_cache.py"
+      - "backend/scripts/confirm_kv_cache_4096.py"
       - "backend/scripts/start_ollama_optimized.ps1"
       - "tests/test_phase20_runtime_foundation.py"
       - "tests/test_phase21_residency.py"
@@ -43,7 +44,7 @@ jobs:
           pip install pytest httpx pydantic pydantic-settings sqlalchemy PyYAML psutil
       - name: Compile benchmark scripts
         run: |
-          python -m py_compile backend/scripts/benchmark_inference_backends.py backend/scripts/benchmark_kv_cache.py
+          python -m py_compile backend/scripts/benchmark_inference_backends.py backend/scripts/benchmark_kv_cache.py backend/scripts/confirm_kv_cache_4096.py
       - name: Run Local AI Runtime tests
         run: |
           pytest -q tests/test_phase20_runtime_foundation.py tests/test_phase21_residency.py tests/test_phase22_cpu_ram_scheduler.py tests/test_phase23_adaptive_residency.py tests/test_phase24_cpu_tuning.py tests/test_phase25_model_optimization.py tests/test_phase26_backend_selection.py tests/test_phase27_kv_cache_optimization.py
