@@ -27,8 +27,25 @@ class KvCacheOptimizationProfile(BaseModel):
     source: str = "local-kv-cache-benchmark"
 
 
+class KvCacheContextConfirmation(BaseModel):
+    model: str
+    context_length: int = Field(gt=0)
+    baseline_cache: KvCacheType = "f16"
+    candidate_cache: KvCacheType = "q8_0"
+    confirmed: bool
+    paired_speed_ratio: float | None = Field(default=None, gt=0)
+    candidate_win_rate: float = Field(ge=0.0, le=1.0)
+    resident_saving_mb: float | None = None
+    baseline_quality_score: float = Field(ge=0.0, le=1.0)
+    candidate_quality_score: float = Field(ge=0.0, le=1.0)
+    long_context_passed: bool
+    reasons: list[str] = Field(default_factory=list)
+    measured_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    source: str = "controlled-kv-cache-confirmation"
+
+
 class KvCacheOptimizationStore:
-    """Persist the target-machine KV-cache choice without mutating system environment variables."""
+    """Persist the target-machine global KV-cache choice without mutating system environment variables."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -47,26 +64,40 @@ class KvCacheOptimizationStore:
         data.setdefault("models", {})[_key(profile.model)] = profile.model_dump(mode="json")
         data["version"] = 1
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(
-            "w", encoding="utf-8", delete=False, dir=self.path.parent, suffix=".tmp"
-        ) as handle:
-            json.dump(data, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            temp_path = Path(handle.name)
-        os.replace(temp_path, self.path)
+        _atomic_write(self.path, data)
 
     def _read(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return {"version": 1, "models": {}}
+        return _read_json_store(self.path, root_key="models")
+
+
+class KvCacheConfirmationStore:
+    """Persist per-context confirmation evidence separately from the active global server profile."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def get(self, model: str, context_length: int) -> KvCacheContextConfirmation | None:
+        model_entry = self._read().get("models", {}).get(_key(model))
+        if not isinstance(model_entry, dict):
+            return None
+        raw = model_entry.get("contexts", {}).get(str(context_length))
+        if not isinstance(raw, dict):
+            return None
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"version": 1, "models": {}}
-        if not isinstance(data, dict):
-            return {"version": 1, "models": {}}
-        if not isinstance(data.get("models"), dict):
-            data["models"] = {}
-        return data
+            return KvCacheContextConfirmation.model_validate(raw)
+        except Exception:
+            return None
+
+    def save(self, confirmation: KvCacheContextConfirmation) -> None:
+        data = self._read()
+        model_entry = data.setdefault("models", {}).setdefault(_key(confirmation.model), {})
+        model_entry.setdefault("contexts", {})[str(confirmation.context_length)] = confirmation.model_dump(mode="json")
+        data["version"] = 1
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(self.path, data)
+
+    def _read(self) -> dict[str, Any]:
+        return _read_json_store(self.path, root_key="models")
 
 
 def select_kv_cache_result(
@@ -110,8 +141,6 @@ def select_kv_cache_result(
         if qualifies:
             eligible.append((ram_saving, tps_ratio, rank[cache_type], item))
 
-    # Maximize RAM saved first. If savings are effectively tied, prefer throughput and then the
-    # less aggressive representation so q8_0 wins a tie over q4_0.
     selected = max(eligible, key=lambda value: (value[0], value[1], -value[2]))[3]
     policy = {
         "minimum_quality": min_quality,
@@ -120,6 +149,97 @@ def select_kv_cache_result(
         "selection_priority": "maximize RAM saving subject to quality and throughput guardrails",
     }
     return selected, policy
+
+
+def evaluate_context_confirmation(
+    *,
+    model: str,
+    context_length: int,
+    paired_speed_ratios: list[float],
+    baseline_resident_sizes_mb: list[float],
+    candidate_resident_sizes_mb: list[float],
+    baseline_quality_score: float,
+    candidate_quality_score: float,
+    baseline_long_context_passed: bool,
+    candidate_long_context_passed: bool,
+    min_quality: float = 0.95,
+    min_speed_ratio: float = 1.03,
+    min_win_rate: float = 0.75,
+    min_resident_saving_mb: float = 128.0,
+) -> KvCacheContextConfirmation:
+    """Validate q8_0 for one context using paired speed and resident-size evidence.
+
+    OS available-RAM deltas are intentionally excluded from the decision because Windows background
+    memory pressure made the Phase 10 v1 baselines non-comparable. They remain diagnostic telemetry.
+    """
+    from statistics import median
+
+    valid_ratios = [float(value) for value in paired_speed_ratios if value > 0]
+    baseline_sizes = [float(value) for value in baseline_resident_sizes_mb if value > 0]
+    candidate_sizes = [float(value) for value in candidate_resident_sizes_mb if value > 0]
+    paired_ratio = median(valid_ratios) if valid_ratios else None
+    win_rate = (sum(1 for value in valid_ratios if value > 1.0) / len(valid_ratios)) if valid_ratios else 0.0
+    resident_saving = (
+        median(baseline_sizes) - median(candidate_sizes)
+        if baseline_sizes and candidate_sizes
+        else None
+    )
+
+    reasons: list[str] = []
+    if baseline_quality_score < min_quality:
+        reasons.append(f"f16 quality {baseline_quality_score:.3f} is below {min_quality:.3f}")
+    if candidate_quality_score < min_quality:
+        reasons.append(f"q8_0 quality {candidate_quality_score:.3f} is below {min_quality:.3f}")
+    if paired_ratio is None or paired_ratio < min_speed_ratio:
+        reasons.append(
+            f"paired speed ratio {paired_ratio if paired_ratio is not None else 'missing'} is below {min_speed_ratio:.3f}"
+        )
+    if win_rate < min_win_rate:
+        reasons.append(f"q8_0 win rate {win_rate:.3f} is below {min_win_rate:.3f}")
+    if resident_saving is None or resident_saving < min_resident_saving_mb:
+        reasons.append(
+            f"resident saving {resident_saving if resident_saving is not None else 'missing'} MB is below {min_resident_saving_mb:.1f} MB"
+        )
+    long_context_passed = baseline_long_context_passed and candidate_long_context_passed
+    if not long_context_passed:
+        reasons.append("long-context validation did not pass on both cache types")
+
+    return KvCacheContextConfirmation(
+        model=model,
+        context_length=context_length,
+        confirmed=not reasons,
+        paired_speed_ratio=round(paired_ratio, 4) if paired_ratio is not None else None,
+        candidate_win_rate=round(win_rate, 4),
+        resident_saving_mb=round(resident_saving, 2) if resident_saving is not None else None,
+        baseline_quality_score=baseline_quality_score,
+        candidate_quality_score=candidate_quality_score,
+        long_context_passed=long_context_passed,
+        reasons=reasons,
+    )
+
+
+def _read_json_store(path: Path, *, root_key: str) -> dict[str, Any]:
+    if not path.exists():
+        return {"version": 1, root_key: {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, root_key: {}}
+    if not isinstance(data, dict):
+        return {"version": 1, root_key: {}}
+    if not isinstance(data.get(root_key), dict):
+        data[root_key] = {}
+    return data
+
+
+def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    with NamedTemporaryFile(
+        "w", encoding="utf-8", delete=False, dir=path.parent, suffix=".tmp"
+    ) as handle:
+        json.dump(data, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        temp_path = Path(handle.name)
+    os.replace(temp_path, path)
 
 
 def _key(value: str) -> str:
