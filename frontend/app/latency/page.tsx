@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 type RunMetrics = {
   label: string;
   task_id: string;
+  result_status: string | null;
+  warnings: string[];
   start_ack_seconds: number;
   sse_open_seconds: number | null;
   first_event_seconds: number | null;
@@ -24,6 +26,7 @@ type ValidationReport = {
   benchmark_design: string;
   status: string;
   prewarm: Record<string, unknown>;
+  preflight: Record<string, unknown>;
   warmup: RunMetrics | null;
   runs: RunMetrics[];
   summary: Record<string, number | null>;
@@ -32,6 +35,7 @@ type ValidationReport = {
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const prompt = "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?";
+const BENCHMARK_RAM_HEADROOM_MB = 96;
 
 function cookie(name: string) {
   return document.cookie.split("; ").find((item) => item.startsWith(`${name}=`))?.split("=").slice(1).join("=") ?? "";
@@ -72,6 +76,54 @@ async function prewarmModel() {
   return payload;
 }
 
+async function validateResidentHeadroom() {
+  const response = await apiFetch("/api/models/status", { cache: "no-store" });
+  if (!response.ok) throw new Error(`Resource preflight returned ${response.status}: ${await response.text()}`);
+  const payload = await response.json() as Record<string, unknown>;
+  const resources = (payload.resources ?? {}) as Record<string, unknown>;
+  const models = Array.isArray(payload.models) ? payload.models as Array<Record<string, unknown>> : [];
+  const available = Number(resources.ram_available_mb ?? 0);
+  const reserve = Number(resources.ram_reserve_mb ?? 0);
+  const target = models.find((item) => String(item.model_tag ?? "") === "qwen3:4b-instruct") ?? null;
+  const warm = Boolean(target && (
+    String(target.warm_status ?? "").toLowerCase() === "warm" ||
+    ["WARM", "LOADED", "READY"].includes(String(target.lifecycle_state ?? "").toUpperCase())
+  ));
+  const required = reserve + BENCHMARK_RAM_HEADROOM_MB;
+  const report = {
+    target_model_resident: warm,
+    ram_available_mb: available,
+    ram_reserve_mb: reserve,
+    benchmark_headroom_mb: BENCHMARK_RAM_HEADROOM_MB,
+    required_available_mb: required,
+    ready: warm && available >= required,
+  };
+  if (!warm) {
+    throw new Error(`Phase 12 preflight: model is not reported warm by SovereignAI after prewarm. ${JSON.stringify(report)}`);
+  }
+  if (available < required) {
+    throw new Error(
+      `Phase 12 preflight: insufficient warm-path RAM headroom. Available=${available.toFixed(0)} MB, ` +
+      `production reserve=${reserve.toFixed(0)} MB, required with benchmark margin=${required.toFixed(0)} MB. ` +
+      "Close memory-heavy applications and retry; the production reserve is intentionally unchanged."
+    );
+  }
+  return report;
+}
+
+function invalidRunReason(run: RunMetrics): string | null {
+  if (run.result_status && run.result_status.toLowerCase() !== "completed") {
+    return `result status=${run.result_status}`;
+  }
+  if (run.model_token_event_count <= 0) {
+    return "no model_token events were produced";
+  }
+  if (!Object.keys(run.runtime_metrics).length) {
+    return "runtime_metrics are missing";
+  }
+  return null;
+}
+
 function runTask(label: string, setVisibleText: (value: string) => void): Promise<RunMetrics> {
   return new Promise(async (resolve, reject) => {
     const startedAt = performance.now();
@@ -85,6 +137,7 @@ function runTask(label: string, setVisibleText: (value: string) => void): Promis
     let tokenText = "";
     const tokenReceiveTimes: number[] = [];
     const liveDeliverySeconds: number[] = [];
+    const warnings: string[] = [];
     let finished = false;
 
     try {
@@ -134,6 +187,10 @@ function runTask(label: string, setVisibleText: (value: string) => void): Promis
         if (Number.isFinite(createdAt)) {
           liveDeliverySeconds.push(Math.max(0, (Date.now() - createdAt) / 1000));
         }
+        if (type === "warning") {
+          const summary = String(item.payload?.summary ?? "").trim();
+          if (summary) warnings.push(summary);
+        }
         if (type === "generation_started" && generationStartedAt === null) generationStartedAt = receivedAt;
         if (type === "model_token") {
           tokenEvents += 1;
@@ -152,9 +209,9 @@ function runTask(label: string, setVisibleText: (value: string) => void): Promis
           return;
         }
         if (type === "task_failed" || type === "task_cancelled") {
-          const error = String(item.payload?.error ?? type);
+          const taskError = String(item.payload?.error ?? type);
           stream.close();
-          reject(new Error(`${label}: ${error}`));
+          reject(new Error(`${label}: ${taskError}`));
           return;
         }
         if (type === "task_completed") {
@@ -162,10 +219,14 @@ function runTask(label: string, setVisibleText: (value: string) => void): Promis
           const result = (item.payload?.result ?? {}) as Record<string, unknown>;
           const runtime = (result.runtime_metrics ?? {}) as Record<string, unknown>;
           const batching = (runtime.stream_batching ?? {}) as Record<string, unknown>;
+          const resultWarnings = Array.isArray(result.warnings) ? result.warnings.map((value) => String(value)) : [];
+          for (const warning of resultWarnings) if (!warnings.includes(warning)) warnings.push(warning);
           const intervals = tokenReceiveTimes.slice(1).map((value, index) => (value - tokenReceiveTimes[index]) / 1000);
           const record: RunMetrics = {
             label,
             task_id: taskId,
+            result_status: result.status == null ? null : String(result.status),
+            warnings,
             start_ack_seconds: Number(((ackAt - startedAt) / 1000).toFixed(6)),
             sse_open_seconds: sseOpenAt === null ? null : Number(((sseOpenAt - startedAt) / 1000).toFixed(6)),
             first_event_seconds: firstEventAt === null ? null : Number(((firstEventAt - startedAt) / 1000).toFixed(6)),
@@ -213,10 +274,26 @@ export default function Phase12LatencyPage() {
     setReport(null);
     try {
       const prewarm = await prewarmModel();
+      const preflight = await validateResidentHeadroom();
       const warmup = await runTask("Phase 12 full-path warm-up.", setVisibleText);
+      const warmupFailure = invalidRunReason(warmup);
+      if (warmupFailure) {
+        throw new Error(
+          `Phase 12 warm-up invalid: ${warmupFailure}. ` +
+          (warmup.warnings.length ? `Backend warning: ${warmup.warnings.join(" | ")}` : "No backend warning was surfaced.")
+        );
+      }
       const runs: RunMetrics[] = [];
       for (let index = 0; index < 3; index += 1) {
-        runs.push(await runTask(`Phase 12 browser benchmark run ${index + 1}.`, setVisibleText));
+        const run = await runTask(`Phase 12 browser benchmark run ${index + 1}.`, setVisibleText);
+        const failure = invalidRunReason(run);
+        if (failure) {
+          throw new Error(
+            `Phase 12 measured run ${index + 1} invalid: ${failure}. ` +
+            (run.warnings.length ? `Backend warning: ${run.warnings.join(" | ")}` : "No backend warning was surfaced.")
+          );
+        }
+        runs.push(run);
       }
 
       const summary: Record<string, number | null> = {};
@@ -242,12 +319,13 @@ export default function Phase12LatencyPage() {
       summary.median_decode_tokens_per_second = median(decodeValues);
 
       const batchingLoaded = runs.every((run) => Number(run.stream_batching.max_delay_seconds) === 0.2);
-      const allCompletedWithTokens = runs.every((run) => run.model_token_event_count > 0 && run.task_total_seconds !== null);
+      const allCompletedWithTokens = runs.every((run) => run.result_status?.toLowerCase() === "completed" && run.model_token_event_count > 0);
       const browserPaintMeasured = runs.every((run) => run.first_painted_frame_seconds !== null);
       const reportValue: ValidationReport = {
-        benchmark_design: "phase12-one-click-browser-e2e-v1",
+        benchmark_design: "phase12-one-click-browser-e2e-v2-guarded",
         status: batchingLoaded && allCompletedWithTokens && browserPaintMeasured ? "complete" : "invalid",
         prewarm,
+        preflight,
         warmup,
         runs,
         summary,
@@ -273,8 +351,8 @@ export default function Phase12LatencyPage() {
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 32, fontFamily: "system-ui, sans-serif" }}>
       <h1>Phase 12 — one-click user-visible latency validation</h1>
       <p>
-        One click performs one exact-runner prewarm, one unmeasured full-path warm-up, then three measured FAST/GENERAL
-        tasks through the real task API, SSE stream, React state update, and next browser paint frame.
+        One click performs one exact-runner prewarm, verifies resident RAM headroom, runs one full-path warm-up,
+        and only if that succeeds runs three measured FAST/GENERAL tasks through SSE, React, and browser paint.
       </p>
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
         <button onClick={runSuite} disabled={running} style={{ padding: "10px 16px" }}>
