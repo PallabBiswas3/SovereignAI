@@ -1,0 +1,16 @@
+scenario,iteration,success,status_code,total_seconds,ttft_seconds,server_model_seconds,tokens_per_second,token_count,warm_status,retries,released,result_status,service_status,component_timings_ms,cpu_percent,memory_used_mb,memory_available_mb,memory_percent,error
+chat_sync,1,True,200,12.308315,,,,,,,,completed,{},{},38.1,15297.66,754.66,95.3,
+chat_sync,2,True,200,3.85836,,,,,,,,completed,{},{},59.9,15327.36,724.97,95.5,
+chat_sync,3,True,200,4.075018,,,,,,,,completed,{},{},58.5,15337.16,715.16,95.5,
+task_general_stream,1,True,200,9.226399,3.104503,8.596454,9.523,57,warm,,,task_completed,{},{},70.1,15384.91,667.42,95.8,
+task_general_stream,2,True,200,5.544448,0.482086,5.012976,11.036,54,warm,,,task_completed,{},{},61.9,15375.56,676.77,95.8,
+task_general_stream,3,True,200,5.491347,0.4893,4.955037,11.152,54,warm,,,task_completed,{},{},64.2,15328.86,723.47,95.5,
+task_authorized_stream,1,True,200,183.300694,77.771661,176.853836,5.434,572,warm,,,task_completed,{},{},63.1,15186.8,865.52,94.6,
+task_authorized_stream,2,True,200,185.090602,65.564879,184.366739,4.688,559,warm,,,task_completed,{},{},63.2,14808.39,1243.94,92.3,
+task_authorized_stream,3,True,200,186.313081,0.596913,185.637851,4.341,805,warm,,,task_completed,{},{},67.9,14813.76,1238.57,92.3,
+integration_graph_controlplane,1,True,200,37.770406,,,,,,,True,released,"{""controlplane"": ""available"", ""diagnostics"": ""not_requested"", ""graph-rag"": ""available""}","{""evidence"": 28266.0, ""precheck"": 47.0, ""release_check"": 9406.0, ""total"": 37719.0}",53.8,15143.52,908.81,94.3,
+integration_graph_controlplane,2,True,200,9.290288,,,,,,,True,released,"{""controlplane"": ""available"", ""diagnostics"": ""not_requested"", ""graph-rag"": ""available""}","{""evidence"": 6344.0, ""precheck"": 47.0, ""release_check"": 2875.0, ""total"": 9266.0}",54.7,14988.12,1064.21,93.4,
+integration_graph_controlplane,3,True,200,9.211194,,,,,,,True,released,"{""controlplane"": ""available"", ""diagnostics"": ""not_requested"", ""graph-rag"": ""available""}","{""evidence"": 6282.0, ""precheck"": 46.0, ""release_check"": 2875.0, ""total"": 9203.0}",60.2,14999.48,1052.84,93.4,
+integration_full_industrial,1,False,503,138.251383,,,,,,,,,{},{},59.2,15294.12,758.21,95.3,"{""detail"": {""code"": ""INTEGRATION_SERVICE_UNAVAILABLE"", ""service"": ""integration""}}"
+integration_full_industrial,2,False,503,81.113222,,,,,,,,,{},{},59.3,15398.76,653.57,95.9,"{""detail"": {""code"": ""INTEGRATION_SERVICE_UNAVAILABLE"", ""service"": ""integration""}}"
+integration_full_industrial,3,False,503,49.542916,,,,,,,,,{},{},59.6,15398.67,653.66,95.9,"{""detail"": {""code"": ""INTEGRATION_SERVICE_UNAVAILABLE"", ""service"": ""integration""}}"

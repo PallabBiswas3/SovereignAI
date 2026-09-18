@@ -21,6 +21,13 @@ from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_m
 from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_scheduler
 
 
+_AUTHORIZED_START = "AUTHORIZED_CONTEXT_START\n"
+_AUTHORIZED_END = "\nAUTHORIZED_CONTEXT_END"
+_BROAD_AUTHORIZED_TERMS = (
+    "management briefing", "operations", "maintenance", "incident", "safety", "quality", "procurement",
+)
+
+
 class OllamaProvider(LocalModelProvider):
     """Local Ollama adapter with true NDJSON streaming and bounded admission."""
 
@@ -70,6 +77,60 @@ class OllamaProvider(LocalModelProvider):
             return f"/no_think\n{prompt}"
         return prompt
 
+    @staticmethod
+    def _is_broad_authorized_prompt(prompt: str) -> bool:
+        request = prompt.split(_AUTHORIZED_START, 1)[0].lower()
+        if "management briefing" in request:
+            return True
+        return sum(term in request for term in _BROAD_AUTHORIZED_TERMS[1:]) >= 3
+
+    @classmethod
+    def _compact_authorized_prompt(cls, prompt: str) -> tuple[str, bool, int, int]:
+        """Bound only the model-facing authorized evidence packet.
+
+        Retrieval results, stored sources, audit state, and citations remain unchanged. The
+        compaction is intentionally applied at local-inference time so large evidence chunks do
+        not consume an 8K KV cache merely to answer a short authorized question.
+        """
+        if _AUTHORIZED_START not in prompt or _AUTHORIZED_END not in prompt:
+            return prompt, False, 8192, 1280
+        prefix, remainder = prompt.split(_AUTHORIZED_START, 1)
+        raw_context, suffix = remainder.split(_AUTHORIZED_END, 1)
+        broad = cls._is_broad_authorized_prompt(prompt)
+        max_items = 6 if broad else 4
+        max_text_chars = 1600 if broad else 1000
+        num_ctx = 6144 if broad else 4096
+        num_predict = 640 if broad else 384
+        try:
+            context = json.loads(raw_context.strip())
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return prompt, False, num_ctx, num_predict
+        if not isinstance(context, dict):
+            return prompt, False, num_ctx, num_predict
+        evidence = context.get("authorized_document_evidence")
+        if isinstance(evidence, list):
+            compacted: list[dict[str, object]] = []
+            for raw_item in evidence[:max_items]:
+                if not isinstance(raw_item, dict):
+                    continue
+                item = dict(raw_item)
+                text = str(item.get("text") or "")
+                if len(text) > max_text_chars:
+                    item["text"] = text[:max_text_chars].rstrip() + " …"
+                    item["text_truncated"] = True
+                compacted.append(item)
+            context["authorized_document_evidence"] = compacted
+            policy = context.get("context_policy")
+            if not isinstance(policy, dict):
+                policy = {}
+                context["context_policy"] = policy
+            policy["model_context_compacted"] = True
+            policy["model_evidence_limit"] = max_items
+            policy["model_evidence_text_chars"] = max_text_chars
+        compact_json = json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
+        compact_prompt = f"{prefix}{_AUTHORIZED_START}{compact_json}{_AUTHORIZED_END}{suffix}"
+        return compact_prompt, compact_prompt != prompt, num_ctx, num_predict
+
     def _base_payload(self, prompt: str, model: str, system: str | None) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": model,
@@ -110,10 +171,11 @@ class OllamaProvider(LocalModelProvider):
     ) -> AsyncIterator[GenerationChunk]:
         if cancellation_event and cancellation_event.is_set():
             raise ModelGenerationCancelled("Local model generation was cancelled before it started.")
-        payload = self._base_payload(prompt, model, system)
+        model_prompt, prompt_compacted, num_ctx, num_predict = self._compact_authorized_prompt(prompt)
+        payload = self._base_payload(model_prompt, model, system)
         payload.update({
             "stream": True,
-            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1280},
+            "options": {"temperature": 0.2, "num_ctx": num_ctx, "num_predict": num_predict},
         })
         started = monotonic()
         first_token_at: float | None = None
@@ -151,6 +213,12 @@ class OllamaProvider(LocalModelProvider):
                                     was_loaded=was_loaded,
                                     queue_wait_seconds=permit.queue_wait_seconds,
                                 )
+                                stats.update({
+                                    "requested_num_ctx": num_ctx,
+                                    "requested_num_predict": num_predict,
+                                    "prompt_compacted": prompt_compacted,
+                                    "model_prompt_characters": len(model_prompt),
+                                })
                                 self._last_stats[model] = stats
                                 self.lifecycle.complete(model, stats)
                                 yield GenerationChunk(
@@ -170,6 +238,12 @@ class OllamaProvider(LocalModelProvider):
                     if not self.allow_fallback:
                         raise RuntimeError(f"Local inference unavailable: {exc}") from exc
                     stats = self._failure_stats(started, first_token_at, was_loaded, permit.queue_wait_seconds, exc)
+                    stats.update({
+                        "requested_num_ctx": num_ctx,
+                        "requested_num_predict": num_predict,
+                        "prompt_compacted": prompt_compacted,
+                        "model_prompt_characters": len(model_prompt),
+                    })
                     self._last_stats[model] = stats
                     fallback = (
                         "Local model generation was unavailable or exceeded its timeout. The request was "
