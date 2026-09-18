@@ -1,5 +1,8 @@
-from app.resources.kv_cache_optimization import KvCacheOptimizationProfile, KvCacheOptimizationStore
-from backend.scripts.benchmark_kv_cache import select_result
+from app.resources.kv_cache_optimization import (
+    KvCacheOptimizationProfile,
+    KvCacheOptimizationStore,
+    select_kv_cache_result,
+)
 
 
 def test_kv_cache_profile_store_round_trip(tmp_path) -> None:
@@ -27,7 +30,7 @@ def test_select_result_prefers_ram_saving_within_guardrails() -> None:
         {"cache_type": "q8_0", "quality_score": 1.0, "median_tokens_per_second": 9.8, "system_ram_delta_mb": 1600.0},
         {"cache_type": "q4_0", "quality_score": 0.8, "median_tokens_per_second": 9.9, "system_ram_delta_mb": 1300.0},
     ]
-    selected, policy = select_result(
+    selected, policy = select_kv_cache_result(
         results,
         min_quality=0.95,
         max_tps_regression=0.05,
@@ -45,7 +48,7 @@ def test_select_result_keeps_f16_when_compression_saves_too_little_or_is_slow() 
         {"cache_type": "q8_0", "quality_score": 1.0, "median_tokens_per_second": 9.2, "system_ram_delta_mb": 1550.0},
         {"cache_type": "q4_0", "quality_score": 1.0, "median_tokens_per_second": 9.9, "system_ram_delta_mb": 1930.0},
     ]
-    selected, _ = select_result(
+    selected, _ = select_kv_cache_result(
         results,
         min_quality=0.95,
         max_tps_regression=0.05,
