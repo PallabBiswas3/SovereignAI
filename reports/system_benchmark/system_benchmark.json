@@ -1,0 +1,504 @@
+{
+  "metadata": {
+    "generated_at": "2026-09-18T21:20:27.800573+00:00",
+    "started_at": "2026-09-18T21:05:07.161775+00:00",
+    "base_url": "http://127.0.0.1:8000",
+    "runs_per_scenario": 3,
+    "include_diagnostic": true,
+    "host_before": {
+      "cpu_percent": 75.0,
+      "memory_used_mb": 13301.5,
+      "memory_available_mb": 2750.83,
+      "memory_percent": 82.9
+    },
+    "python": "3.11.4"
+  },
+  "health": {
+    "backend": {
+      "ok": true,
+      "status_code": 200,
+      "latency_ms": 28.097,
+      "body": {
+        "status": "ok",
+        "service": "sovereign-backend"
+      }
+    },
+    "integrations": {
+      "ok": true,
+      "status_code": 200,
+      "latency_ms": 77.381,
+      "body": {
+        "status": "ok",
+        "services": {
+          "graph-rag": {
+            "status": "ok",
+            "service": "graph-rag",
+            "version": "1.1.0",
+            "model": {
+              "provider": "ollama",
+              "endpoint": "http://127.0.0.1:11434",
+              "generationModel": "qwen3:4b-instruct",
+              "embeddingModel": "nomic-embed-text",
+              "embeddingDimension": 768,
+              "denseRetrievalEnabled": false
+            }
+          },
+          "time-series-diagnostic-agent": {
+            "status": "ok",
+            "service": "time-series-diagnostic-agent",
+            "version": "1.1.0"
+          },
+          "controlplane": {
+            "status": "ok"
+          }
+        }
+      }
+    }
+  },
+  "summary": {
+    "chat_sync": {
+      "runs": 3,
+      "successes": 3,
+      "success_rate": 1.0,
+      "total_p50_s": 4.075,
+      "total_p95_s": 11.485,
+      "total_mean_s": 6.7472,
+      "ttft_p50_s": null,
+      "ttft_p95_s": null,
+      "tokens_per_second_mean": null
+    },
+    "task_general_stream": {
+      "runs": 3,
+      "successes": 3,
+      "success_rate": 1.0,
+      "total_p50_s": 5.5444,
+      "total_p95_s": 8.8582,
+      "total_mean_s": 6.7541,
+      "ttft_p50_s": 0.4893,
+      "ttft_p95_s": 2.843,
+      "tokens_per_second_mean": 10.57
+    },
+    "task_authorized_stream": {
+      "runs": 3,
+      "successes": 3,
+      "success_rate": 1.0,
+      "total_p50_s": 185.0906,
+      "total_p95_s": 186.1908,
+      "total_mean_s": 184.9015,
+      "ttft_p50_s": 65.5649,
+      "ttft_p95_s": 76.551,
+      "tokens_per_second_mean": 4.821
+    },
+    "integration_graph_controlplane": {
+      "runs": 3,
+      "successes": 3,
+      "success_rate": 1.0,
+      "total_p50_s": 9.2903,
+      "total_p95_s": 34.9224,
+      "total_mean_s": 18.7573,
+      "ttft_p50_s": null,
+      "ttft_p95_s": null,
+      "tokens_per_second_mean": null
+    },
+    "integration_full_industrial": {
+      "runs": 3,
+      "successes": 0,
+      "success_rate": 0.0,
+      "total_p50_s": null,
+      "total_p95_s": null,
+      "total_mean_s": null,
+      "ttft_p50_s": null,
+      "ttft_p95_s": null,
+      "tokens_per_second_mean": null
+    }
+  },
+  "measurements": [
+    {
+      "scenario": "chat_sync",
+      "iteration": 1,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 12.308315,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": "completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 38.1,
+        "memory_used_mb": 15297.66,
+        "memory_available_mb": 754.66,
+        "memory_percent": 95.3
+      },
+      "error": null
+    },
+    {
+      "scenario": "chat_sync",
+      "iteration": 2,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 3.85836,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": "completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 59.9,
+        "memory_used_mb": 15327.36,
+        "memory_available_mb": 724.97,
+        "memory_percent": 95.5
+      },
+      "error": null
+    },
+    {
+      "scenario": "chat_sync",
+      "iteration": 3,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 4.075018,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": "completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 58.5,
+        "memory_used_mb": 15337.16,
+        "memory_available_mb": 715.16,
+        "memory_percent": 95.5
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_general_stream",
+      "iteration": 1,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 9.226399,
+      "ttft_seconds": 3.104503,
+      "server_model_seconds": 8.596454,
+      "tokens_per_second": 9.523,
+      "token_count": 57,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 70.1,
+        "memory_used_mb": 15384.91,
+        "memory_available_mb": 667.42,
+        "memory_percent": 95.8
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_general_stream",
+      "iteration": 2,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 5.544448,
+      "ttft_seconds": 0.482086,
+      "server_model_seconds": 5.012976,
+      "tokens_per_second": 11.036,
+      "token_count": 54,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 61.9,
+        "memory_used_mb": 15375.56,
+        "memory_available_mb": 676.77,
+        "memory_percent": 95.8
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_general_stream",
+      "iteration": 3,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 5.491347,
+      "ttft_seconds": 0.4893,
+      "server_model_seconds": 4.955037,
+      "tokens_per_second": 11.152,
+      "token_count": 54,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 64.2,
+        "memory_used_mb": 15328.86,
+        "memory_available_mb": 723.47,
+        "memory_percent": 95.5
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_authorized_stream",
+      "iteration": 1,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 183.300694,
+      "ttft_seconds": 77.771661,
+      "server_model_seconds": 176.853836,
+      "tokens_per_second": 5.434,
+      "token_count": 572,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 63.1,
+        "memory_used_mb": 15186.8,
+        "memory_available_mb": 865.52,
+        "memory_percent": 94.6
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_authorized_stream",
+      "iteration": 2,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 185.090602,
+      "ttft_seconds": 65.564879,
+      "server_model_seconds": 184.366739,
+      "tokens_per_second": 4.688,
+      "token_count": 559,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 63.2,
+        "memory_used_mb": 14808.39,
+        "memory_available_mb": 1243.94,
+        "memory_percent": 92.3
+      },
+      "error": null
+    },
+    {
+      "scenario": "task_authorized_stream",
+      "iteration": 3,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 186.313081,
+      "ttft_seconds": 0.596913,
+      "server_model_seconds": 185.637851,
+      "tokens_per_second": 4.341,
+      "token_count": 805,
+      "warm_status": "warm",
+      "retries": null,
+      "released": null,
+      "result_status": "task_completed",
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 67.9,
+        "memory_used_mb": 14813.76,
+        "memory_available_mb": 1238.57,
+        "memory_percent": 92.3
+      },
+      "error": null
+    },
+    {
+      "scenario": "integration_graph_controlplane",
+      "iteration": 1,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 37.770406,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": true,
+      "result_status": "released",
+      "service_status": {
+        "controlplane": "available",
+        "graph-rag": "available",
+        "diagnostics": "not_requested"
+      },
+      "component_timings_ms": {
+        "precheck": 47.0,
+        "evidence": 28266.0,
+        "release_check": 9406.0,
+        "total": 37719.0
+      },
+      "host_after": {
+        "cpu_percent": 53.8,
+        "memory_used_mb": 15143.52,
+        "memory_available_mb": 908.81,
+        "memory_percent": 94.3
+      },
+      "error": null
+    },
+    {
+      "scenario": "integration_graph_controlplane",
+      "iteration": 2,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 9.290288,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": true,
+      "result_status": "released",
+      "service_status": {
+        "controlplane": "available",
+        "graph-rag": "available",
+        "diagnostics": "not_requested"
+      },
+      "component_timings_ms": {
+        "precheck": 47.0,
+        "evidence": 6344.0,
+        "release_check": 2875.0,
+        "total": 9266.0
+      },
+      "host_after": {
+        "cpu_percent": 54.7,
+        "memory_used_mb": 14988.12,
+        "memory_available_mb": 1064.21,
+        "memory_percent": 93.4
+      },
+      "error": null
+    },
+    {
+      "scenario": "integration_graph_controlplane",
+      "iteration": 3,
+      "success": true,
+      "status_code": 200,
+      "total_seconds": 9.211194,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": true,
+      "result_status": "released",
+      "service_status": {
+        "controlplane": "available",
+        "graph-rag": "available",
+        "diagnostics": "not_requested"
+      },
+      "component_timings_ms": {
+        "precheck": 46.0,
+        "evidence": 6282.0,
+        "release_check": 2875.0,
+        "total": 9203.0
+      },
+      "host_after": {
+        "cpu_percent": 60.2,
+        "memory_used_mb": 14999.48,
+        "memory_available_mb": 1052.84,
+        "memory_percent": 93.4
+      },
+      "error": null
+    },
+    {
+      "scenario": "integration_full_industrial",
+      "iteration": 1,
+      "success": false,
+      "status_code": 503,
+      "total_seconds": 138.251383,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": null,
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 59.2,
+        "memory_used_mb": 15294.12,
+        "memory_available_mb": 758.21,
+        "memory_percent": 95.3
+      },
+      "error": "{\"detail\": {\"code\": \"INTEGRATION_SERVICE_UNAVAILABLE\", \"service\": \"integration\"}}"
+    },
+    {
+      "scenario": "integration_full_industrial",
+      "iteration": 2,
+      "success": false,
+      "status_code": 503,
+      "total_seconds": 81.113222,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": null,
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 59.3,
+        "memory_used_mb": 15398.76,
+        "memory_available_mb": 653.57,
+        "memory_percent": 95.9
+      },
+      "error": "{\"detail\": {\"code\": \"INTEGRATION_SERVICE_UNAVAILABLE\", \"service\": \"integration\"}}"
+    },
+    {
+      "scenario": "integration_full_industrial",
+      "iteration": 3,
+      "success": false,
+      "status_code": 503,
+      "total_seconds": 49.542916,
+      "ttft_seconds": null,
+      "server_model_seconds": null,
+      "tokens_per_second": null,
+      "token_count": null,
+      "warm_status": null,
+      "retries": null,
+      "released": null,
+      "result_status": null,
+      "service_status": {},
+      "component_timings_ms": {},
+      "host_after": {
+        "cpu_percent": 59.6,
+        "memory_used_mb": 15398.67,
+        "memory_available_mb": 653.66,
+        "memory_percent": 95.9
+      },
+      "error": "{\"detail\": {\"code\": \"INTEGRATION_SERVICE_UNAVAILABLE\", \"service\": \"integration\"}}"
+    }
+  ]
+}
