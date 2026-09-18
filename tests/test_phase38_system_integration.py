@@ -21,7 +21,7 @@ class FakeGraph:
         self.called = True
         self.verification_mode = verification_mode
         if self.fail:
-            raise IntegrationServiceError("graph-rag", "offline")
+            raise IntegrationServiceError("graph-rag", "offline", status_code=503, retryable=True)
         return {
             "status": "grounded",
             "claims": [{"id": "claim-1", "claim_text": "Pump vibration exceeds the approved limit."}],
@@ -30,14 +30,23 @@ class FakeGraph:
 
 
 class FakeDiagnostics:
-    def __init__(self):
+    def __init__(self, *, fail: bool = False):
         self.payload = None
+        self.fail = fail
 
     async def health(self):
         return {"status": "ok"}
 
     async def diagnose(self, payload):
         self.payload = payload
+        if self.fail:
+            raise IntegrationServiceError(
+                "time-series-diagnostic-agent",
+                "diagnostic request rejected",
+                status_code=422,
+                attempts=1,
+                retryable=False,
+            )
         return {
             "decision": "fault_detected",
             "detection": {"abnormal": True},
@@ -72,6 +81,9 @@ class FakeControlPlane:
 def settings(*, fail_closed=True):
     return SimpleNamespace(
         integration_timeout_seconds=1.0,
+        integration_max_retries=2,
+        integration_retry_backoff_seconds=0.0,
+        integration_retry_backoff_max_seconds=0.0,
         graphrag_url="http://127.0.0.1:3100",
         diagnostics_url="http://127.0.0.1:8200",
         controlplane_url="http://127.0.0.1:8100",
@@ -103,6 +115,33 @@ def test_integrated_analysis_releases_only_after_controlplane_check():
     assert graph.verification_mode == "thorough"
 
 
+def test_legacy_synthetic_context_is_normalized_into_metadata():
+    diagnostics = FakeDiagnostics()
+    orchestrator = IndustrialIntegrationOrchestrator(
+        settings=settings(), graph=FakeGraph(), diagnostics=diagnostics, controlplane=FakeControlPlane(),
+    )
+    request = IntegratedAnalysisRequest(
+        query="Assess process evidence",
+        include_graph_evidence=False,
+        diagnostic={
+            "domain": "process",
+            "inputs": {"signal_matrix": [[0.1]], "normal_reference": [[0.0]]},
+            "run_context": {"source": "benchmark", "synthetic": True},
+        },
+    )
+
+    result = asyncio.run(
+        orchestrator.analyze(request, principal_id="engineer-1", organization_id="apel")
+    )
+
+    assert result.released is True
+    assert diagnostics.payload["run_context"]["source"] == "sovereign-ai"
+    assert diagnostics.payload["run_context"]["metadata"]["synthetic"] is True
+    assert "synthetic" not in {
+        key for key in diagnostics.payload["run_context"] if key != "metadata"
+    }
+
+
 def test_precheck_hold_prevents_evidence_calls():
     graph = FakeGraph()
     controlplane = FakeControlPlane(precheck_action="block")
@@ -123,7 +162,7 @@ def test_precheck_hold_prevents_evidence_calls():
     assert graph.called is False
 
 
-def test_required_evidence_service_failure_closes_workflow():
+def test_required_graph_failure_preserves_service_attribution():
     orchestrator = IndustrialIntegrationOrchestrator(
         settings=settings(fail_closed=True),
         graph=FakeGraph(fail=True),
@@ -131,7 +170,7 @@ def test_required_evidence_service_failure_closes_workflow():
         controlplane=FakeControlPlane(),
     )
 
-    with pytest.raises(IntegrationServiceError, match="graph-rag"):
+    with pytest.raises(IntegrationServiceError) as captured:
         asyncio.run(
             orchestrator.analyze(
                 IntegratedAnalysisRequest(query="Assess Pump-102"),
@@ -139,6 +178,35 @@ def test_required_evidence_service_failure_closes_workflow():
                 organization_id="apel",
             )
         )
+    assert captured.value.service == "graph-rag"
+    assert captured.value.failed_services == ["graph-rag"]
+    assert captured.value.status_code == 503
+
+
+def test_required_diagnostic_failure_preserves_service_attribution():
+    orchestrator = IndustrialIntegrationOrchestrator(
+        settings=settings(fail_closed=True),
+        graph=FakeGraph(),
+        diagnostics=FakeDiagnostics(fail=True),
+        controlplane=FakeControlPlane(),
+    )
+
+    with pytest.raises(IntegrationServiceError) as captured:
+        asyncio.run(
+            orchestrator.analyze(
+                IntegratedAnalysisRequest(
+                    query="Assess Pump-102",
+                    include_graph_evidence=False,
+                    diagnostic={"domain": "process", "inputs": {"signal": [0.1, 0.2]}},
+                ),
+                principal_id="engineer-1",
+                organization_id="apel",
+            )
+        )
+    assert captured.value.service == "time-series-diagnostic-agent"
+    assert captured.value.failed_services == ["time-series-diagnostic-agent"]
+    assert captured.value.status_code == 422
+    assert captured.value.retryable is False
 
 
 def test_public_service_urls_are_rejected():
