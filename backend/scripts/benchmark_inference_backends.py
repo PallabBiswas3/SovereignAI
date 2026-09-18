@@ -141,7 +141,6 @@ def _backend_quality(run, client: httpx.Client, endpoint: str, model: str, **kwa
 
 
 def _performance(run, client: httpx.Client, endpoint: str, model: str, *, repeats: int, **kwargs: Any) -> list[dict[str, Any]]:
-    # Excluded warm-up.
     run(client, endpoint, model, PERF_PROMPT, num_predict=128, **kwargs)
     return [run(client, endpoint, model, PERF_PROMPT, num_predict=128, **kwargs) for _ in range(max(1, repeats))]
 
@@ -161,7 +160,7 @@ def main() -> int:
     parser.add_argument("--model", default="qwen3:4b-instruct")
     parser.add_argument("--ollama-endpoint", default=settings.ollama_url)
     parser.add_argument("--llama-cpp-endpoint", default=settings.llama_cpp_url)
-    parser.add_argument("--llama-cpp-model", default=None, help="Model id reported by llama.cpp /v1/models. Defaults to the first loaded model.")
+    parser.add_argument("--llama-cpp-model", default=None, help="Model id reported by llama.cpp /v1/models. For automatic promotion it must equal --model.")
     parser.add_argument("--num-ctx", type=int, default=settings.llama_cpp_context_size)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--min-quality", type=float, default=settings.model_optimization_min_quality)
@@ -177,7 +176,6 @@ def main() -> int:
     batch = tuning.num_batch if tuning else None
 
     with httpx.Client(timeout=httpx.Timeout(settings.model_generation_timeout_seconds)) as client:
-        # Validate Ollama baseline first.
         tags = client.get(f"{ollama}/api/tags")
         tags.raise_for_status()
         installed = {str(item.get("name") or item.get("model") or "") for item in tags.json().get("models", []) if isinstance(item, dict)}
@@ -206,6 +204,7 @@ def main() -> int:
         ollama_summary = _summary(ollama_runs)
 
         llama_available = False
+        llama_identity_matches = False
         llama_error: str | None = None
         llama_model = args.llama_cpp_model
         llama_quality = 0.0
@@ -220,18 +219,12 @@ def main() -> int:
             models = [item for item in models_response.json().get("data", []) if isinstance(item, dict)]
             if not models:
                 raise RuntimeError("llama.cpp server reports no loaded model")
+            reported_ids = [str(item.get("id") or "") for item in models]
             if llama_model is None:
-                llama_model = str(models[0].get("id") or args.model)
-            llama_quality, llama_cases = _backend_quality(
-                _llama_cpp_generate, client, llama, llama_model
-            )
-            llama_runs = _performance(
-                _llama_cpp_generate,
-                client,
-                llama,
-                llama_model,
-                repeats=args.repeats,
-            )
+                llama_model = args.model if args.model in reported_ids else reported_ids[0]
+            llama_identity_matches = llama_model == args.model and llama_model in reported_ids
+            llama_quality, llama_cases = _backend_quality(_llama_cpp_generate, client, llama, llama_model)
+            llama_runs = _performance(_llama_cpp_generate, client, llama, llama_model, repeats=args.repeats)
             llama_summary = _summary(llama_runs)
             llama_available = True
         except Exception as exc:
@@ -243,6 +236,7 @@ def main() -> int:
     quality_floor = max(float(args.min_quality), ollama_quality - 0.05)
     use_llama = (
         llama_available
+        and llama_identity_matches
         and llama_quality >= quality_floor
         and speedup >= float(args.min_speedup)
     )
@@ -255,6 +249,7 @@ def main() -> int:
         model=args.model,
         backend=selected_backend,
         endpoint=selected_endpoint,
+        backend_model=(llama_model if use_llama else args.model),
         quality_score=selected_quality,
         median_tokens_per_second=(float(selected_summary["median_tokens_per_second"]) if selected_summary["median_tokens_per_second"] else None),
         median_wall_seconds=(float(selected_summary["median_wall_seconds"]) if selected_summary["median_wall_seconds"] else None),
@@ -266,7 +261,9 @@ def main() -> int:
     report = {
         "model": args.model,
         "llama_cpp_model": llama_model,
+        "llama_cpp_identity_matches": llama_identity_matches,
         "selection_rules": {
+            "same_logical_model_required": True,
             "minimum_quality": args.min_quality,
             "quality_floor_vs_ollama": round(quality_floor, 3),
             "minimum_speedup": args.min_speedup,
