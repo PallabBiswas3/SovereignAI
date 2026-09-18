@@ -109,6 +109,55 @@ function Resolve-OllamaGgufBlob {
     return $blobPath
 }
 
+function Test-PortAvailable {
+    param([string]$Address, [int]$CandidatePort)
+    $listener = $null
+    try {
+        $ip = [System.Net.IPAddress]::Parse($Address)
+        $listener = [System.Net.Sockets.TcpListener]::new($ip, $CandidatePort)
+        $listener.Start()
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $listener) {
+            try { $listener.Stop() } catch { }
+        }
+    }
+}
+
+function Test-CompatibleLlamaServer {
+    param([string]$Address, [int]$CandidatePort, [string]$ExpectedModel)
+    try {
+        $base = "http://${Address}:$CandidatePort"
+        Invoke-RestMethod -Uri "$base/health" -Method Get -TimeoutSec 2 | Out-Null
+        $models = Invoke-RestMethod -Uri "$base/v1/models" -Method Get -TimeoutSec 2
+        $ids = @($models.data | ForEach-Object { [string]$_.id })
+        return $ids -contains $ExpectedModel
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-PortOwnerSummary {
+    param([int]$CandidatePort)
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $CandidatePort -State Listen -ErrorAction Stop | Select-Object -First 1
+        if ($null -eq $connection) { return "unknown process" }
+        $process = Get-Process -Id $connection.OwningProcess -ErrorAction SilentlyContinue
+        if ($null -ne $process) {
+            return "PID $($connection.OwningProcess) ($($process.ProcessName))"
+        }
+        return "PID $($connection.OwningProcess)"
+    }
+    catch {
+        return "unknown process"
+    }
+}
+
 if (-not (Test-Path -LiteralPath $LlamaServerPath -PathType Leaf)) {
     throw "llama-server executable not found: $LlamaServerPath"
 }
@@ -124,6 +173,37 @@ if ($Threads -lt 1 -or $BatchSize -lt 1 -or $ContextSize -lt 512) {
     throw "Threads and batch size must be positive; context size must be at least 512."
 }
 
+$portWasExplicit = $PSBoundParameters.ContainsKey("Port")
+if (-not (Test-PortAvailable -Address $HostAddress -CandidatePort $Port)) {
+    if (Test-CompatibleLlamaServer -Address $HostAddress -CandidatePort $Port -ExpectedModel $ModelAlias) {
+        Write-Host "Compatible llama.cpp server is already running at http://${HostAddress}:$Port"
+        Write-Host "Model alias '$ModelAlias' is available there; no second server is needed."
+        Write-Host ""
+        Write-Host "Run the backend benchmark in another terminal:"
+        Write-Host "  python backend/scripts/benchmark_inference_backends.py --model $ModelAlias --output workspace/backend_comparison.json"
+        return
+    }
+
+    $owner = Get-PortOwnerSummary -CandidatePort $Port
+    if ($portWasExplicit) {
+        throw "Port $Port is already in use by $owner. Choose another port, e.g. -Port $($Port + 1)."
+    }
+
+    $originalPort = $Port
+    $replacement = $null
+    foreach ($candidate in (($originalPort + 1)..($originalPort + 20))) {
+        if (Test-PortAvailable -Address $HostAddress -CandidatePort $candidate) {
+            $replacement = $candidate
+            break
+        }
+    }
+    if ($null -eq $replacement) {
+        throw "Port $originalPort is occupied by $owner and no free port was found in $($originalPort + 1)-$($originalPort + 20)."
+    }
+    $Port = $replacement
+    Write-Host "Port $originalPort is occupied by $owner; using port $Port instead."
+}
+
 Write-Host "Starting llama.cpp for SovereignAI"
 Write-Host "  Model:      $ModelPath"
 Write-Host "  API alias:  $ModelAlias"
@@ -135,6 +215,7 @@ Write-Host "  KV cache:   K=$CacheTypeK V=$CacheTypeV"
 Write-Host "  Parallel:   1"
 Write-Host ""
 Write-Host "Note: --mlock is intentionally not used on the measured 16 GB CPU-laptop profile."
+Write-Host "The backend benchmark auto-discovers this server if the default port was occupied."
 
 & $LlamaServerPath `
     --model $ModelPath `
