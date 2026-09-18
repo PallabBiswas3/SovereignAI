@@ -1,0 +1,512 @@
+{
+  "benchmark_design": "ollama-localhost-vs-ipv4-loopback-v1",
+  "model": "qwen3:4b-instruct",
+  "repeats": 12,
+  "warmup": {
+    "wall_seconds": 3.610898,
+    "load_duration_seconds": 3.060702
+  },
+  "ps_runs": {
+    "localhost": [
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.007566,
+        "request_seconds": 0.26812,
+        "close_seconds": 0.000402,
+        "lifecycle_seconds": 0.276115,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009494,
+        "request_seconds": 0.276967,
+        "close_seconds": 0.000996,
+        "lifecycle_seconds": 0.287507,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.00961,
+        "request_seconds": 0.274583,
+        "close_seconds": 0.000944,
+        "lifecycle_seconds": 0.285179,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.010115,
+        "request_seconds": 0.270432,
+        "close_seconds": 0.000692,
+        "lifecycle_seconds": 0.281268,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.007328,
+        "request_seconds": 0.266568,
+        "close_seconds": 0.000976,
+        "lifecycle_seconds": 0.274914,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005892,
+        "request_seconds": 0.269918,
+        "close_seconds": 0.000825,
+        "lifecycle_seconds": 0.276673,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009249,
+        "request_seconds": 0.268445,
+        "close_seconds": 0.000444,
+        "lifecycle_seconds": 0.278159,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.007023,
+        "request_seconds": 0.269619,
+        "close_seconds": 0.000509,
+        "lifecycle_seconds": 0.277174,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.006932,
+        "request_seconds": 0.275373,
+        "close_seconds": 0.000637,
+        "lifecycle_seconds": 0.282973,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.006465,
+        "request_seconds": 0.249417,
+        "close_seconds": 0.000368,
+        "lifecycle_seconds": 0.256268,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005772,
+        "request_seconds": 0.275289,
+        "close_seconds": 0.001082,
+        "lifecycle_seconds": 0.282174,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.007119,
+        "request_seconds": 0.262445,
+        "close_seconds": 0.000395,
+        "lifecycle_seconds": 0.269978,
+        "model_count": 1
+      }
+    ],
+    "ipv4": [
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.005873,
+        "request_seconds": 0.005906,
+        "close_seconds": 0.000551,
+        "lifecycle_seconds": 0.012363,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.010021,
+        "request_seconds": 0.007942,
+        "close_seconds": 0.000804,
+        "lifecycle_seconds": 0.018798,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.009789,
+        "request_seconds": 0.00463,
+        "close_seconds": 0.000421,
+        "lifecycle_seconds": 0.014873,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.006644,
+        "request_seconds": 0.005322,
+        "close_seconds": 0.000761,
+        "lifecycle_seconds": 0.012752,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.010734,
+        "request_seconds": 0.004299,
+        "close_seconds": 0.000377,
+        "lifecycle_seconds": 0.015429,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.009098,
+        "request_seconds": 0.006119,
+        "close_seconds": 0.000417,
+        "lifecycle_seconds": 0.015655,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.005331,
+        "request_seconds": 0.004335,
+        "close_seconds": 0.000497,
+        "lifecycle_seconds": 0.010205,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.007019,
+        "request_seconds": 0.010421,
+        "close_seconds": 0.000465,
+        "lifecycle_seconds": 0.017929,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.006404,
+        "request_seconds": 0.005448,
+        "close_seconds": 0.0004,
+        "lifecycle_seconds": 0.012272,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.00689,
+        "request_seconds": 0.004857,
+        "close_seconds": 0.000454,
+        "lifecycle_seconds": 0.012225,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.008383,
+        "request_seconds": 0.004613,
+        "close_seconds": 0.000446,
+        "lifecycle_seconds": 0.013463,
+        "model_count": 1
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.009,
+        "request_seconds": 0.007088,
+        "close_seconds": 0.000616,
+        "lifecycle_seconds": 0.016736,
+        "model_count": 1
+      }
+    ]
+  },
+  "generate_runs": {
+    "localhost": [
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005789,
+        "request_seconds": 1.204594,
+        "close_seconds": 0.000482,
+        "lifecycle_seconds": 1.210894,
+        "ollama_total_duration_seconds": 0.94254,
+        "request_minus_ollama_seconds": 0.262054,
+        "load_duration_seconds": 0.00221,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009503,
+        "request_seconds": 0.383939,
+        "close_seconds": 0.000945,
+        "lifecycle_seconds": 0.394425,
+        "ollama_total_duration_seconds": 0.104553,
+        "request_minus_ollama_seconds": 0.279386,
+        "load_duration_seconds": 0.002183,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005382,
+        "request_seconds": 0.385913,
+        "close_seconds": 0.000822,
+        "lifecycle_seconds": 0.392149,
+        "ollama_total_duration_seconds": 0.112487,
+        "request_minus_ollama_seconds": 0.273426,
+        "load_duration_seconds": 0.00928,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.008817,
+        "request_seconds": 0.37724,
+        "close_seconds": 0.000635,
+        "lifecycle_seconds": 0.386726,
+        "ollama_total_duration_seconds": 0.104488,
+        "request_minus_ollama_seconds": 0.272752,
+        "load_duration_seconds": 0.003108,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.00621,
+        "request_seconds": 0.361985,
+        "close_seconds": 0.00057,
+        "lifecycle_seconds": 0.368794,
+        "ollama_total_duration_seconds": 0.107542,
+        "request_minus_ollama_seconds": 0.254443,
+        "load_duration_seconds": 0.002835,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009182,
+        "request_seconds": 0.383379,
+        "close_seconds": 0.00076,
+        "lifecycle_seconds": 0.39335,
+        "ollama_total_duration_seconds": 0.103928,
+        "request_minus_ollama_seconds": 0.279451,
+        "load_duration_seconds": 0.005409,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005418,
+        "request_seconds": 0.377625,
+        "close_seconds": 0.000813,
+        "lifecycle_seconds": 0.383887,
+        "ollama_total_duration_seconds": 0.109128,
+        "request_minus_ollama_seconds": 0.268497,
+        "load_duration_seconds": 0.006349,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.0072,
+        "request_seconds": 0.376985,
+        "close_seconds": 0.000495,
+        "lifecycle_seconds": 0.384707,
+        "ollama_total_duration_seconds": 0.108621,
+        "request_minus_ollama_seconds": 0.268363,
+        "load_duration_seconds": 0.005713,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005479,
+        "request_seconds": 0.371392,
+        "close_seconds": 0.000435,
+        "lifecycle_seconds": 0.37733,
+        "ollama_total_duration_seconds": 0.108841,
+        "request_minus_ollama_seconds": 0.262551,
+        "load_duration_seconds": 0.006307,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009486,
+        "request_seconds": 0.383331,
+        "close_seconds": 0.000429,
+        "lifecycle_seconds": 0.39327,
+        "ollama_total_duration_seconds": 0.110364,
+        "request_minus_ollama_seconds": 0.272967,
+        "load_duration_seconds": 0.006981,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.005787,
+        "request_seconds": 0.394724,
+        "close_seconds": 0.00043,
+        "lifecycle_seconds": 0.400966,
+        "ollama_total_duration_seconds": 0.111725,
+        "request_minus_ollama_seconds": 0.283,
+        "load_duration_seconds": 0.003534,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://localhost:11434",
+        "construct_seconds": 0.009235,
+        "request_seconds": 0.380738,
+        "close_seconds": 0.000868,
+        "lifecycle_seconds": 0.390871,
+        "ollama_total_duration_seconds": 0.108869,
+        "request_minus_ollama_seconds": 0.27187,
+        "load_duration_seconds": 0.003756,
+        "response": "OK"
+      }
+    ],
+    "ipv4": [
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.008433,
+        "request_seconds": 0.123011,
+        "close_seconds": 0.000933,
+        "lifecycle_seconds": 0.132433,
+        "ollama_total_duration_seconds": 0.113261,
+        "request_minus_ollama_seconds": 0.009751,
+        "load_duration_seconds": 0.002677,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.010893,
+        "request_seconds": 0.106895,
+        "close_seconds": 0.000852,
+        "lifecycle_seconds": 0.11868,
+        "ollama_total_duration_seconds": 0.099318,
+        "request_minus_ollama_seconds": 0.007577,
+        "load_duration_seconds": 0.002713,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.009699,
+        "request_seconds": 0.113553,
+        "close_seconds": 0.000435,
+        "lifecycle_seconds": 0.123713,
+        "ollama_total_duration_seconds": 0.105092,
+        "request_minus_ollama_seconds": 0.008461,
+        "load_duration_seconds": 0.004748,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.009257,
+        "request_seconds": 0.110729,
+        "close_seconds": 0.000901,
+        "lifecycle_seconds": 0.120921,
+        "ollama_total_duration_seconds": 0.100242,
+        "request_minus_ollama_seconds": 0.010487,
+        "load_duration_seconds": 0.003066,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.007187,
+        "request_seconds": 0.11326,
+        "close_seconds": 0.000827,
+        "lifecycle_seconds": 0.121305,
+        "ollama_total_duration_seconds": 0.105014,
+        "request_minus_ollama_seconds": 0.008246,
+        "load_duration_seconds": 0.005355,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.006471,
+        "request_seconds": 0.108003,
+        "close_seconds": 0.000903,
+        "lifecycle_seconds": 0.11541,
+        "ollama_total_duration_seconds": 0.100595,
+        "request_minus_ollama_seconds": 0.007407,
+        "load_duration_seconds": 0.004384,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.010167,
+        "request_seconds": 0.108767,
+        "close_seconds": 0.000486,
+        "lifecycle_seconds": 0.119448,
+        "ollama_total_duration_seconds": 0.099592,
+        "request_minus_ollama_seconds": 0.009175,
+        "load_duration_seconds": 0.004751,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.006804,
+        "request_seconds": 0.112746,
+        "close_seconds": 0.000509,
+        "lifecycle_seconds": 0.120084,
+        "ollama_total_duration_seconds": 0.106632,
+        "request_minus_ollama_seconds": 0.006114,
+        "load_duration_seconds": 0.004079,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.00578,
+        "request_seconds": 0.112232,
+        "close_seconds": 0.000555,
+        "lifecycle_seconds": 0.118597,
+        "ollama_total_duration_seconds": 0.102137,
+        "request_minus_ollama_seconds": 0.010095,
+        "load_duration_seconds": 0.004868,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.00588,
+        "request_seconds": 0.102932,
+        "close_seconds": 0.000805,
+        "lifecycle_seconds": 0.109648,
+        "ollama_total_duration_seconds": 0.096265,
+        "request_minus_ollama_seconds": 0.006667,
+        "load_duration_seconds": 0.002418,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.005621,
+        "request_seconds": 0.113013,
+        "close_seconds": 0.000867,
+        "lifecycle_seconds": 0.119533,
+        "ollama_total_duration_seconds": 0.106372,
+        "request_minus_ollama_seconds": 0.006641,
+        "load_duration_seconds": 0.004937,
+        "response": "OK"
+      },
+      {
+        "endpoint": "http://127.0.0.1:11434",
+        "construct_seconds": 0.007653,
+        "request_seconds": 0.105655,
+        "close_seconds": 0.00089,
+        "lifecycle_seconds": 0.114229,
+        "ollama_total_duration_seconds": 0.097606,
+        "request_minus_ollama_seconds": 0.008048,
+        "load_duration_seconds": 0.004577,
+        "response": "OK"
+      }
+    ]
+  },
+  "summary": {
+    "localhost_ps": {
+      "median_construct_seconds": 0.007224,
+      "median_request_seconds": 0.269768,
+      "median_close_seconds": 0.000664,
+      "median_lifecycle_seconds": 0.277666
+    },
+    "ipv4_ps": {
+      "median_construct_seconds": 0.007701,
+      "median_request_seconds": 0.005385,
+      "median_close_seconds": 0.00046,
+      "median_lifecycle_seconds": 0.014168
+    },
+    "localhost_generate": {
+      "median_construct_seconds": 0.006705,
+      "median_request_seconds": 0.382034,
+      "median_close_seconds": 0.000602,
+      "median_lifecycle_seconds": 0.39151,
+      "median_ollama_total_duration_seconds": 0.108855,
+      "median_request_minus_ollama_seconds": 0.272311,
+      "median_load_duration_seconds": 0.004582
+    },
+    "ipv4_generate": {
+      "median_construct_seconds": 0.00742,
+      "median_request_seconds": 0.11148,
+      "median_close_seconds": 0.000839,
+      "median_lifecycle_seconds": 0.11949,
+      "median_ollama_total_duration_seconds": 0.101366,
+      "median_request_minus_ollama_seconds": 0.008147,
+      "median_load_duration_seconds": 0.004481
+    },
+    "median_localhost_minus_ipv4_ps_lifecycle_seconds": 0.263498,
+    "median_localhost_minus_ipv4_generate_lifecycle_seconds": 0.27202
+  },
+  "interpretation_note": "SovereignAI's config/models.yaml currently uses http://localhost:11434 while the standalone Phase 11 benchmarks use http://127.0.0.1:11434. This benchmark alternates both aliases against the same warm Ollama server using fresh AsyncClients and one-token generation to isolate hostname/loopback overhead."
+}

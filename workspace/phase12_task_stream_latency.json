@@ -1,0 +1,1685 @@
+{
+  "benchmark_design": "phase12-real-task-sse-latency-v1",
+  "status": "complete",
+  "api_url": "http://127.0.0.1:8000",
+  "prompt": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?",
+  "requested_repeats": 4,
+  "completed_repeats": 4,
+  "warmup_runs": [
+    {
+      "measured": false,
+      "task_id": "d26d20bc-fc2d-47b5-9e4e-a3efb9c7f843",
+      "start_ack_seconds": 0.155261,
+      "sse_connect_after_ack_seconds": 0.130982,
+      "sse_headers_seconds": 0.130932,
+      "event_count": 14,
+      "event_type_counts": {
+        "chat_mode_selected": 1,
+        "execution_mode_selected": 1,
+        "generation_started": 1,
+        "governance_completed": 1,
+        "model_selected": 1,
+        "plan_created": 1,
+        "step_completed": 2,
+        "step_started": 2,
+        "task_accepted": 1,
+        "task_classified": 1,
+        "task_completed": 1,
+        "warning": 1
+      },
+      "first_event_type": "task_accepted",
+      "terminal_event_type": "task_completed",
+      "first_event_offset_seconds": 0.286462,
+      "ack_to_first_event_seconds": 0.131202,
+      "first_model_token_offset_seconds": null,
+      "ack_to_first_model_token_seconds": null,
+      "sse_headers_to_first_model_token_seconds": null,
+      "generation_started_to_first_model_token_receive_seconds": null,
+      "first_model_token_to_generation_completed_receive_seconds": null,
+      "task_total_seconds": 0.287503,
+      "ack_to_terminal_seconds": 0.132243,
+      "model_token_event_count": 0,
+      "model_token_interarrival_median_seconds": null,
+      "model_token_interarrival_p95_seconds": null,
+      "event_created_to_sse_receive_median_seconds": 0.179198,
+      "event_created_to_sse_receive_p95_seconds": 0.221398,
+      "model_token_created_to_sse_receive_median_seconds": null,
+      "model_token_created_to_sse_receive_p95_seconds": null,
+      "first_event_offsets_by_type_seconds": {
+        "task_accepted": 0.286462,
+        "governance_completed": 0.286573,
+        "task_classified": 0.286658,
+        "model_selected": 0.286738,
+        "plan_created": 0.286793,
+        "execution_mode_selected": 0.286882,
+        "step_started": 0.286935,
+        "chat_mode_selected": 0.286965,
+        "generation_started": 0.286991,
+        "step_completed": 0.287056,
+        "warning": 0.287141,
+        "task_completed": 0.287503
+      },
+      "agent_runtime_metrics": {},
+      "agent_latency_breakdown": {},
+      "completed_run_id": "f55f8ed9-35ae-48a6-b237-725d4769f8ca",
+      "events": [
+        {
+          "type": "task_accepted",
+          "timestamp": "2026-09-18T18:10:04.806098+00:00",
+          "receive_offset_seconds": 0.286462,
+          "ack_to_receive_seconds": 0.131202,
+          "sse_headers_to_receive_seconds": 0.000219,
+          "event_created_to_receive_seconds": 0.232705,
+          "payload": {
+            "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nWarm-up run 1."
+          }
+        },
+        {
+          "type": "governance_completed",
+          "timestamp": "2026-09-18T18:10:04.823605+00:00",
+          "receive_offset_seconds": 0.286573,
+          "ack_to_receive_seconds": 0.131312,
+          "sse_headers_to_receive_seconds": 0.00033,
+          "event_created_to_receive_seconds": 0.215309,
+          "payload": {
+            "decision": "ALLOW",
+            "policy": "internal_assistant"
+          }
+        },
+        {
+          "type": "task_classified",
+          "timestamp": "2026-09-18T18:10:04.831702+00:00",
+          "receive_offset_seconds": 0.286658,
+          "ack_to_receive_seconds": 0.131398,
+          "sse_headers_to_receive_seconds": 0.000415,
+          "event_created_to_receive_seconds": 0.207297,
+          "payload": {
+            "task_type": "general",
+            "coding_requirement": 0.0,
+            "reasoning_requirement": 0.46,
+            "vision_requirement": 0.0,
+            "document_requirement": 0.0,
+            "summarization_requirement": 0.0,
+            "latency_priority": 0.5,
+            "context_length_required": 1168
+          }
+        },
+        {
+          "type": "model_selected",
+          "timestamp": "2026-09-18T18:10:04.838625+00:00",
+          "receive_offset_seconds": 0.286738,
+          "ack_to_receive_seconds": 0.131477,
+          "sse_headers_to_receive_seconds": 0.000495,
+          "event_created_to_receive_seconds": 0.200454,
+          "payload": {
+            "model_id": "general",
+            "model": "qwen3:4b-instruct",
+            "reason": "Qwen3 4B Instruct - General best matches the general task profile."
+          }
+        },
+        {
+          "type": "plan_created",
+          "timestamp": "2026-09-18T18:10:04.846628+00:00",
+          "receive_offset_seconds": 0.286793,
+          "ack_to_receive_seconds": 0.131533,
+          "sse_headers_to_receive_seconds": 0.00055,
+          "event_created_to_receive_seconds": 0.192507,
+          "payload": {
+            "workflow": "general"
+          }
+        },
+        {
+          "type": "execution_mode_selected",
+          "timestamp": "2026-09-18T18:10:04.852628+00:00",
+          "receive_offset_seconds": 0.286882,
+          "ack_to_receive_seconds": 0.131621,
+          "sse_headers_to_receive_seconds": 0.000639,
+          "event_created_to_receive_seconds": 0.186595,
+          "payload": {
+            "requested": "FAST",
+            "selected": "FAST",
+            "reason": "User selected fast execution.",
+            "priority": 30
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:04.857460+00:00",
+          "receive_offset_seconds": 0.286935,
+          "ack_to_receive_seconds": 0.131674,
+          "sse_headers_to_receive_seconds": 0.000692,
+          "event_created_to_receive_seconds": 0.181816,
+          "payload": {
+            "id": 0,
+            "action": "execute_workflow",
+            "title": "Execute selected bounded workflow"
+          }
+        },
+        {
+          "type": "chat_mode_selected",
+          "timestamp": "2026-09-18T18:10:04.862727+00:00",
+          "receive_offset_seconds": 0.286965,
+          "ack_to_receive_seconds": 0.131704,
+          "sse_headers_to_receive_seconds": 0.000722,
+          "event_created_to_receive_seconds": 0.176579,
+          "payload": {
+            "requested": "GENERAL",
+            "selected": "GENERAL",
+            "reason": "The user explicitly selected General Chat mode."
+          }
+        },
+        {
+          "type": "generation_started",
+          "timestamp": "2026-09-18T18:10:04.874088+00:00",
+          "receive_offset_seconds": 0.286991,
+          "ack_to_receive_seconds": 0.13173,
+          "sse_headers_to_receive_seconds": 0.000748,
+          "event_created_to_receive_seconds": 0.165244,
+          "payload": {
+            "model": "qwen3:4b-instruct"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.003817+00:00",
+          "receive_offset_seconds": 0.287056,
+          "ack_to_receive_seconds": 0.131796,
+          "sse_headers_to_receive_seconds": 0.000814,
+          "event_created_to_receive_seconds": 0.03558,
+          "payload": {
+            "id": 0,
+            "status": "failed",
+            "observation": "Workflow returned a persisted run state."
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.009811+00:00",
+          "receive_offset_seconds": 0.287101,
+          "ack_to_receive_seconds": 0.131841,
+          "sse_headers_to_receive_seconds": 0.000858,
+          "event_created_to_receive_seconds": 0.029631,
+          "payload": {
+            "id": 1,
+            "action": "generate_response",
+            "title": "Generate fast local response"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.015720+00:00",
+          "receive_offset_seconds": 0.287122,
+          "ack_to_receive_seconds": 0.131861,
+          "sse_headers_to_receive_seconds": 0.000879,
+          "event_created_to_receive_seconds": 0.023743,
+          "payload": {
+            "id": 1,
+            "status": "failed",
+            "observation": null
+          }
+        },
+        {
+          "type": "warning",
+          "timestamp": "2026-09-18T18:10:05.023319+00:00",
+          "receive_offset_seconds": 0.287141,
+          "ack_to_receive_seconds": 0.13188,
+          "sse_headers_to_receive_seconds": 0.000898,
+          "event_created_to_receive_seconds": 0.016163,
+          "payload": {
+            "summary": "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5391 MB, reserve=2408 MB, measured model load=3340 MB."
+          }
+        },
+        {
+          "type": "task_completed",
+          "timestamp": "2026-09-18T18:10:05.031126+00:00",
+          "receive_offset_seconds": 0.287503,
+          "ack_to_receive_seconds": 0.132243,
+          "sse_headers_to_receive_seconds": 0.00126,
+          "event_created_to_receive_seconds": 0.008718,
+          "payload": {
+            "result": {
+              "id": "f55f8ed9-35ae-48a6-b237-725d4769f8ca",
+              "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nWarm-up run 1.",
+              "status": "failed",
+              "plan": {
+                "goal": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nWarm-up run 1.",
+                "steps": [
+                  {
+                    "id": 1,
+                    "action": "generate_response",
+                    "title": "Generate fast local response",
+                    "status": "failed",
+                    "args": {},
+                    "observation": null,
+                    "verification": null,
+                    "error": "Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5391 MB, reserve=2408 MB, measured model load=3340 MB."
+                  }
+                ]
+              },
+              "routing": {
+                "selected_model": "qwen3:4b-instruct",
+                "model_id": "general",
+                "confidence": 0.95,
+                "reason": "Qwen3 4B Instruct - General best matches the general task profile.",
+                "task_profile": {
+                  "task_type": "general",
+                  "coding_requirement": 0.0,
+                  "reasoning_requirement": 0.46,
+                  "vision_requirement": 0.0,
+                  "document_requirement": 0.0,
+                  "summarization_requirement": 0.0,
+                  "latency_priority": 0.5,
+                  "context_length_required": 1168
+                },
+                "manual_override": false,
+                "scores": {
+                  "general": 1.0,
+                  "coder": 0.85,
+                  "vision": 0.705
+                }
+              },
+              "requested_execution_mode": "FAST",
+              "execution_mode": "FAST",
+              "execution_mode_reason": "User selected fast execution.",
+              "requested_chat_mode": "GENERAL",
+              "chat_mode": "GENERAL",
+              "chat_mode_reason": "The user explicitly selected General Chat mode.",
+              "runtime_metrics": {},
+              "final_response": null,
+              "warnings": [
+                "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5391 MB, reserve=2408 MB, measured model load=3340 MB."
+              ],
+              "artifacts": [],
+              "sources": [],
+              "evidence_records": [],
+              "measurements": [],
+              "rules": [],
+              "calculations": [],
+              "claims": [],
+              "conflicts": [],
+              "asset_context": null,
+              "trend_analyses": [],
+              "maintenance_history": [],
+              "maintenance_draft": null,
+              "context_metrics": {},
+              "retrieval_metrics": [],
+              "governance": {
+                "decision": "ALLOW",
+                "input_decision": "ALLOW",
+                "policy": "internal_assistant",
+                "privacy_risk": "low",
+                "pii_findings": 0,
+                "injection_findings": 0,
+                "grounding_score": null,
+                "claim_results": [],
+                "unsupported_material_claims": []
+              },
+              "execution_records": [],
+              "tool_records": [],
+              "workcell_id": null,
+              "workcell_version": null,
+              "workcell_hash": null,
+              "workflow_version": null,
+              "workcell_state": {},
+              "capsule": null,
+              "principal_id": "development-user",
+              "organization_id": "*",
+              "workspace_id": "*",
+              "department_id": "*",
+              "classification": "INTERNAL",
+              "created_at": "2026-09-18T18:10:04.872724Z",
+              "updated_at": "2026-09-18T18:10:04.924436Z"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "measured": true,
+      "task_id": "bd5aed64-9e91-40c8-ba02-2b80c5937e77",
+      "start_ack_seconds": 0.129975,
+      "sse_connect_after_ack_seconds": 0.141186,
+      "sse_headers_seconds": 0.141154,
+      "event_count": 14,
+      "event_type_counts": {
+        "chat_mode_selected": 1,
+        "execution_mode_selected": 1,
+        "generation_started": 1,
+        "governance_completed": 1,
+        "model_selected": 1,
+        "plan_created": 1,
+        "step_completed": 2,
+        "step_started": 2,
+        "task_accepted": 1,
+        "task_classified": 1,
+        "task_completed": 1,
+        "warning": 1
+      },
+      "first_event_type": "task_accepted",
+      "terminal_event_type": "task_completed",
+      "first_event_offset_seconds": 0.271337,
+      "ack_to_first_event_seconds": 0.141362,
+      "first_model_token_offset_seconds": null,
+      "ack_to_first_model_token_seconds": null,
+      "sse_headers_to_first_model_token_seconds": null,
+      "generation_started_to_first_model_token_receive_seconds": null,
+      "first_model_token_to_generation_completed_receive_seconds": null,
+      "task_total_seconds": 0.271777,
+      "ack_to_terminal_seconds": 0.141802,
+      "model_token_event_count": 0,
+      "model_token_interarrival_median_seconds": null,
+      "model_token_interarrival_p95_seconds": null,
+      "event_created_to_sse_receive_median_seconds": 0.206395,
+      "event_created_to_sse_receive_p95_seconds": 0.249946,
+      "model_token_created_to_sse_receive_median_seconds": null,
+      "model_token_created_to_sse_receive_p95_seconds": null,
+      "first_event_offsets_by_type_seconds": {
+        "task_accepted": 0.271337,
+        "governance_completed": 0.271451,
+        "task_classified": 0.271512,
+        "model_selected": 0.27154,
+        "plan_created": 0.27156,
+        "execution_mode_selected": 0.271583,
+        "step_started": 0.271602,
+        "chat_mode_selected": 0.27162,
+        "generation_started": 0.271637,
+        "step_completed": 0.271653,
+        "warning": 0.271701,
+        "task_completed": 0.271777
+      },
+      "agent_runtime_metrics": {},
+      "agent_latency_breakdown": {},
+      "completed_run_id": "a8bdbe2c-d322-4c91-aded-8c006fdba0df",
+      "events": [
+        {
+          "type": "task_accepted",
+          "timestamp": "2026-09-18T18:10:05.055119+00:00",
+          "receive_offset_seconds": 0.271337,
+          "ack_to_receive_seconds": 0.141362,
+          "sse_headers_to_receive_seconds": 0.000176,
+          "event_created_to_receive_seconds": 0.257331,
+          "payload": {
+            "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 1."
+          }
+        },
+        {
+          "type": "governance_completed",
+          "timestamp": "2026-09-18T18:10:05.066594+00:00",
+          "receive_offset_seconds": 0.271451,
+          "ack_to_receive_seconds": 0.141477,
+          "sse_headers_to_receive_seconds": 0.000291,
+          "event_created_to_receive_seconds": 0.24597,
+          "payload": {
+            "decision": "ALLOW",
+            "policy": "internal_assistant"
+          }
+        },
+        {
+          "type": "task_classified",
+          "timestamp": "2026-09-18T18:10:05.075594+00:00",
+          "receive_offset_seconds": 0.271512,
+          "ack_to_receive_seconds": 0.141537,
+          "sse_headers_to_receive_seconds": 0.000351,
+          "event_created_to_receive_seconds": 0.237031,
+          "payload": {
+            "task_type": "general",
+            "coding_requirement": 0.0,
+            "reasoning_requirement": 0.46,
+            "vision_requirement": 0.0,
+            "document_requirement": 0.0,
+            "summarization_requirement": 0.0,
+            "latency_priority": 0.5,
+            "context_length_required": 1184
+          }
+        },
+        {
+          "type": "model_selected",
+          "timestamp": "2026-09-18T18:10:05.081850+00:00",
+          "receive_offset_seconds": 0.27154,
+          "ack_to_receive_seconds": 0.141565,
+          "sse_headers_to_receive_seconds": 0.000379,
+          "event_created_to_receive_seconds": 0.230803,
+          "payload": {
+            "model_id": "general",
+            "model": "qwen3:4b-instruct",
+            "reason": "Qwen3 4B Instruct - General best matches the general task profile."
+          }
+        },
+        {
+          "type": "plan_created",
+          "timestamp": "2026-09-18T18:10:05.087847+00:00",
+          "receive_offset_seconds": 0.27156,
+          "ack_to_receive_seconds": 0.141586,
+          "sse_headers_to_receive_seconds": 0.0004,
+          "event_created_to_receive_seconds": 0.224826,
+          "payload": {
+            "workflow": "general"
+          }
+        },
+        {
+          "type": "execution_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.095855+00:00",
+          "receive_offset_seconds": 0.271583,
+          "ack_to_receive_seconds": 0.141609,
+          "sse_headers_to_receive_seconds": 0.000423,
+          "event_created_to_receive_seconds": 0.216841,
+          "payload": {
+            "requested": "FAST",
+            "selected": "FAST",
+            "reason": "User selected fast execution.",
+            "priority": 30
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.102828+00:00",
+          "receive_offset_seconds": 0.271602,
+          "ack_to_receive_seconds": 0.141627,
+          "sse_headers_to_receive_seconds": 0.000441,
+          "event_created_to_receive_seconds": 0.209887,
+          "payload": {
+            "id": 0,
+            "action": "execute_workflow",
+            "title": "Execute selected bounded workflow"
+          }
+        },
+        {
+          "type": "chat_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.109830+00:00",
+          "receive_offset_seconds": 0.27162,
+          "ack_to_receive_seconds": 0.141645,
+          "sse_headers_to_receive_seconds": 0.000459,
+          "event_created_to_receive_seconds": 0.202903,
+          "payload": {
+            "requested": "GENERAL",
+            "selected": "GENERAL",
+            "reason": "The user explicitly selected General Chat mode."
+          }
+        },
+        {
+          "type": "generation_started",
+          "timestamp": "2026-09-18T18:10:05.122127+00:00",
+          "receive_offset_seconds": 0.271637,
+          "ack_to_receive_seconds": 0.141662,
+          "sse_headers_to_receive_seconds": 0.000476,
+          "event_created_to_receive_seconds": 0.190623,
+          "payload": {
+            "model": "qwen3:4b-instruct"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.271852+00:00",
+          "receive_offset_seconds": 0.271653,
+          "ack_to_receive_seconds": 0.141678,
+          "sse_headers_to_receive_seconds": 0.000492,
+          "event_created_to_receive_seconds": 0.040914,
+          "payload": {
+            "id": 0,
+            "status": "failed",
+            "observation": "Workflow returned a persisted run state."
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.280701+00:00",
+          "receive_offset_seconds": 0.271669,
+          "ack_to_receive_seconds": 0.141695,
+          "sse_headers_to_receive_seconds": 0.000509,
+          "event_created_to_receive_seconds": 0.032081,
+          "payload": {
+            "id": 1,
+            "action": "generate_response",
+            "title": "Generate fast local response"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.288699+00:00",
+          "receive_offset_seconds": 0.271685,
+          "ack_to_receive_seconds": 0.141711,
+          "sse_headers_to_receive_seconds": 0.000525,
+          "event_created_to_receive_seconds": 0.024099,
+          "payload": {
+            "id": 1,
+            "status": "failed",
+            "observation": null
+          }
+        },
+        {
+          "type": "warning",
+          "timestamp": "2026-09-18T18:10:05.295668+00:00",
+          "receive_offset_seconds": 0.271701,
+          "ack_to_receive_seconds": 0.141727,
+          "sse_headers_to_receive_seconds": 0.000541,
+          "event_created_to_receive_seconds": 0.017146,
+          "payload": {
+            "summary": "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+          }
+        },
+        {
+          "type": "task_completed",
+          "timestamp": "2026-09-18T18:10:05.303667+00:00",
+          "receive_offset_seconds": 0.271777,
+          "ack_to_receive_seconds": 0.141802,
+          "sse_headers_to_receive_seconds": 0.000616,
+          "event_created_to_receive_seconds": 0.009223,
+          "payload": {
+            "result": {
+              "id": "a8bdbe2c-d322-4c91-aded-8c006fdba0df",
+              "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 1.",
+              "status": "failed",
+              "plan": {
+                "goal": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 1.",
+                "steps": [
+                  {
+                    "id": 1,
+                    "action": "generate_response",
+                    "title": "Generate fast local response",
+                    "status": "failed",
+                    "args": {},
+                    "observation": null,
+                    "verification": null,
+                    "error": "Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+                  }
+                ]
+              },
+              "routing": {
+                "selected_model": "qwen3:4b-instruct",
+                "model_id": "general",
+                "confidence": 0.95,
+                "reason": "Qwen3 4B Instruct - General best matches the general task profile.",
+                "task_profile": {
+                  "task_type": "general",
+                  "coding_requirement": 0.0,
+                  "reasoning_requirement": 0.46,
+                  "vision_requirement": 0.0,
+                  "document_requirement": 0.0,
+                  "summarization_requirement": 0.0,
+                  "latency_priority": 0.5,
+                  "context_length_required": 1184
+                },
+                "manual_override": false,
+                "scores": {
+                  "general": 1.0,
+                  "coder": 0.85,
+                  "vision": 0.705
+                }
+              },
+              "requested_execution_mode": "FAST",
+              "execution_mode": "FAST",
+              "execution_mode_reason": "User selected fast execution.",
+              "requested_chat_mode": "GENERAL",
+              "chat_mode": "GENERAL",
+              "chat_mode_reason": "The user explicitly selected General Chat mode.",
+              "runtime_metrics": {},
+              "final_response": null,
+              "warnings": [
+                "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+              ],
+              "artifacts": [],
+              "sources": [],
+              "evidence_records": [],
+              "measurements": [],
+              "rules": [],
+              "calculations": [],
+              "claims": [],
+              "conflicts": [],
+              "asset_context": null,
+              "trend_analyses": [],
+              "maintenance_history": [],
+              "maintenance_draft": null,
+              "context_metrics": {},
+              "retrieval_metrics": [],
+              "governance": {
+                "decision": "ALLOW",
+                "input_decision": "ALLOW",
+                "policy": "internal_assistant",
+                "privacy_risk": "low",
+                "pii_findings": 0,
+                "injection_findings": 0,
+                "grounding_score": null,
+                "claim_results": [],
+                "unsupported_material_claims": []
+              },
+              "execution_records": [],
+              "tool_records": [],
+              "workcell_id": null,
+              "workcell_version": null,
+              "workcell_hash": null,
+              "workflow_version": null,
+              "workcell_state": {},
+              "capsule": null,
+              "principal_id": "development-user",
+              "organization_id": "*",
+              "workspace_id": "*",
+              "department_id": "*",
+              "classification": "INTERNAL",
+              "created_at": "2026-09-18T18:10:05.122127Z",
+              "updated_at": "2026-09-18T18:10:05.195523Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "measured": true,
+      "task_id": "91108467-635b-40af-ad1f-9baca3d1834e",
+      "start_ack_seconds": 0.112437,
+      "sse_connect_after_ack_seconds": 0.106014,
+      "sse_headers_seconds": 0.105999,
+      "event_count": 14,
+      "event_type_counts": {
+        "chat_mode_selected": 1,
+        "execution_mode_selected": 1,
+        "generation_started": 1,
+        "governance_completed": 1,
+        "model_selected": 1,
+        "plan_created": 1,
+        "step_completed": 2,
+        "step_started": 2,
+        "task_accepted": 1,
+        "task_classified": 1,
+        "task_completed": 1,
+        "warning": 1
+      },
+      "first_event_type": "task_accepted",
+      "terminal_event_type": "task_completed",
+      "first_event_offset_seconds": 0.218629,
+      "ack_to_first_event_seconds": 0.106192,
+      "first_model_token_offset_seconds": null,
+      "ack_to_first_model_token_seconds": null,
+      "sse_headers_to_first_model_token_seconds": null,
+      "generation_started_to_first_model_token_receive_seconds": null,
+      "first_model_token_to_generation_completed_receive_seconds": null,
+      "task_total_seconds": 0.219102,
+      "ack_to_terminal_seconds": 0.106665,
+      "model_token_event_count": 0,
+      "model_token_interarrival_median_seconds": null,
+      "model_token_interarrival_p95_seconds": null,
+      "event_created_to_sse_receive_median_seconds": 0.159891,
+      "event_created_to_sse_receive_p95_seconds": 0.201427,
+      "model_token_created_to_sse_receive_median_seconds": null,
+      "model_token_created_to_sse_receive_p95_seconds": null,
+      "first_event_offsets_by_type_seconds": {
+        "task_accepted": 0.218629,
+        "governance_completed": 0.218735,
+        "task_classified": 0.218793,
+        "model_selected": 0.21882,
+        "plan_created": 0.218843,
+        "execution_mode_selected": 0.218864,
+        "step_started": 0.218884,
+        "chat_mode_selected": 0.218901,
+        "generation_started": 0.218918,
+        "step_completed": 0.218937,
+        "warning": 0.219076,
+        "task_completed": 0.219102
+      },
+      "agent_runtime_metrics": {},
+      "agent_latency_breakdown": {},
+      "completed_run_id": "9a862198-7c75-474f-8182-09f2990f7866",
+      "events": [
+        {
+          "type": "task_accepted",
+          "timestamp": "2026-09-18T18:10:05.329058+00:00",
+          "receive_offset_seconds": 0.218629,
+          "ack_to_receive_seconds": 0.106192,
+          "sse_headers_to_receive_seconds": 0.000178,
+          "event_created_to_receive_seconds": 0.20721,
+          "payload": {
+            "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 2."
+          }
+        },
+        {
+          "type": "governance_completed",
+          "timestamp": "2026-09-18T18:10:05.338061+00:00",
+          "receive_offset_seconds": 0.218735,
+          "ack_to_receive_seconds": 0.106298,
+          "sse_headers_to_receive_seconds": 0.000284,
+          "event_created_to_receive_seconds": 0.198313,
+          "payload": {
+            "decision": "ALLOW",
+            "policy": "internal_assistant"
+          }
+        },
+        {
+          "type": "task_classified",
+          "timestamp": "2026-09-18T18:10:05.349158+00:00",
+          "receive_offset_seconds": 0.218793,
+          "ack_to_receive_seconds": 0.106355,
+          "sse_headers_to_receive_seconds": 0.000341,
+          "event_created_to_receive_seconds": 0.187274,
+          "payload": {
+            "task_type": "general",
+            "coding_requirement": 0.0,
+            "reasoning_requirement": 0.46,
+            "vision_requirement": 0.0,
+            "document_requirement": 0.0,
+            "summarization_requirement": 0.0,
+            "latency_priority": 0.5,
+            "context_length_required": 1184
+          }
+        },
+        {
+          "type": "model_selected",
+          "timestamp": "2026-09-18T18:10:05.353347+00:00",
+          "receive_offset_seconds": 0.21882,
+          "ack_to_receive_seconds": 0.106383,
+          "sse_headers_to_receive_seconds": 0.000369,
+          "event_created_to_receive_seconds": 0.183112,
+          "payload": {
+            "model_id": "general",
+            "model": "qwen3:4b-instruct",
+            "reason": "Qwen3 4B Instruct - General best matches the general task profile."
+          }
+        },
+        {
+          "type": "plan_created",
+          "timestamp": "2026-09-18T18:10:05.358347+00:00",
+          "receive_offset_seconds": 0.218843,
+          "ack_to_receive_seconds": 0.106406,
+          "sse_headers_to_receive_seconds": 0.000392,
+          "event_created_to_receive_seconds": 0.178135,
+          "payload": {
+            "workflow": "general"
+          }
+        },
+        {
+          "type": "execution_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.365138+00:00",
+          "receive_offset_seconds": 0.218864,
+          "ack_to_receive_seconds": 0.106427,
+          "sse_headers_to_receive_seconds": 0.000413,
+          "event_created_to_receive_seconds": 0.171365,
+          "payload": {
+            "requested": "FAST",
+            "selected": "FAST",
+            "reason": "User selected fast execution.",
+            "priority": 30
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.372138+00:00",
+          "receive_offset_seconds": 0.218884,
+          "ack_to_receive_seconds": 0.106446,
+          "sse_headers_to_receive_seconds": 0.000432,
+          "event_created_to_receive_seconds": 0.164385,
+          "payload": {
+            "id": 0,
+            "action": "execute_workflow",
+            "title": "Execute selected bounded workflow"
+          }
+        },
+        {
+          "type": "chat_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.381142+00:00",
+          "receive_offset_seconds": 0.218901,
+          "ack_to_receive_seconds": 0.106464,
+          "sse_headers_to_receive_seconds": 0.00045,
+          "event_created_to_receive_seconds": 0.155398,
+          "payload": {
+            "requested": "GENERAL",
+            "selected": "GENERAL",
+            "reason": "The user explicitly selected General Chat mode."
+          }
+        },
+        {
+          "type": "generation_started",
+          "timestamp": "2026-09-18T18:10:05.397022+00:00",
+          "receive_offset_seconds": 0.218918,
+          "ack_to_receive_seconds": 0.10648,
+          "sse_headers_to_receive_seconds": 0.000467,
+          "event_created_to_receive_seconds": 0.139535,
+          "payload": {
+            "model": "qwen3:4b-instruct"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.502432+00:00",
+          "receive_offset_seconds": 0.218937,
+          "ack_to_receive_seconds": 0.1065,
+          "sse_headers_to_receive_seconds": 0.000486,
+          "event_created_to_receive_seconds": 0.034144,
+          "payload": {
+            "id": 0,
+            "status": "failed",
+            "observation": "Workflow returned a persisted run state."
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.508965+00:00",
+          "receive_offset_seconds": 0.218954,
+          "ack_to_receive_seconds": 0.106517,
+          "sse_headers_to_receive_seconds": 0.000503,
+          "event_created_to_receive_seconds": 0.027628,
+          "payload": {
+            "id": 1,
+            "action": "generate_response",
+            "title": "Generate fast local response"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.513050+00:00",
+          "receive_offset_seconds": 0.219028,
+          "ack_to_receive_seconds": 0.106591,
+          "sse_headers_to_receive_seconds": 0.000577,
+          "event_created_to_receive_seconds": 0.023617,
+          "payload": {
+            "id": 1,
+            "status": "failed",
+            "observation": null
+          }
+        },
+        {
+          "type": "warning",
+          "timestamp": "2026-09-18T18:10:05.519739+00:00",
+          "receive_offset_seconds": 0.219076,
+          "ack_to_receive_seconds": 0.106638,
+          "sse_headers_to_receive_seconds": 0.000624,
+          "event_created_to_receive_seconds": 0.016976,
+          "payload": {
+            "summary": "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5353 MB, reserve=2408 MB, measured model load=3340 MB."
+          }
+        },
+        {
+          "type": "task_completed",
+          "timestamp": "2026-09-18T18:10:05.525243+00:00",
+          "receive_offset_seconds": 0.219102,
+          "ack_to_receive_seconds": 0.106665,
+          "sse_headers_to_receive_seconds": 0.000651,
+          "event_created_to_receive_seconds": 0.011498,
+          "payload": {
+            "result": {
+              "id": "9a862198-7c75-474f-8182-09f2990f7866",
+              "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 2.",
+              "status": "failed",
+              "plan": {
+                "goal": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 2.",
+                "steps": [
+                  {
+                    "id": 1,
+                    "action": "generate_response",
+                    "title": "Generate fast local response",
+                    "status": "failed",
+                    "args": {},
+                    "observation": null,
+                    "verification": null,
+                    "error": "Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5353 MB, reserve=2408 MB, measured model load=3340 MB."
+                  }
+                ]
+              },
+              "routing": {
+                "selected_model": "qwen3:4b-instruct",
+                "model_id": "general",
+                "confidence": 0.95,
+                "reason": "Qwen3 4B Instruct - General best matches the general task profile.",
+                "task_profile": {
+                  "task_type": "general",
+                  "coding_requirement": 0.0,
+                  "reasoning_requirement": 0.46,
+                  "vision_requirement": 0.0,
+                  "document_requirement": 0.0,
+                  "summarization_requirement": 0.0,
+                  "latency_priority": 0.5,
+                  "context_length_required": 1184
+                },
+                "manual_override": false,
+                "scores": {
+                  "general": 1.0,
+                  "coder": 0.85,
+                  "vision": 0.705
+                }
+              },
+              "requested_execution_mode": "FAST",
+              "execution_mode": "FAST",
+              "execution_mode_reason": "User selected fast execution.",
+              "requested_chat_mode": "GENERAL",
+              "chat_mode": "GENERAL",
+              "chat_mode_reason": "The user explicitly selected General Chat mode.",
+              "runtime_metrics": {},
+              "final_response": null,
+              "warnings": [
+                "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5353 MB, reserve=2408 MB, measured model load=3340 MB."
+              ],
+              "artifacts": [],
+              "sources": [],
+              "evidence_records": [],
+              "measurements": [],
+              "rules": [],
+              "calculations": [],
+              "claims": [],
+              "conflicts": [],
+              "asset_context": null,
+              "trend_analyses": [],
+              "maintenance_history": [],
+              "maintenance_draft": null,
+              "context_metrics": {},
+              "retrieval_metrics": [],
+              "governance": {
+                "decision": "ALLOW",
+                "input_decision": "ALLOW",
+                "policy": "internal_assistant",
+                "privacy_risk": "low",
+                "pii_findings": 0,
+                "injection_findings": 0,
+                "grounding_score": null,
+                "claim_results": [],
+                "unsupported_material_claims": []
+              },
+              "execution_records": [],
+              "tool_records": [],
+              "workcell_id": null,
+              "workcell_version": null,
+              "workcell_hash": null,
+              "workflow_version": null,
+              "workcell_state": {},
+              "capsule": null,
+              "principal_id": "development-user",
+              "organization_id": "*",
+              "workspace_id": "*",
+              "department_id": "*",
+              "classification": "INTERNAL",
+              "created_at": "2026-09-18T18:10:05.397022Z",
+              "updated_at": "2026-09-18T18:10:05.445443Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "measured": true,
+      "task_id": "d6272d44-f324-49cd-ab87-1908073d0c9b",
+      "start_ack_seconds": 0.109079,
+      "sse_connect_after_ack_seconds": 0.114072,
+      "sse_headers_seconds": 0.114056,
+      "event_count": 14,
+      "event_type_counts": {
+        "chat_mode_selected": 1,
+        "execution_mode_selected": 1,
+        "generation_started": 1,
+        "governance_completed": 1,
+        "model_selected": 1,
+        "plan_created": 1,
+        "step_completed": 2,
+        "step_started": 2,
+        "task_accepted": 1,
+        "task_classified": 1,
+        "task_completed": 1,
+        "warning": 1
+      },
+      "first_event_type": "task_accepted",
+      "terminal_event_type": "task_completed",
+      "first_event_offset_seconds": 0.223323,
+      "ack_to_first_event_seconds": 0.114245,
+      "first_model_token_offset_seconds": null,
+      "ack_to_first_model_token_seconds": null,
+      "sse_headers_to_first_model_token_seconds": null,
+      "generation_started_to_first_model_token_receive_seconds": null,
+      "first_model_token_to_generation_completed_receive_seconds": null,
+      "task_total_seconds": 0.223857,
+      "ack_to_terminal_seconds": 0.114778,
+      "model_token_event_count": 0,
+      "model_token_interarrival_median_seconds": null,
+      "model_token_interarrival_p95_seconds": null,
+      "event_created_to_sse_receive_median_seconds": 0.164256,
+      "event_created_to_sse_receive_p95_seconds": 0.207184,
+      "model_token_created_to_sse_receive_median_seconds": null,
+      "model_token_created_to_sse_receive_p95_seconds": null,
+      "first_event_offsets_by_type_seconds": {
+        "task_accepted": 0.223323,
+        "governance_completed": 0.223427,
+        "task_classified": 0.223483,
+        "model_selected": 0.22351,
+        "plan_created": 0.223531,
+        "execution_mode_selected": 0.223551,
+        "step_started": 0.223568,
+        "chat_mode_selected": 0.223586,
+        "generation_started": 0.223603,
+        "step_completed": 0.22362,
+        "warning": 0.223834,
+        "task_completed": 0.223857
+      },
+      "agent_runtime_metrics": {},
+      "agent_latency_breakdown": {},
+      "completed_run_id": "2c3511c2-78c8-4e91-8c41-33f9c6b7f229",
+      "events": [
+        {
+          "type": "task_accepted",
+          "timestamp": "2026-09-18T18:10:05.551123+00:00",
+          "receive_offset_seconds": 0.223323,
+          "ack_to_receive_seconds": 0.114245,
+          "sse_headers_to_receive_seconds": 0.000173,
+          "event_created_to_receive_seconds": 0.212316,
+          "payload": {
+            "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 3."
+          }
+        },
+        {
+          "type": "governance_completed",
+          "timestamp": "2026-09-18T18:10:05.559123+00:00",
+          "receive_offset_seconds": 0.223427,
+          "ack_to_receive_seconds": 0.114348,
+          "sse_headers_to_receive_seconds": 0.000277,
+          "event_created_to_receive_seconds": 0.20442,
+          "payload": {
+            "decision": "ALLOW",
+            "policy": "internal_assistant"
+          }
+        },
+        {
+          "type": "task_classified",
+          "timestamp": "2026-09-18T18:10:05.569224+00:00",
+          "receive_offset_seconds": 0.223483,
+          "ack_to_receive_seconds": 0.114404,
+          "sse_headers_to_receive_seconds": 0.000333,
+          "event_created_to_receive_seconds": 0.194375,
+          "payload": {
+            "task_type": "general",
+            "coding_requirement": 0.0,
+            "reasoning_requirement": 0.46,
+            "vision_requirement": 0.0,
+            "document_requirement": 0.0,
+            "summarization_requirement": 0.0,
+            "latency_priority": 0.5,
+            "context_length_required": 1184
+          }
+        },
+        {
+          "type": "model_selected",
+          "timestamp": "2026-09-18T18:10:05.575253+00:00",
+          "receive_offset_seconds": 0.22351,
+          "ack_to_receive_seconds": 0.114431,
+          "sse_headers_to_receive_seconds": 0.00036,
+          "event_created_to_receive_seconds": 0.188373,
+          "payload": {
+            "model_id": "general",
+            "model": "qwen3:4b-instruct",
+            "reason": "Qwen3 4B Instruct - General best matches the general task profile."
+          }
+        },
+        {
+          "type": "plan_created",
+          "timestamp": "2026-09-18T18:10:05.582224+00:00",
+          "receive_offset_seconds": 0.223531,
+          "ack_to_receive_seconds": 0.114452,
+          "sse_headers_to_receive_seconds": 0.000381,
+          "event_created_to_receive_seconds": 0.181423,
+          "payload": {
+            "workflow": "general"
+          }
+        },
+        {
+          "type": "execution_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.587249+00:00",
+          "receive_offset_seconds": 0.223551,
+          "ack_to_receive_seconds": 0.114472,
+          "sse_headers_to_receive_seconds": 0.0004,
+          "event_created_to_receive_seconds": 0.176418,
+          "payload": {
+            "requested": "FAST",
+            "selected": "FAST",
+            "reason": "User selected fast execution.",
+            "priority": 30
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.595227+00:00",
+          "receive_offset_seconds": 0.223568,
+          "ack_to_receive_seconds": 0.114489,
+          "sse_headers_to_receive_seconds": 0.000418,
+          "event_created_to_receive_seconds": 0.168457,
+          "payload": {
+            "id": 0,
+            "action": "execute_workflow",
+            "title": "Execute selected bounded workflow"
+          }
+        },
+        {
+          "type": "chat_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.603646+00:00",
+          "receive_offset_seconds": 0.223586,
+          "ack_to_receive_seconds": 0.114507,
+          "sse_headers_to_receive_seconds": 0.000436,
+          "event_created_to_receive_seconds": 0.160056,
+          "payload": {
+            "requested": "GENERAL",
+            "selected": "GENERAL",
+            "reason": "The user explicitly selected General Chat mode."
+          }
+        },
+        {
+          "type": "generation_started",
+          "timestamp": "2026-09-18T18:10:05.615275+00:00",
+          "receive_offset_seconds": 0.223603,
+          "ack_to_receive_seconds": 0.114524,
+          "sse_headers_to_receive_seconds": 0.000452,
+          "event_created_to_receive_seconds": 0.148444,
+          "payload": {
+            "model": "qwen3:4b-instruct"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.727850+00:00",
+          "receive_offset_seconds": 0.22362,
+          "ack_to_receive_seconds": 0.114541,
+          "sse_headers_to_receive_seconds": 0.000469,
+          "event_created_to_receive_seconds": 0.035886,
+          "payload": {
+            "id": 0,
+            "status": "failed",
+            "observation": "Workflow returned a persisted run state."
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.734865+00:00",
+          "receive_offset_seconds": 0.22376,
+          "ack_to_receive_seconds": 0.114681,
+          "sse_headers_to_receive_seconds": 0.00061,
+          "event_created_to_receive_seconds": 0.029011,
+          "payload": {
+            "id": 1,
+            "action": "generate_response",
+            "title": "Generate fast local response"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.740437+00:00",
+          "receive_offset_seconds": 0.223811,
+          "ack_to_receive_seconds": 0.114732,
+          "sse_headers_to_receive_seconds": 0.000661,
+          "event_created_to_receive_seconds": 0.02349,
+          "payload": {
+            "id": 1,
+            "status": "failed",
+            "observation": null
+          }
+        },
+        {
+          "type": "warning",
+          "timestamp": "2026-09-18T18:10:05.746462+00:00",
+          "receive_offset_seconds": 0.223834,
+          "ack_to_receive_seconds": 0.114755,
+          "sse_headers_to_receive_seconds": 0.000684,
+          "event_created_to_receive_seconds": 0.017488,
+          "payload": {
+            "summary": "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+          }
+        },
+        {
+          "type": "task_completed",
+          "timestamp": "2026-09-18T18:10:05.753464+00:00",
+          "receive_offset_seconds": 0.223857,
+          "ack_to_receive_seconds": 0.114778,
+          "sse_headers_to_receive_seconds": 0.000707,
+          "event_created_to_receive_seconds": 0.010509,
+          "payload": {
+            "result": {
+              "id": "2c3511c2-78c8-4e91-8c41-33f9c6b7f229",
+              "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 3.",
+              "status": "failed",
+              "plan": {
+                "goal": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 3.",
+                "steps": [
+                  {
+                    "id": 1,
+                    "action": "generate_response",
+                    "title": "Generate fast local response",
+                    "status": "failed",
+                    "args": {},
+                    "observation": null,
+                    "verification": null,
+                    "error": "Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+                  }
+                ]
+              },
+              "routing": {
+                "selected_model": "qwen3:4b-instruct",
+                "model_id": "general",
+                "confidence": 0.95,
+                "reason": "Qwen3 4B Instruct - General best matches the general task profile.",
+                "task_profile": {
+                  "task_type": "general",
+                  "coding_requirement": 0.0,
+                  "reasoning_requirement": 0.46,
+                  "vision_requirement": 0.0,
+                  "document_requirement": 0.0,
+                  "summarization_requirement": 0.0,
+                  "latency_priority": 0.5,
+                  "context_length_required": 1184
+                },
+                "manual_override": false,
+                "scores": {
+                  "general": 1.0,
+                  "coder": 0.85,
+                  "vision": 0.705
+                }
+              },
+              "requested_execution_mode": "FAST",
+              "execution_mode": "FAST",
+              "execution_mode_reason": "User selected fast execution.",
+              "requested_chat_mode": "GENERAL",
+              "chat_mode": "GENERAL",
+              "chat_mode_reason": "The user explicitly selected General Chat mode.",
+              "runtime_metrics": {},
+              "final_response": null,
+              "warnings": [
+                "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5356 MB, reserve=2408 MB, measured model load=3340 MB."
+              ],
+              "artifacts": [],
+              "sources": [],
+              "evidence_records": [],
+              "measurements": [],
+              "rules": [],
+              "calculations": [],
+              "claims": [],
+              "conflicts": [],
+              "asset_context": null,
+              "trend_analyses": [],
+              "maintenance_history": [],
+              "maintenance_draft": null,
+              "context_metrics": {},
+              "retrieval_metrics": [],
+              "governance": {
+                "decision": "ALLOW",
+                "input_decision": "ALLOW",
+                "policy": "internal_assistant",
+                "privacy_risk": "low",
+                "pii_findings": 0,
+                "injection_findings": 0,
+                "grounding_score": null,
+                "claim_results": [],
+                "unsupported_material_claims": []
+              },
+              "execution_records": [],
+              "tool_records": [],
+              "workcell_id": null,
+              "workcell_version": null,
+              "workcell_hash": null,
+              "workflow_version": null,
+              "workcell_state": {},
+              "capsule": null,
+              "principal_id": "development-user",
+              "organization_id": "*",
+              "workspace_id": "*",
+              "department_id": "*",
+              "classification": "INTERNAL",
+              "created_at": "2026-09-18T18:10:05.614272Z",
+              "updated_at": "2026-09-18T18:10:05.665180Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "measured": true,
+      "task_id": "5ab47f18-dbbc-45b0-95c0-36df9d47eb00",
+      "start_ack_seconds": 0.105103,
+      "sse_connect_after_ack_seconds": 0.134669,
+      "sse_headers_seconds": 0.134654,
+      "event_count": 14,
+      "event_type_counts": {
+        "chat_mode_selected": 1,
+        "execution_mode_selected": 1,
+        "generation_started": 1,
+        "governance_completed": 1,
+        "model_selected": 1,
+        "plan_created": 1,
+        "step_completed": 2,
+        "step_started": 2,
+        "task_accepted": 1,
+        "task_classified": 1,
+        "task_completed": 1,
+        "warning": 1
+      },
+      "first_event_type": "task_accepted",
+      "terminal_event_type": "task_completed",
+      "first_event_offset_seconds": 0.240002,
+      "ack_to_first_event_seconds": 0.134899,
+      "first_model_token_offset_seconds": null,
+      "ack_to_first_model_token_seconds": null,
+      "sse_headers_to_first_model_token_seconds": null,
+      "generation_started_to_first_model_token_receive_seconds": null,
+      "first_model_token_to_generation_completed_receive_seconds": null,
+      "task_total_seconds": 0.240695,
+      "ack_to_terminal_seconds": 0.135592,
+      "model_token_event_count": 0,
+      "model_token_interarrival_median_seconds": null,
+      "model_token_interarrival_p95_seconds": null,
+      "event_created_to_sse_receive_median_seconds": 0.178824,
+      "event_created_to_sse_receive_p95_seconds": 0.221254,
+      "model_token_created_to_sse_receive_median_seconds": null,
+      "model_token_created_to_sse_receive_p95_seconds": null,
+      "first_event_offsets_by_type_seconds": {
+        "task_accepted": 0.240002,
+        "governance_completed": 0.240177,
+        "task_classified": 0.240283,
+        "model_selected": 0.240332,
+        "plan_created": 0.240416,
+        "execution_mode_selected": 0.240445,
+        "step_started": 0.240469,
+        "chat_mode_selected": 0.240491,
+        "generation_started": 0.24051,
+        "step_completed": 0.24053,
+        "warning": 0.240582,
+        "task_completed": 0.240695
+      },
+      "agent_runtime_metrics": {},
+      "agent_latency_breakdown": {},
+      "completed_run_id": "cdd48bae-1d82-4762-9cfd-c6aba08ff7e1",
+      "events": [
+        {
+          "type": "task_accepted",
+          "timestamp": "2026-09-18T18:10:05.780712+00:00",
+          "receive_offset_seconds": 0.240002,
+          "ack_to_receive_seconds": 0.134899,
+          "sse_headers_to_receive_seconds": 0.00023,
+          "event_created_to_receive_seconds": 0.227004,
+          "payload": {
+            "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 4."
+          }
+        },
+        {
+          "type": "governance_completed",
+          "timestamp": "2026-09-18T18:10:05.789734+00:00",
+          "receive_offset_seconds": 0.240177,
+          "ack_to_receive_seconds": 0.135075,
+          "sse_headers_to_receive_seconds": 0.000405,
+          "event_created_to_receive_seconds": 0.218157,
+          "payload": {
+            "decision": "ALLOW",
+            "policy": "internal_assistant"
+          }
+        },
+        {
+          "type": "task_classified",
+          "timestamp": "2026-09-18T18:10:05.799738+00:00",
+          "receive_offset_seconds": 0.240283,
+          "ack_to_receive_seconds": 0.13518,
+          "sse_headers_to_receive_seconds": 0.000511,
+          "event_created_to_receive_seconds": 0.208259,
+          "payload": {
+            "task_type": "general",
+            "coding_requirement": 0.0,
+            "reasoning_requirement": 0.46,
+            "vision_requirement": 0.0,
+            "document_requirement": 0.0,
+            "summarization_requirement": 0.0,
+            "latency_priority": 0.5,
+            "context_length_required": 1184
+          }
+        },
+        {
+          "type": "model_selected",
+          "timestamp": "2026-09-18T18:10:05.806326+00:00",
+          "receive_offset_seconds": 0.240332,
+          "ack_to_receive_seconds": 0.135229,
+          "sse_headers_to_receive_seconds": 0.00056,
+          "event_created_to_receive_seconds": 0.20172,
+          "payload": {
+            "model_id": "general",
+            "model": "qwen3:4b-instruct",
+            "reason": "Qwen3 4B Instruct - General best matches the general task profile."
+          }
+        },
+        {
+          "type": "plan_created",
+          "timestamp": "2026-09-18T18:10:05.812152+00:00",
+          "receive_offset_seconds": 0.240416,
+          "ack_to_receive_seconds": 0.135314,
+          "sse_headers_to_receive_seconds": 0.000644,
+          "event_created_to_receive_seconds": 0.195978,
+          "payload": {
+            "workflow": "general"
+          }
+        },
+        {
+          "type": "execution_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.821390+00:00",
+          "receive_offset_seconds": 0.240445,
+          "ack_to_receive_seconds": 0.135342,
+          "sse_headers_to_receive_seconds": 0.000673,
+          "event_created_to_receive_seconds": 0.186769,
+          "payload": {
+            "requested": "FAST",
+            "selected": "FAST",
+            "reason": "User selected fast execution.",
+            "priority": 30
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.826369+00:00",
+          "receive_offset_seconds": 0.240469,
+          "ack_to_receive_seconds": 0.135366,
+          "sse_headers_to_receive_seconds": 0.000697,
+          "event_created_to_receive_seconds": 0.181814,
+          "payload": {
+            "id": 0,
+            "action": "execute_workflow",
+            "title": "Execute selected bounded workflow"
+          }
+        },
+        {
+          "type": "chat_mode_selected",
+          "timestamp": "2026-09-18T18:10:05.832371+00:00",
+          "receive_offset_seconds": 0.240491,
+          "ack_to_receive_seconds": 0.135388,
+          "sse_headers_to_receive_seconds": 0.000719,
+          "event_created_to_receive_seconds": 0.175834,
+          "payload": {
+            "requested": "GENERAL",
+            "selected": "GENERAL",
+            "reason": "The user explicitly selected General Chat mode."
+          }
+        },
+        {
+          "type": "generation_started",
+          "timestamp": "2026-09-18T18:10:05.842347+00:00",
+          "receive_offset_seconds": 0.24051,
+          "ack_to_receive_seconds": 0.135407,
+          "sse_headers_to_receive_seconds": 0.000738,
+          "event_created_to_receive_seconds": 0.165877,
+          "payload": {
+            "model": "qwen3:4b-instruct"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.964995+00:00",
+          "receive_offset_seconds": 0.24053,
+          "ack_to_receive_seconds": 0.135427,
+          "sse_headers_to_receive_seconds": 0.000758,
+          "event_created_to_receive_seconds": 0.043249,
+          "payload": {
+            "id": 0,
+            "status": "failed",
+            "observation": "Workflow returned a persisted run state."
+          }
+        },
+        {
+          "type": "step_started",
+          "timestamp": "2026-09-18T18:10:05.974603+00:00",
+          "receive_offset_seconds": 0.240548,
+          "ack_to_receive_seconds": 0.135445,
+          "sse_headers_to_receive_seconds": 0.000776,
+          "event_created_to_receive_seconds": 0.033659,
+          "payload": {
+            "id": 1,
+            "action": "generate_response",
+            "title": "Generate fast local response"
+          }
+        },
+        {
+          "type": "step_completed",
+          "timestamp": "2026-09-18T18:10:05.981607+00:00",
+          "receive_offset_seconds": 0.240565,
+          "ack_to_receive_seconds": 0.135462,
+          "sse_headers_to_receive_seconds": 0.000793,
+          "event_created_to_receive_seconds": 0.026672,
+          "payload": {
+            "id": 1,
+            "status": "failed",
+            "observation": null
+          }
+        },
+        {
+          "type": "warning",
+          "timestamp": "2026-09-18T18:10:05.991444+00:00",
+          "receive_offset_seconds": 0.240582,
+          "ack_to_receive_seconds": 0.135479,
+          "sse_headers_to_receive_seconds": 0.00081,
+          "event_created_to_receive_seconds": 0.016852,
+          "payload": {
+            "summary": "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5352 MB, reserve=2408 MB, measured model load=3340 MB."
+          }
+        },
+        {
+          "type": "task_completed",
+          "timestamp": "2026-09-18T18:10:05.998318+00:00",
+          "receive_offset_seconds": 0.240695,
+          "ack_to_receive_seconds": 0.135592,
+          "sse_headers_to_receive_seconds": 0.000923,
+          "event_created_to_receive_seconds": 0.010091,
+          "payload": {
+            "result": {
+              "id": "cdd48bae-1d82-4762-9cfd-c6aba08ff7e1",
+              "request": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 4.",
+              "status": "failed",
+              "plan": {
+                "goal": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?\nBenchmark run 4.",
+                "steps": [
+                  {
+                    "id": 1,
+                    "action": "generate_response",
+                    "title": "Generate fast local response",
+                    "status": "failed",
+                    "args": {},
+                    "observation": null,
+                    "verification": null,
+                    "error": "Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5352 MB, reserve=2408 MB, measured model load=3340 MB."
+                  }
+                ]
+              },
+              "routing": {
+                "selected_model": "qwen3:4b-instruct",
+                "model_id": "general",
+                "confidence": 0.95,
+                "reason": "Qwen3 4B Instruct - General best matches the general task profile.",
+                "task_profile": {
+                  "task_type": "general",
+                  "coding_requirement": 0.0,
+                  "reasoning_requirement": 0.46,
+                  "vision_requirement": 0.0,
+                  "document_requirement": 0.0,
+                  "summarization_requirement": 0.0,
+                  "latency_priority": 0.5,
+                  "context_length_required": 1184
+                },
+                "manual_override": false,
+                "scores": {
+                  "general": 1.0,
+                  "coder": 0.85,
+                  "vision": 0.705
+                }
+              },
+              "requested_execution_mode": "FAST",
+              "execution_mode": "FAST",
+              "execution_mode_reason": "User selected fast execution.",
+              "requested_chat_mode": "GENERAL",
+              "chat_mode": "GENERAL",
+              "chat_mode_reason": "The user explicitly selected General Chat mode.",
+              "runtime_metrics": {},
+              "final_response": null,
+              "warnings": [
+                "Agent stopped safely: Local model 'qwen3:4b-instruct' cannot be loaded safely: Insufficient RAM for the measured target footprint after evicting eligible resident models. Available RAM=5352 MB, reserve=2408 MB, measured model load=3340 MB."
+              ],
+              "artifacts": [],
+              "sources": [],
+              "evidence_records": [],
+              "measurements": [],
+              "rules": [],
+              "calculations": [],
+              "claims": [],
+              "conflicts": [],
+              "asset_context": null,
+              "trend_analyses": [],
+              "maintenance_history": [],
+              "maintenance_draft": null,
+              "context_metrics": {},
+              "retrieval_metrics": [],
+              "governance": {
+                "decision": "ALLOW",
+                "input_decision": "ALLOW",
+                "policy": "internal_assistant",
+                "privacy_risk": "low",
+                "pii_findings": 0,
+                "injection_findings": 0,
+                "grounding_score": null,
+                "claim_results": [],
+                "unsupported_material_claims": []
+              },
+              "execution_records": [],
+              "tool_records": [],
+              "workcell_id": null,
+              "workcell_version": null,
+              "workcell_hash": null,
+              "workflow_version": null,
+              "workcell_state": {},
+              "capsule": null,
+              "principal_id": "development-user",
+              "organization_id": "*",
+              "workspace_id": "*",
+              "department_id": "*",
+              "classification": "INTERNAL",
+              "created_at": "2026-09-18T18:10:05.842347Z",
+              "updated_at": "2026-09-18T18:10:05.888472Z"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "median_start_ack_seconds": 0.110758,
+    "median_sse_connect_after_ack_seconds": 0.124371,
+    "median_first_event_offset_seconds": 0.231662,
+    "median_ack_to_first_event_seconds": 0.124572,
+    "median_first_model_token_offset_seconds": null,
+    "median_ack_to_first_model_token_seconds": null,
+    "median_sse_headers_to_first_model_token_seconds": null,
+    "median_generation_started_to_first_model_token_receive_seconds": null,
+    "median_first_model_token_to_generation_completed_receive_seconds": null,
+    "median_task_total_seconds": 0.232276,
+    "median_ack_to_terminal_seconds": 0.125185,
+    "median_event_created_to_sse_receive_median_seconds": 0.17154,
+    "median_model_token_created_to_sse_receive_median_seconds": null,
+    "median_model_token_interarrival_median_seconds": null,
+    "median_model_token_event_count": 0.0,
+    "median_agent_generation_wall_seconds": null,
+    "median_agent_queue_wait_seconds": null,
+    "median_agent_model_reported_total_seconds": null,
+    "median_agent_load_duration_seconds": null,
+    "median_agent_time_to_first_token_seconds": null,
+    "median_agent_decode_tokens_per_second": null,
+    "median_agent_first_ui_frame_seconds": null,
+    "median_agent_event_callback_seconds": null,
+    "median_agent_event_callback_count": null,
+    "median_agent_event_callback_percent": null,
+    "median_agent_application_overhead_seconds": null,
+    "median_agent_application_overhead_percent": null
+  },
+  "semantics": {
+    "live_delivery": "Task events are published to the in-process broker before TaskEventRecord SQLite commit. SSE receive latency therefore measures live broker delivery, while AgentExecutor callback time includes the persistence callback cost.",
+    "browser_paint": "This v1 benchmark terminates at SSE client receipt. Browser React state update and paint are intentionally not claimed yet; they require frontend-side Performance API instrumentation."
+  }
+}

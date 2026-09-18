@@ -1,0 +1,994 @@
+{
+  "benchmark_design": "actual-ollama-provider-generate-wrapper-overhead-v2-ram-stable",
+  "status": "complete",
+  "error": null,
+  "model": "qwen3:4b-instruct",
+  "requested_repeats": 8,
+  "completed_rounds": 8,
+  "ram_reserve_mb": 2407.85,
+  "ram_headroom_mb": 96.0,
+  "minimum_benchmark_available_mb": 2503.85,
+  "rounds": [
+    {
+      "round": 1,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2367.68,
+          "used_mb": 13684.65,
+          "total_mb": 16052.33,
+          "percent": 85.3
+        },
+        "memory_after_unload": {
+          "available_mb": 5247.63,
+          "used_mb": 10804.7,
+          "total_mb": 16052.33,
+          "percent": 67.3
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 5.117422,
+          "load_duration_seconds": 4.608915,
+          "memory_after": {
+            "available_mb": 2631.54,
+            "used_mb": 13420.79,
+            "total_mb": 16052.33,
+            "percent": 83.6
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 2631.25,
+          "used_mb": 13421.08,
+          "total_mb": 16052.33,
+          "percent": 83.6
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 7.6e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2631.25,
+          "used_mb": 13421.07,
+          "total_mb": 16052.33,
+          "percent": 83.6
+        }
+      },
+      "order": [
+        "fresh",
+        "shared"
+      ],
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 5.8e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2631.2,
+          "used_mb": 13421.13,
+          "total_mb": 16052.33,
+          "percent": 83.6
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 0.000179,
+        "provider_wall_seconds": 6.740795,
+        "ollama_total_duration_seconds": 6.307747,
+        "provider_wrapper_overhead_seconds": 0.433048,
+        "residency_prepare_seconds": 0.404138,
+        "queue_wait_seconds": 0.015,
+        "lifecycle_begin_seconds": 5.9e-05,
+        "lifecycle_mark_busy_seconds": 0.002981,
+        "lifecycle_complete_seconds": 8.9e-05,
+        "lifecycle_mark_busy_calls": 65,
+        "known_timed_wrapper_seconds": 0.422266,
+        "residual_wrapper_seconds": 0.010781,
+        "time_to_first_token_seconds": 1.828,
+        "tokens_per_second": 13.457,
+        "token_count": 66,
+        "load_duration_seconds": 0.002803,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 0.000194,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2683.06,
+          "used_mb": 13369.27,
+          "total_mb": 16052.33,
+          "percent": 83.3
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 8.6e-05,
+        "provider_wall_seconds": 6.16717,
+        "ollama_total_duration_seconds": 6.120238,
+        "provider_wrapper_overhead_seconds": 0.046932,
+        "residency_prepare_seconds": 0.025159,
+        "queue_wait_seconds": 0.0,
+        "lifecycle_begin_seconds": 2.7e-05,
+        "lifecycle_mark_busy_seconds": 0.003314,
+        "lifecycle_complete_seconds": 7.9e-05,
+        "lifecycle_mark_busy_calls": 77,
+        "known_timed_wrapper_seconds": 0.02858,
+        "residual_wrapper_seconds": 0.018352,
+        "time_to_first_token_seconds": 0.156,
+        "tokens_per_second": 12.994,
+        "token_count": 78,
+        "load_duration_seconds": 0.006979,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "memory_after_round": {
+        "available_mb": 2664.46,
+        "used_mb": 13387.87,
+        "total_mb": 16052.33,
+        "percent": 83.4
+      }
+    },
+    {
+      "round": 2,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2664.47,
+          "used_mb": 13387.86,
+          "total_mb": 16052.33,
+          "percent": 83.4
+        },
+        "memory_after_unload": {
+          "available_mb": 5398.07,
+          "used_mb": 10654.25,
+          "total_mb": 16052.33,
+          "percent": 66.4
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.341833,
+          "load_duration_seconds": 2.809561,
+          "memory_after": {
+            "available_mb": 2861.81,
+            "used_mb": 13190.52,
+            "total_mb": 16052.33,
+            "percent": 82.2
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 2861.81,
+          "used_mb": 13190.52,
+          "total_mb": 16052.33,
+          "percent": 82.2
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 6.3e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2861.87,
+          "used_mb": 13190.46,
+          "total_mb": 16052.33,
+          "percent": 82.2
+        }
+      },
+      "order": [
+        "shared",
+        "fresh"
+      ],
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 6.6e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2861.93,
+          "used_mb": 13190.39,
+          "total_mb": 16052.33,
+          "percent": 82.2
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 0.000101,
+        "provider_wall_seconds": 8.124103,
+        "ollama_total_duration_seconds": 8.069238,
+        "provider_wrapper_overhead_seconds": 0.054865,
+        "residency_prepare_seconds": 0.025973,
+        "queue_wait_seconds": 0.016,
+        "lifecycle_begin_seconds": 4.1e-05,
+        "lifecycle_mark_busy_seconds": 0.003164,
+        "lifecycle_complete_seconds": 5.8e-05,
+        "lifecycle_mark_busy_calls": 60,
+        "known_timed_wrapper_seconds": 0.045236,
+        "residual_wrapper_seconds": 0.009629,
+        "time_to_first_token_seconds": 2.297,
+        "tokens_per_second": 10.476,
+        "token_count": 61,
+        "load_duration_seconds": 0.00818,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 0.000168,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3150.92,
+          "used_mb": 12901.41,
+          "total_mb": 16052.33,
+          "percent": 80.4
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 9.6e-05,
+        "provider_wall_seconds": 4.379987,
+        "ollama_total_duration_seconds": 4.294587,
+        "provider_wrapper_overhead_seconds": 0.0854,
+        "residency_prepare_seconds": 0.041928,
+        "queue_wait_seconds": 0.015,
+        "lifecycle_begin_seconds": 3.5e-05,
+        "lifecycle_mark_busy_seconds": 0.002497,
+        "lifecycle_complete_seconds": 5.3e-05,
+        "lifecycle_mark_busy_calls": 48,
+        "known_timed_wrapper_seconds": 0.059514,
+        "residual_wrapper_seconds": 0.025886,
+        "time_to_first_token_seconds": 0.219,
+        "tokens_per_second": 11.785,
+        "token_count": 49,
+        "load_duration_seconds": 0.007424,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "memory_after_round": {
+        "available_mb": 3143.04,
+        "used_mb": 12909.29,
+        "total_mb": 16052.33,
+        "percent": 80.4
+      }
+    },
+    {
+      "round": 3,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 3143.03,
+          "used_mb": 12909.3,
+          "total_mb": 16052.33,
+          "percent": 80.4
+        },
+        "memory_after_unload": {
+          "available_mb": 5870.29,
+          "used_mb": 10182.04,
+          "total_mb": 16052.33,
+          "percent": 63.4
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.332536,
+          "load_duration_seconds": 2.813908,
+          "memory_after": {
+            "available_mb": 3159.73,
+            "used_mb": 12892.6,
+            "total_mb": 16052.33,
+            "percent": 80.3
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 3159.66,
+          "used_mb": 12892.66,
+          "total_mb": 16052.33,
+          "percent": 80.3
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 6e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3159.6,
+          "used_mb": 12892.73,
+          "total_mb": 16052.33,
+          "percent": 80.3
+        }
+      },
+      "order": [
+        "fresh",
+        "shared"
+      ],
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 5.7e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3159.41,
+          "used_mb": 12892.91,
+          "total_mb": 16052.33,
+          "percent": 80.3
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 0.000108,
+        "provider_wall_seconds": 8.000055,
+        "ollama_total_duration_seconds": 7.919893,
+        "provider_wrapper_overhead_seconds": 0.080162,
+        "residency_prepare_seconds": 0.041944,
+        "queue_wait_seconds": 0.016,
+        "lifecycle_begin_seconds": 2.7e-05,
+        "lifecycle_mark_busy_seconds": 0.003277,
+        "lifecycle_complete_seconds": 6.8e-05,
+        "lifecycle_mark_busy_calls": 65,
+        "known_timed_wrapper_seconds": 0.061316,
+        "residual_wrapper_seconds": 0.018845,
+        "time_to_first_token_seconds": 2.0,
+        "tokens_per_second": 11.018,
+        "token_count": 66,
+        "load_duration_seconds": 0.005249,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 0.000268,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3061.34,
+          "used_mb": 12990.99,
+          "total_mb": 16052.33,
+          "percent": 80.9
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 0.000143,
+        "provider_wall_seconds": 6.14721,
+        "ollama_total_duration_seconds": 6.063934,
+        "provider_wrapper_overhead_seconds": 0.083276,
+        "residency_prepare_seconds": 0.034312,
+        "queue_wait_seconds": 0.047,
+        "lifecycle_begin_seconds": 3.8e-05,
+        "lifecycle_mark_busy_seconds": 0.003363,
+        "lifecycle_complete_seconds": 5.5e-05,
+        "lifecycle_mark_busy_calls": 66,
+        "known_timed_wrapper_seconds": 0.084769,
+        "residual_wrapper_seconds": -0.001493,
+        "time_to_first_token_seconds": 0.219,
+        "tokens_per_second": 11.317,
+        "token_count": 67,
+        "load_duration_seconds": 0.007238,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "memory_after_round": {
+        "available_mb": 3079.27,
+        "used_mb": 12973.05,
+        "total_mb": 16052.33,
+        "percent": 80.8
+      }
+    },
+    {
+      "round": 4,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 3079.27,
+          "used_mb": 12973.06,
+          "total_mb": 16052.33,
+          "percent": 80.8
+        },
+        "memory_after_unload": {
+          "available_mb": 5811.91,
+          "used_mb": 10240.42,
+          "total_mb": 16052.33,
+          "percent": 63.8
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.290681,
+          "load_duration_seconds": 2.817737,
+          "memory_after": {
+            "available_mb": 3108.98,
+            "used_mb": 12943.34,
+            "total_mb": 16052.33,
+            "percent": 80.6
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 3108.42,
+          "used_mb": 12943.91,
+          "total_mb": 16052.33,
+          "percent": 80.6
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 7.3e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3108.3,
+          "used_mb": 12944.03,
+          "total_mb": 16052.33,
+          "percent": 80.6
+        }
+      },
+      "order": [
+        "shared",
+        "fresh"
+      ],
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 7.7e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3108.3,
+          "used_mb": 12944.03,
+          "total_mb": 16052.33,
+          "percent": 80.6
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 9.6e-05,
+        "provider_wall_seconds": 8.784863,
+        "ollama_total_duration_seconds": 8.737482,
+        "provider_wrapper_overhead_seconds": 0.047381,
+        "residency_prepare_seconds": 0.019817,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 3.3e-05,
+        "lifecycle_mark_busy_seconds": 0.003811,
+        "lifecycle_complete_seconds": 5.8e-05,
+        "lifecycle_mark_busy_calls": 76,
+        "known_timed_wrapper_seconds": 0.054719,
+        "residual_wrapper_seconds": -0.007339,
+        "time_to_first_token_seconds": 2.032,
+        "tokens_per_second": 11.401,
+        "token_count": 77,
+        "load_duration_seconds": 0.005567,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 0.00017,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3099.71,
+          "used_mb": 12952.62,
+          "total_mb": 16052.33,
+          "percent": 80.7
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 0.000106,
+        "provider_wall_seconds": 5.856792,
+        "ollama_total_duration_seconds": 5.734547,
+        "provider_wrapper_overhead_seconds": 0.122245,
+        "residency_prepare_seconds": 0.062646,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 3.6e-05,
+        "lifecycle_mark_busy_seconds": 0.003262,
+        "lifecycle_complete_seconds": 7.2e-05,
+        "lifecycle_mark_busy_calls": 63,
+        "known_timed_wrapper_seconds": 0.097015,
+        "residual_wrapper_seconds": 0.02523,
+        "time_to_first_token_seconds": 0.25,
+        "tokens_per_second": 11.422,
+        "token_count": 64,
+        "load_duration_seconds": 0.00657,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "memory_after_round": {
+        "available_mb": 3208.27,
+        "used_mb": 12844.06,
+        "total_mb": 16052.33,
+        "percent": 80.0
+      }
+    },
+    {
+      "round": 5,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 3208.32,
+          "used_mb": 12844.01,
+          "total_mb": 16052.33,
+          "percent": 80.0
+        },
+        "memory_after_unload": {
+          "available_mb": 5940.48,
+          "used_mb": 10111.84,
+          "total_mb": 16052.33,
+          "percent": 63.0
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.329983,
+          "load_duration_seconds": 2.82058,
+          "memory_after": {
+            "available_mb": 3257.78,
+            "used_mb": 12794.55,
+            "total_mb": 16052.33,
+            "percent": 79.7
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 3257.84,
+          "used_mb": 12794.49,
+          "total_mb": 16052.33,
+          "percent": 79.7
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 6e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3257.9,
+          "used_mb": 12794.43,
+          "total_mb": 16052.33,
+          "percent": 79.7
+        }
+      },
+      "order": [
+        "fresh",
+        "shared"
+      ],
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 4.4e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3257.9,
+          "used_mb": 12794.43,
+          "total_mb": 16052.33,
+          "percent": 79.7
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 9.3e-05,
+        "provider_wall_seconds": 8.08803,
+        "ollama_total_duration_seconds": 8.023086,
+        "provider_wrapper_overhead_seconds": 0.064944,
+        "residency_prepare_seconds": 0.031184,
+        "queue_wait_seconds": 0.016,
+        "lifecycle_begin_seconds": 3.7e-05,
+        "lifecycle_mark_busy_seconds": 0.003518,
+        "lifecycle_complete_seconds": 6.2e-05,
+        "lifecycle_mark_busy_calls": 67,
+        "known_timed_wrapper_seconds": 0.050802,
+        "residual_wrapper_seconds": 0.014142,
+        "time_to_first_token_seconds": 1.984,
+        "tokens_per_second": 11.151,
+        "token_count": 68,
+        "load_duration_seconds": 0.005069,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 0.000236,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3249.91,
+          "used_mb": 12802.42,
+          "total_mb": 16052.33,
+          "percent": 79.8
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 0.000116,
+        "provider_wall_seconds": 5.536414,
+        "ollama_total_duration_seconds": 5.455084,
+        "provider_wrapper_overhead_seconds": 0.08133,
+        "residency_prepare_seconds": 0.032717,
+        "queue_wait_seconds": 0.047,
+        "lifecycle_begin_seconds": 3.5e-05,
+        "lifecycle_mark_busy_seconds": 0.003091,
+        "lifecycle_complete_seconds": 6.6e-05,
+        "lifecycle_mark_busy_calls": 60,
+        "known_timed_wrapper_seconds": 0.082909,
+        "residual_wrapper_seconds": -0.001579,
+        "time_to_first_token_seconds": 0.219,
+        "tokens_per_second": 11.471,
+        "token_count": 61,
+        "load_duration_seconds": 0.007381,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "memory_after_round": {
+        "available_mb": 3218.91,
+        "used_mb": 12833.42,
+        "total_mb": 16052.33,
+        "percent": 79.9
+      }
+    },
+    {
+      "round": 6,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 3218.89,
+          "used_mb": 12833.44,
+          "total_mb": 16052.33,
+          "percent": 79.9
+        },
+        "memory_after_unload": {
+          "available_mb": 5956.41,
+          "used_mb": 10095.92,
+          "total_mb": 16052.33,
+          "percent": 62.9
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.292899,
+          "load_duration_seconds": 2.817511,
+          "memory_after": {
+            "available_mb": 3248.88,
+            "used_mb": 12803.45,
+            "total_mb": 16052.33,
+            "percent": 79.8
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 3248.94,
+          "used_mb": 12803.39,
+          "total_mb": 16052.33,
+          "percent": 79.8
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 7.3e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3249.0,
+          "used_mb": 12803.33,
+          "total_mb": 16052.33,
+          "percent": 79.8
+        }
+      },
+      "order": [
+        "shared",
+        "fresh"
+      ],
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 7.2e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3248.69,
+          "used_mb": 12803.64,
+          "total_mb": 16052.33,
+          "percent": 79.8
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 8.9e-05,
+        "provider_wall_seconds": 9.26866,
+        "ollama_total_duration_seconds": 9.196183,
+        "provider_wrapper_overhead_seconds": 0.072477,
+        "residency_prepare_seconds": 0.036153,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 2.6e-05,
+        "lifecycle_mark_busy_seconds": 0.003768,
+        "lifecycle_complete_seconds": 6.5e-05,
+        "lifecycle_mark_busy_calls": 64,
+        "known_timed_wrapper_seconds": 0.071012,
+        "residual_wrapper_seconds": 0.001465,
+        "time_to_first_token_seconds": 2.204,
+        "tokens_per_second": 9.214,
+        "token_count": 65,
+        "load_duration_seconds": 0.003641,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 0.000265,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2777.34,
+          "used_mb": 13274.98,
+          "total_mb": 16052.33,
+          "percent": 82.7
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 0.000114,
+        "provider_wall_seconds": 6.03706,
+        "ollama_total_duration_seconds": 5.917023,
+        "provider_wrapper_overhead_seconds": 0.120037,
+        "residency_prepare_seconds": 0.057777,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 3.9e-05,
+        "lifecycle_mark_busy_seconds": 0.003299,
+        "lifecycle_complete_seconds": 6.7e-05,
+        "lifecycle_mark_busy_calls": 60,
+        "known_timed_wrapper_seconds": 0.092182,
+        "residual_wrapper_seconds": 0.027855,
+        "time_to_first_token_seconds": 0.297,
+        "tokens_per_second": 10.631,
+        "token_count": 61,
+        "load_duration_seconds": 0.008385,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "memory_after_round": {
+        "available_mb": 2756.66,
+        "used_mb": 13295.67,
+        "total_mb": 16052.33,
+        "percent": 82.8
+      }
+    },
+    {
+      "round": 7,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2758.93,
+          "used_mb": 13293.4,
+          "total_mb": 16052.33,
+          "percent": 82.8
+        },
+        "memory_after_unload": {
+          "available_mb": 5476.29,
+          "used_mb": 10576.04,
+          "total_mb": 16052.33,
+          "percent": 65.9
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.352484,
+          "load_duration_seconds": 2.810109,
+          "memory_after": {
+            "available_mb": 2771.27,
+            "used_mb": 13281.05,
+            "total_mb": 16052.33,
+            "percent": 82.7
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 2771.21,
+          "used_mb": 13281.12,
+          "total_mb": 16052.33,
+          "percent": 82.7
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 6.2e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2771.21,
+          "used_mb": 13281.12,
+          "total_mb": 16052.33,
+          "percent": 82.7
+        }
+      },
+      "order": [
+        "fresh",
+        "shared"
+      ],
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 0.000107,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2771.21,
+          "used_mb": 13281.12,
+          "total_mb": 16052.33,
+          "percent": 82.7
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 0.000111,
+        "provider_wall_seconds": 8.500311,
+        "ollama_total_duration_seconds": 8.39269,
+        "provider_wrapper_overhead_seconds": 0.107621,
+        "residency_prepare_seconds": 0.045365,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 3.1e-05,
+        "lifecycle_mark_busy_seconds": 0.003448,
+        "lifecycle_complete_seconds": 6.9e-05,
+        "lifecycle_mark_busy_calls": 66,
+        "known_timed_wrapper_seconds": 0.079913,
+        "residual_wrapper_seconds": 0.027707,
+        "time_to_first_token_seconds": 2.375,
+        "tokens_per_second": 10.957,
+        "token_count": 67,
+        "load_duration_seconds": 0.00732,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 0.000271,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2789.98,
+          "used_mb": 13262.34,
+          "total_mb": 16052.33,
+          "percent": 82.6
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 0.000119,
+        "provider_wall_seconds": 7.168946,
+        "ollama_total_duration_seconds": 7.073348,
+        "provider_wrapper_overhead_seconds": 0.095598,
+        "residency_prepare_seconds": 0.052274,
+        "queue_wait_seconds": 0.031,
+        "lifecycle_begin_seconds": 3.5e-05,
+        "lifecycle_mark_busy_seconds": 0.003711,
+        "lifecycle_complete_seconds": 8e-05,
+        "lifecycle_mark_busy_calls": 67,
+        "known_timed_wrapper_seconds": 0.087099,
+        "residual_wrapper_seconds": 0.008499,
+        "time_to_first_token_seconds": 0.234,
+        "tokens_per_second": 9.808,
+        "token_count": 68,
+        "load_duration_seconds": 0.006991,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "memory_after_round": {
+        "available_mb": 3258.53,
+        "used_mb": 12793.8,
+        "total_mb": 16052.33,
+        "percent": 79.7
+      }
+    },
+    {
+      "round": 8,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 3259.42,
+          "used_mb": 12792.91,
+          "total_mb": 16052.33,
+          "percent": 79.7
+        },
+        "memory_after_unload": {
+          "available_mb": 5977.71,
+          "used_mb": 10074.61,
+          "total_mb": 16052.33,
+          "percent": 62.8
+        },
+        "exact_runner_warmup": {
+          "wall_seconds": 3.315902,
+          "load_duration_seconds": 2.816835,
+          "memory_after": {
+            "available_mb": 3189.32,
+            "used_mb": 12863.0,
+            "total_mb": 16052.33,
+            "percent": 80.1
+          }
+        },
+        "memory_after_warm": {
+          "available_mb": 3189.45,
+          "used_mb": 12862.88,
+          "total_mb": 16052.33,
+          "percent": 80.1
+        }
+      },
+      "pre_round_ram_gate": {
+        "ready": true,
+        "wait_seconds": 6.8e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3189.39,
+          "used_mb": 12862.94,
+          "total_mb": 16052.33,
+          "percent": 80.1
+        }
+      },
+      "order": [
+        "shared",
+        "fresh"
+      ],
+      "ram_gate_before_shared": {
+        "ready": true,
+        "wait_seconds": 5e-05,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3189.45,
+          "used_mb": 12862.88,
+          "total_mb": 16052.33,
+          "percent": 80.1
+        }
+      },
+      "shared": {
+        "provider_construct_seconds": 7.9e-05,
+        "provider_wall_seconds": 9.325678,
+        "ollama_total_duration_seconds": 9.2628,
+        "provider_wrapper_overhead_seconds": 0.062878,
+        "residency_prepare_seconds": 0.034123,
+        "queue_wait_seconds": 0.016,
+        "lifecycle_begin_seconds": 3.5e-05,
+        "lifecycle_mark_busy_seconds": 0.003775,
+        "lifecycle_complete_seconds": 6.6e-05,
+        "lifecycle_mark_busy_calls": 69,
+        "known_timed_wrapper_seconds": 0.053999,
+        "residual_wrapper_seconds": 0.008879,
+        "time_to_first_token_seconds": 2.516,
+        "tokens_per_second": 10.295,
+        "token_count": 70,
+        "load_duration_seconds": 0.005049,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "shared"
+      },
+      "ram_gate_before_fresh": {
+        "ready": true,
+        "wait_seconds": 0.000194,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 3142.68,
+          "used_mb": 12909.65,
+          "total_mb": 16052.33,
+          "percent": 80.4
+        }
+      },
+      "fresh": {
+        "provider_construct_seconds": 9.4e-05,
+        "provider_wall_seconds": 7.426988,
+        "ollama_total_duration_seconds": 7.26986,
+        "provider_wrapper_overhead_seconds": 0.157128,
+        "residency_prepare_seconds": 0.088155,
+        "queue_wait_seconds": 0.047,
+        "lifecycle_begin_seconds": 3.8e-05,
+        "lifecycle_mark_busy_seconds": 0.004002,
+        "lifecycle_complete_seconds": 7.4e-05,
+        "lifecycle_mark_busy_calls": 72,
+        "known_timed_wrapper_seconds": 0.139269,
+        "residual_wrapper_seconds": 0.017859,
+        "time_to_first_token_seconds": 0.297,
+        "tokens_per_second": 10.259,
+        "token_count": 73,
+        "load_duration_seconds": 0.007805,
+        "warm_status": "warm",
+        "fallback": false,
+        "client_mode": "fresh"
+      },
+      "memory_after_round": {
+        "available_mb": 3140.68,
+        "used_mb": 12911.65,
+        "total_mb": 16052.33,
+        "percent": 80.4
+      }
+    }
+  ],
+  "summary": {
+    "fresh_client_provider": {
+      "median_provider_construct_seconds": 0.000107,
+      "median_provider_wall_seconds": 7.083892,
+      "median_ollama_total_duration_seconds": 6.788804,
+      "median_provider_wrapper_overhead_seconds": 0.113829,
+      "median_residency_prepare_seconds": 0.051571,
+      "median_queue_wait_seconds": 0.0235,
+      "median_lifecycle_begin_seconds": 3.6e-05,
+      "median_lifecycle_mark_busy_seconds": 0.003288,
+      "median_lifecycle_complete_seconds": 6.8e-05,
+      "median_known_timed_wrapper_seconds": 0.086047,
+      "median_residual_wrapper_seconds": 0.022038,
+      "median_time_to_first_token_seconds": 1.0625,
+      "median_tokens_per_second": 11.0845,
+      "median_token_count": 66.0,
+      "median_load_duration_seconds": 0.006945
+    },
+    "shared_client_provider": {
+      "median_provider_construct_seconds": 9.9e-05,
+      "median_provider_wall_seconds": 7.646524,
+      "median_ollama_total_duration_seconds": 7.571293,
+      "median_provider_wrapper_overhead_seconds": 0.067678,
+      "median_residency_prepare_seconds": 0.03342,
+      "median_queue_wait_seconds": 0.031,
+      "median_lifecycle_begin_seconds": 3.5e-05,
+      "median_lifecycle_mark_busy_seconds": 0.003537,
+      "median_lifecycle_complete_seconds": 6.5e-05,
+      "median_known_timed_wrapper_seconds": 0.062866,
+      "median_residual_wrapper_seconds": 0.004982,
+      "median_time_to_first_token_seconds": 1.133,
+      "median_tokens_per_second": 10.8965,
+      "median_token_count": 67.5,
+      "median_load_duration_seconds": 0.006985
+    }
+  },
+  "interpretation_note": "Every comparison round resets the target model, performs an exact-runner warm-up outside measured calls, and waits for available RAM to exceed the unchanged production reserve plus benchmark-only headroom. The measured calls use the real OllamaProvider.generate() path."
+}

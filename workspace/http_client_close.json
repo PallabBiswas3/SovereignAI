@@ -1,0 +1,106 @@
+{
+  "benchmark_design": "ollama-http-client-full-lifecycle-v1",
+  "model": "qwen3:4b-instruct",
+  "repeats": 8,
+  "runs": [
+    {
+      "stream_wall_seconds": 5.690699,
+      "time_to_first_token_seconds": 0.138338,
+      "ollama_total_duration_seconds": 5.682818,
+      "load_duration_seconds": 0.009194,
+      "stream_minus_ollama_seconds": 0.007881,
+      "client_construct_seconds": 0.00837,
+      "client_close_seconds": 0.000258,
+      "client_lifecycle_seconds": 5.699345,
+      "lifecycle_minus_ollama_seconds": 0.016527
+    },
+    {
+      "stream_wall_seconds": 6.655187,
+      "time_to_first_token_seconds": 0.12549,
+      "ollama_total_duration_seconds": 6.646308,
+      "load_duration_seconds": 0.005051,
+      "stream_minus_ollama_seconds": 0.008878,
+      "client_construct_seconds": 0.007278,
+      "client_close_seconds": 0.000426,
+      "client_lifecycle_seconds": 6.662911,
+      "lifecycle_minus_ollama_seconds": 0.016603
+    },
+    {
+      "stream_wall_seconds": 6.708525,
+      "time_to_first_token_seconds": 0.161079,
+      "ollama_total_duration_seconds": 6.698534,
+      "load_duration_seconds": 0.008474,
+      "stream_minus_ollama_seconds": 0.009991,
+      "client_construct_seconds": 0.010209,
+      "client_close_seconds": 0.000721,
+      "client_lifecycle_seconds": 6.719998,
+      "lifecycle_minus_ollama_seconds": 0.021464
+    },
+    {
+      "stream_wall_seconds": 6.658173,
+      "time_to_first_token_seconds": 0.167883,
+      "ollama_total_duration_seconds": 6.646433,
+      "load_duration_seconds": 0.008656,
+      "stream_minus_ollama_seconds": 0.011741,
+      "client_construct_seconds": 0.011842,
+      "client_close_seconds": 0.000722,
+      "client_lifecycle_seconds": 6.670766,
+      "lifecycle_minus_ollama_seconds": 0.024333
+    },
+    {
+      "stream_wall_seconds": 6.601597,
+      "time_to_first_token_seconds": 0.161228,
+      "ollama_total_duration_seconds": 6.587022,
+      "load_duration_seconds": 0.005587,
+      "stream_minus_ollama_seconds": 0.014575,
+      "client_construct_seconds": 0.014022,
+      "client_close_seconds": 0.001256,
+      "client_lifecycle_seconds": 6.616902,
+      "lifecycle_minus_ollama_seconds": 0.02988
+    },
+    {
+      "stream_wall_seconds": 6.428133,
+      "time_to_first_token_seconds": 0.153714,
+      "ollama_total_duration_seconds": 6.416269,
+      "load_duration_seconds": 0.007575,
+      "stream_minus_ollama_seconds": 0.011863,
+      "client_construct_seconds": 0.016212,
+      "client_close_seconds": 0.000444,
+      "client_lifecycle_seconds": 6.44481,
+      "lifecycle_minus_ollama_seconds": 0.028541
+    },
+    {
+      "stream_wall_seconds": 6.445864,
+      "time_to_first_token_seconds": 0.167225,
+      "ollama_total_duration_seconds": 6.43697,
+      "load_duration_seconds": 0.026476,
+      "stream_minus_ollama_seconds": 0.008894,
+      "client_construct_seconds": 0.009668,
+      "client_close_seconds": 0.000394,
+      "client_lifecycle_seconds": 6.455943,
+      "lifecycle_minus_ollama_seconds": 0.018973
+    },
+    {
+      "stream_wall_seconds": 5.961801,
+      "time_to_first_token_seconds": 0.149376,
+      "ollama_total_duration_seconds": 5.952502,
+      "load_duration_seconds": 0.007105,
+      "stream_minus_ollama_seconds": 0.009299,
+      "client_construct_seconds": 0.009531,
+      "client_close_seconds": 0.000506,
+      "client_lifecycle_seconds": 5.97186,
+      "lifecycle_minus_ollama_seconds": 0.019358
+    }
+  ],
+  "summary": {
+    "median_client_construct_seconds": 0.009938,
+    "median_stream_wall_seconds": 6.523731,
+    "median_client_close_seconds": 0.000475,
+    "median_client_lifecycle_seconds": 6.536423,
+    "median_ollama_total_duration_seconds": 6.511996,
+    "median_stream_minus_ollama_seconds": 0.009645,
+    "median_lifecycle_minus_ollama_seconds": 0.020411,
+    "median_time_to_first_token_seconds": 0.157396
+  },
+  "interpretation_note": "Unlike the earlier generation benchmark, lifecycle time includes AsyncClient construction, the full streaming request, and await client.aclose(). This matches the current OllamaProvider ownership path, where a request-owned client is closed in finally before provider.generate() returns."
+}

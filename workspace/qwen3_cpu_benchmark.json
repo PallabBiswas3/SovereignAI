@@ -1,0 +1,120 @@
+{
+  "model": "qwen3:4b-instruct",
+  "endpoint": "http://127.0.0.1:11434",
+  "cpu": {
+    "physical_cores": 10,
+    "logical_cores": 12
+  },
+  "benchmark": {
+    "num_ctx": 4096,
+    "num_predict": 128,
+    "keep_alive": "15m"
+  },
+  "memory_before": {
+    "available_mb": 2896.27,
+    "used_mb": 13156.06,
+    "total_mb": 16052.33,
+    "percent": 82.0
+  },
+  "memory_after_cold_load": {
+    "available_mb": 836.74,
+    "used_mb": 15215.59,
+    "total_mb": 16052.33,
+    "percent": 94.8
+  },
+  "ollama_process_rss_before_mb": 36.31,
+  "ollama_process_rss_after_mb": 3059.48,
+  "measured_system_ram_delta_mb": 2059.53,
+  "measured_process_rss_delta_mb": 3023.17,
+  "ollama_resident": {
+    "name": "qwen3:4b-instruct",
+    "model": "qwen3:4b-instruct",
+    "size": 3184001022,
+    "digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen3",
+      "families": [
+        "qwen3"
+      ],
+      "parameter_size": "4.0B",
+      "quantization_level": "Q4_K_M"
+    },
+    "expires_at": "2026-09-18T03:00:43.7477498+05:30",
+    "size_vram": 0,
+    "context_length": 4096
+  },
+  "persisted_footprint": {
+    "model": "qwen3:4b-instruct",
+    "measured_at": "2026-09-17T21:15:46.211184+00:00",
+    "sample_count": 1,
+    "system_ram_delta_mb": 2059.53,
+    "ollama_process_rss_delta_mb": 3023.17,
+    "ollama_reported_size_mb": 3036.5,
+    "ollama_reported_cpu_size_mb": 3036.5,
+    "context_length": 4096,
+    "admission_estimate_mb": 3340.15,
+    "safety_multiplier": 1.1,
+    "source": "local-cpu-benchmark"
+  },
+  "cold_run": {
+    "wall_seconds": 15.02138,
+    "ttft_seconds": 7.182589,
+    "ollama_total_seconds": 15.017848,
+    "load_seconds": 6.529003,
+    "prompt_eval_seconds": 0.627163,
+    "decode_seconds": 7.836972,
+    "prompt_tokens": 25,
+    "generated_tokens": 108,
+    "tokens_per_second": 13.781,
+    "generated_chars": 613,
+    "done_reason": "stop"
+  },
+  "warm_runs": [
+    {
+      "wall_seconds": 10.238611,
+      "ttft_seconds": 0.133641,
+      "ollama_total_seconds": 10.234177,
+      "load_seconds": 0.022743,
+      "prompt_eval_seconds": 0.077292,
+      "decode_seconds": 10.101772,
+      "prompt_tokens": 25,
+      "generated_tokens": 128,
+      "tokens_per_second": 12.671,
+      "generated_chars": 705,
+      "done_reason": "length"
+    },
+    {
+      "wall_seconds": 12.175738,
+      "ttft_seconds": 0.133582,
+      "ollama_total_seconds": 12.171214,
+      "load_seconds": 0.012285,
+      "prompt_eval_seconds": 0.091956,
+      "decode_seconds": 12.040303,
+      "prompt_tokens": 25,
+      "generated_tokens": 128,
+      "tokens_per_second": 10.631,
+      "generated_chars": 707,
+      "done_reason": "length"
+    },
+    {
+      "wall_seconds": 11.384426,
+      "ttft_seconds": 0.126131,
+      "ollama_total_seconds": 11.37959,
+      "load_seconds": 0.010443,
+      "prompt_eval_seconds": 0.087679,
+      "decode_seconds": 11.255853,
+      "prompt_tokens": 25,
+      "generated_tokens": 128,
+      "tokens_per_second": 11.372,
+      "generated_chars": 688,
+      "done_reason": "length"
+    }
+  ],
+  "warm_summary": {
+    "mean_wall_seconds": 11.266258,
+    "mean_ttft_seconds": 0.131118,
+    "mean_tokens_per_second": 11.558
+  }
+}

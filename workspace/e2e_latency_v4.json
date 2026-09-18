@@ -1,0 +1,899 @@
+{
+  "benchmark_design": "paired-e2e-warm-path-v4-exact-runner-prewarm-ram-stable",
+  "status": "complete",
+  "error": null,
+  "prompt": "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?",
+  "requested_repeats": 4,
+  "completed_rounds": 4,
+  "invalid_warm_path_rounds": [],
+  "max_measured_load_seconds": 0.25,
+  "ram_reserve_mb": 2407.85,
+  "ram_headroom_mb": 96.0,
+  "minimum_benchmark_available_mb": 2503.85,
+  "calibration": {
+    "model": "qwen3:4b-instruct",
+    "provider": "ollama",
+    "direct_runtime_settings": {
+      "effective_model": "qwen3:4b-instruct",
+      "options": {
+        "num_ctx": 2048,
+        "num_predict": 384,
+        "temperature": 0.2,
+        "num_thread": 5,
+        "num_batch": 128
+      },
+      "context_plan": {
+        "execution_mode": "FAST",
+        "estimated_prompt_tokens": 201,
+        "output_reserve_tokens": 384,
+        "required_tokens": 585,
+        "selected_num_ctx": 2048,
+        "profile_max_num_ctx": 4096,
+        "truncated_risk": false,
+        "source": "adaptive-context-v1"
+      },
+      "runtime_profile": {
+        "mode": "FAST",
+        "num_ctx": 4096,
+        "num_predict": 384,
+        "temperature": 0.2
+      },
+      "cpu_tuning": {
+        "model": "qwen3:4b-instruct",
+        "measured_at": "2026-09-17T22:01:29.955772+00:00",
+        "num_thread": 5,
+        "num_batch": 128,
+        "num_ctx": 4096,
+        "median_tokens_per_second": 9.099,
+        "mean_tokens_per_second": 9.533,
+        "measured_runs": 3,
+        "warmup_runs": 1,
+        "source": "local-cpu-tuning"
+      }
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2720.55,
+          "used_mb": 13331.77,
+          "percent": 83.1
+        },
+        "memory_after_unload": {
+          "available_mb": 5448.62,
+          "used_mb": 10603.7,
+          "percent": 66.1
+        },
+        "prewarm": {
+          "model": "qwen3:4b-instruct",
+          "wall_seconds": 3.334101,
+          "load_duration_seconds": 2.809239,
+          "response": "READY",
+          "memory_after": {
+            "available_mb": 2759.05,
+            "used_mb": 13293.28,
+            "percent": 82.8
+          }
+        },
+        "memory_after_rewarm": {
+          "available_mb": 2758.55,
+          "used_mb": 13293.78,
+          "percent": 82.8
+        }
+      },
+      "exact_runner_warmup": {
+        "wall_seconds": 4.101121,
+        "load_duration_seconds": 2.949906,
+        "response": "READY",
+        "options": {
+          "num_ctx": 2048,
+          "num_predict": 1,
+          "temperature": 0.2,
+          "num_thread": 5,
+          "num_batch": 128
+        },
+        "memory_after": {
+          "available_mb": 2777.91,
+          "used_mb": 13274.42,
+          "percent": 82.7
+        }
+      },
+      "pre_pair_ram_gate": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2777.91,
+          "used_mb": 13274.42,
+          "percent": 82.7
+        }
+      },
+      "order": [
+        "sovereignai",
+        "direct_ollama"
+      ],
+      "memory_before_pair": {
+        "available_mb": 2777.9,
+        "used_mb": 13274.43,
+        "percent": 82.7
+      },
+      "ram_gate_before_sovereignai": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2777.9,
+          "used_mb": 13274.43,
+          "percent": 82.7
+        }
+      },
+      "sovereignai": {
+        "wall_seconds": 7.07856,
+        "conversation_id": "dbe661bf-7ff8-46d5-8670-30b0a173c752",
+        "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in detectable, repeating vibration signals.",
+        "model": "qwen3:4b-instruct",
+        "provider": "ollama",
+        "fallback": false,
+        "runtime_metrics": {
+          "endpoint_total_seconds": 7.05707,
+          "request_setup_seconds": 0.00011,
+          "routing_seconds": 0.00414,
+          "provider_setup_seconds": 0.00044,
+          "generation_seconds": 7.04408,
+          "persistence_commit_seconds": 0.008297,
+          "measured_phase_seconds": 7.057068,
+          "provider_generation": {
+            "model": "qwen3:4b-instruct",
+            "time_to_first_token_seconds": 1.406,
+            "tokens_per_second": 12.242,
+            "total_duration_seconds": 6.450226,
+            "load_duration_seconds": 0.003479,
+            "token_count": 69,
+            "prompt_token_count": 55,
+            "warm_status": "warm",
+            "queue_wait_seconds": 0.016,
+            "done_reason": "stop",
+            "output_truncated": false,
+            "completed": true,
+            "requested_model": "qwen3:4b-instruct",
+            "effective_model": "qwen3:4b-instruct",
+            "runtime_profile": {
+              "mode": "FAST",
+              "num_ctx": 4096,
+              "num_predict": 384,
+              "temperature": 0.2
+            },
+            "cpu_tuning": {
+              "model": "qwen3:4b-instruct",
+              "measured_at": "2026-09-17T22:01:29.955772+00:00",
+              "num_thread": 5,
+              "num_batch": 128,
+              "num_ctx": 4096,
+              "median_tokens_per_second": 9.099,
+              "mean_tokens_per_second": 9.533,
+              "measured_runs": 3,
+              "warmup_runs": 1,
+              "source": "local-cpu-tuning"
+            },
+            "context_plan": {
+              "execution_mode": "FAST",
+              "estimated_prompt_tokens": 201,
+              "output_reserve_tokens": 384,
+              "required_tokens": 585,
+              "selected_num_ctx": 2048,
+              "profile_max_num_ctx": 4096,
+              "truncated_risk": false,
+              "source": "adaptive-context-v1"
+            },
+            "model_optimization": {
+              "base_model": "qwen3:4b-instruct",
+              "selected_model": "qwen3:4b-instruct",
+              "quantization": "Q4_K_M",
+              "quality_score": 1.0,
+              "tokens_per_second": 8.895,
+              "resident_size_mb": 2684.99,
+              "context_length": 2048,
+              "measured_at": "2026-09-18T13:15:44.749650+00:00",
+              "source": "local-model-optimization"
+            },
+            "resource_admission": {
+              "queue_wait_seconds": 0.016,
+              "queue_depth_at_admission": 0,
+              "admission_mode": "resident-no-load",
+              "ram_available_mb": 2753.5,
+              "ram_reserve_mb": 2407.85,
+              "estimated_model_ram_mb": 0.0,
+              "cpu_percent": 25.7,
+              "physical_cores": 10,
+              "logical_cores": 12
+            },
+            "residency_decision": {
+              "target_model": "qwen3:4b-instruct",
+              "target_was_resident": true,
+              "estimated_load_mb": 0.0,
+              "available_before_mb": 2773.47,
+              "reserve_mb": 2407.85,
+              "evicted_models": [],
+              "actions": [],
+              "safe_to_load": true,
+              "reason": "Target model is already resident; no additional model-load budget is charged."
+            }
+          },
+          "application_overhead_excluding_model_seconds": 0.606844
+        }
+      },
+      "ram_gate_before_direct_ollama": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2824.46,
+          "used_mb": 13227.86,
+          "percent": 82.4
+        }
+      },
+      "direct_ollama": {
+        "wall_seconds": 6.29529,
+        "time_to_first_token_seconds": 0.159587,
+        "ollama_total_duration_seconds": 6.289222,
+        "load_duration_seconds": 0.008798,
+        "tokens_per_second": 11.085,
+        "token_count": 68,
+        "prompt_token_count": 55,
+        "done_reason": "stop",
+        "response": "- Faulted outer race elements create uneven contact points on the bearing surface.  \n- As the bearing rotates, these irregularities cause periodic impacts during rotation.  \n- Each impact generates a transient force that translates into a vibration impulse.  \n- The frequency of these impulses matches the rotational speed and fault pattern, creating detectable periodic vibration."
+      },
+      "measured_load_seconds": {
+        "sovereignai": 0.003479,
+        "direct_ollama": 0.008798
+      },
+      "valid_warm_path": true,
+      "sovereignai_vs_direct_wall_ratio": 1.1244,
+      "memory_after_pair": {
+        "available_mb": 2805.8,
+        "used_mb": 13246.52,
+        "percent": 82.5
+      }
+    },
+    {
+      "round": 2,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2805.8,
+          "used_mb": 13246.52,
+          "percent": 82.5
+        },
+        "memory_after_unload": {
+          "available_mb": 5547.2,
+          "used_mb": 10505.13,
+          "percent": 65.4
+        },
+        "prewarm": {
+          "model": "qwen3:4b-instruct",
+          "wall_seconds": 3.352193,
+          "load_duration_seconds": 2.831887,
+          "response": "READY",
+          "memory_after": {
+            "available_mb": 2826.59,
+            "used_mb": 13225.74,
+            "percent": 82.4
+          }
+        },
+        "memory_after_rewarm": {
+          "available_mb": 2826.34,
+          "used_mb": 13225.99,
+          "percent": 82.4
+        }
+      },
+      "exact_runner_warmup": {
+        "wall_seconds": 4.488582,
+        "load_duration_seconds": 2.940516,
+        "response": "READY",
+        "options": {
+          "num_ctx": 2048,
+          "num_predict": 1,
+          "temperature": 0.2,
+          "num_thread": 5,
+          "num_batch": 128
+        },
+        "memory_after": {
+          "available_mb": 2814.45,
+          "used_mb": 13237.88,
+          "percent": 82.5
+        }
+      },
+      "pre_pair_ram_gate": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2814.45,
+          "used_mb": 13237.88,
+          "percent": 82.5
+        }
+      },
+      "order": [
+        "direct_ollama",
+        "sovereignai"
+      ],
+      "memory_before_pair": {
+        "available_mb": 2814.45,
+        "used_mb": 13237.88,
+        "percent": 82.5
+      },
+      "ram_gate_before_direct_ollama": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2814.45,
+          "used_mb": 13237.88,
+          "percent": 82.5
+        }
+      },
+      "direct_ollama": {
+        "wall_seconds": 7.310002,
+        "time_to_first_token_seconds": 1.155752,
+        "ollama_total_duration_seconds": 7.306018,
+        "load_duration_seconds": 0.007095,
+        "tokens_per_second": 11.54,
+        "token_count": 71,
+        "prompt_token_count": 55,
+        "done_reason": "stop",
+        "response": "- Faulted outer-race elements create uneven contact points on the bearing surface.  \n- As the bearing rotates, these irregularities cause periodic impacts with the rolling elements.  \n- Each impact generates a transient force that translates into a vibration impulse.  \n- The frequency of these impulses matches the rotational speed and fault pattern, creating detectable periodic vibrations."
+      },
+      "ram_gate_before_sovereignai": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2824.47,
+          "used_mb": 13227.86,
+          "percent": 82.4
+        }
+      },
+      "sovereignai": {
+        "wall_seconds": 7.187358,
+        "conversation_id": "dbe661bf-7ff8-46d5-8670-30b0a173c752",
+        "response": "- Faulted outer race elements create uneven contact points on the bearing surface.  \n- As the bearing rotates, these irregularities cause periodic contact and separation of rolling elements.  \n- Each contact and separation event generates a transient force, resulting in a repeating vibration impulse.  \n- The frequency of these impulses matches the rotational speed and fault pattern, creating a detectable periodic signature.",
+        "model": "qwen3:4b-instruct",
+        "provider": "ollama",
+        "fallback": false,
+        "runtime_metrics": {
+          "endpoint_total_seconds": 7.159069,
+          "request_setup_seconds": 0.000113,
+          "routing_seconds": 0.003345,
+          "provider_setup_seconds": 0.000361,
+          "generation_seconds": 7.147717,
+          "persistence_commit_seconds": 0.007532,
+          "measured_phase_seconds": 7.159067,
+          "provider_generation": {
+            "model": "qwen3:4b-instruct",
+            "time_to_first_token_seconds": 0.687,
+            "tokens_per_second": 11.784,
+            "total_duration_seconds": 6.567845,
+            "load_duration_seconds": 0.007207,
+            "token_count": 76,
+            "prompt_token_count": 55,
+            "warm_status": "warm",
+            "queue_wait_seconds": 0.015,
+            "done_reason": "stop",
+            "output_truncated": false,
+            "completed": true,
+            "requested_model": "qwen3:4b-instruct",
+            "effective_model": "qwen3:4b-instruct",
+            "runtime_profile": {
+              "mode": "FAST",
+              "num_ctx": 4096,
+              "num_predict": 384,
+              "temperature": 0.2
+            },
+            "cpu_tuning": {
+              "model": "qwen3:4b-instruct",
+              "measured_at": "2026-09-17T22:01:29.955772+00:00",
+              "num_thread": 5,
+              "num_batch": 128,
+              "num_ctx": 4096,
+              "median_tokens_per_second": 9.099,
+              "mean_tokens_per_second": 9.533,
+              "measured_runs": 3,
+              "warmup_runs": 1,
+              "source": "local-cpu-tuning"
+            },
+            "context_plan": {
+              "execution_mode": "FAST",
+              "estimated_prompt_tokens": 201,
+              "output_reserve_tokens": 384,
+              "required_tokens": 585,
+              "selected_num_ctx": 2048,
+              "profile_max_num_ctx": 4096,
+              "truncated_risk": false,
+              "source": "adaptive-context-v1"
+            },
+            "model_optimization": {
+              "base_model": "qwen3:4b-instruct",
+              "selected_model": "qwen3:4b-instruct",
+              "quantization": "Q4_K_M",
+              "quality_score": 1.0,
+              "tokens_per_second": 8.895,
+              "resident_size_mb": 2684.99,
+              "context_length": 2048,
+              "measured_at": "2026-09-18T13:15:44.749650+00:00",
+              "source": "local-model-optimization"
+            },
+            "resource_admission": {
+              "queue_wait_seconds": 0.015,
+              "queue_depth_at_admission": 0,
+              "admission_mode": "resident-no-load",
+              "ram_available_mb": 2828.29,
+              "ram_reserve_mb": 2407.85,
+              "estimated_model_ram_mb": 0.0,
+              "cpu_percent": 22.1,
+              "physical_cores": 10,
+              "logical_cores": 12
+            },
+            "residency_decision": {
+              "target_model": "qwen3:4b-instruct",
+              "target_was_resident": true,
+              "estimated_load_mb": 0.0,
+              "available_before_mb": 2824.28,
+              "reserve_mb": 2407.85,
+              "evicted_models": [],
+              "actions": [],
+              "safe_to_load": true,
+              "reason": "Target model is already resident; no additional model-load budget is charged."
+            }
+          },
+          "application_overhead_excluding_model_seconds": 0.591224
+        }
+      },
+      "measured_load_seconds": {
+        "sovereignai": 0.007207,
+        "direct_ollama": 0.007095
+      },
+      "valid_warm_path": true,
+      "sovereignai_vs_direct_wall_ratio": 0.9832,
+      "memory_after_pair": {
+        "available_mb": 2805.1,
+        "used_mb": 13247.23,
+        "percent": 82.5
+      }
+    },
+    {
+      "round": 3,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2805.1,
+          "used_mb": 13247.23,
+          "percent": 82.5
+        },
+        "memory_after_unload": {
+          "available_mb": 5524.89,
+          "used_mb": 10527.44,
+          "percent": 65.6
+        },
+        "prewarm": {
+          "model": "qwen3:4b-instruct",
+          "wall_seconds": 3.330559,
+          "load_duration_seconds": 2.818646,
+          "response": "READY",
+          "memory_after": {
+            "available_mb": 2795.66,
+            "used_mb": 13256.67,
+            "percent": 82.6
+          }
+        },
+        "memory_after_rewarm": {
+          "available_mb": 2794.47,
+          "used_mb": 13257.86,
+          "percent": 82.6
+        }
+      },
+      "exact_runner_warmup": {
+        "wall_seconds": 4.366589,
+        "load_duration_seconds": 2.928133,
+        "response": "READY",
+        "options": {
+          "num_ctx": 2048,
+          "num_predict": 1,
+          "temperature": 0.2,
+          "num_thread": 5,
+          "num_batch": 128
+        },
+        "memory_after": {
+          "available_mb": 2828.59,
+          "used_mb": 13223.74,
+          "percent": 82.4
+        }
+      },
+      "pre_pair_ram_gate": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2828.59,
+          "used_mb": 13223.74,
+          "percent": 82.4
+        }
+      },
+      "order": [
+        "sovereignai",
+        "direct_ollama"
+      ],
+      "memory_before_pair": {
+        "available_mb": 2828.59,
+        "used_mb": 13223.74,
+        "percent": 82.4
+      },
+      "ram_gate_before_sovereignai": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2828.59,
+          "used_mb": 13223.74,
+          "percent": 82.4
+        }
+      },
+      "sovereignai": {
+        "wall_seconds": 6.771144,
+        "conversation_id": "dbe661bf-7ff8-46d5-8670-30b0a173c752",
+        "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic variations in load and motion during rotation.  \n- The periodic load variations translate into repetitive vibration impulses.  \n- The frequency of these impulses matches the rotational speed and fault pattern.",
+        "model": "qwen3:4b-instruct",
+        "provider": "ollama",
+        "fallback": false,
+        "runtime_metrics": {
+          "endpoint_total_seconds": 6.746954,
+          "request_setup_seconds": 0.000151,
+          "routing_seconds": 0.006131,
+          "provider_setup_seconds": 0.000635,
+          "generation_seconds": 6.730865,
+          "persistence_commit_seconds": 0.00917,
+          "measured_phase_seconds": 6.746951,
+          "provider_generation": {
+            "model": "qwen3:4b-instruct",
+            "time_to_first_token_seconds": 1.515,
+            "tokens_per_second": 11.721,
+            "total_duration_seconds": 6.119841,
+            "load_duration_seconds": 0.006959,
+            "token_count": 61,
+            "prompt_token_count": 55,
+            "warm_status": "warm",
+            "queue_wait_seconds": 0.015,
+            "done_reason": "stop",
+            "output_truncated": false,
+            "completed": true,
+            "requested_model": "qwen3:4b-instruct",
+            "effective_model": "qwen3:4b-instruct",
+            "runtime_profile": {
+              "mode": "FAST",
+              "num_ctx": 4096,
+              "num_predict": 384,
+              "temperature": 0.2
+            },
+            "cpu_tuning": {
+              "model": "qwen3:4b-instruct",
+              "measured_at": "2026-09-17T22:01:29.955772+00:00",
+              "num_thread": 5,
+              "num_batch": 128,
+              "num_ctx": 4096,
+              "median_tokens_per_second": 9.099,
+              "mean_tokens_per_second": 9.533,
+              "measured_runs": 3,
+              "warmup_runs": 1,
+              "source": "local-cpu-tuning"
+            },
+            "context_plan": {
+              "execution_mode": "FAST",
+              "estimated_prompt_tokens": 201,
+              "output_reserve_tokens": 384,
+              "required_tokens": 585,
+              "selected_num_ctx": 2048,
+              "profile_max_num_ctx": 4096,
+              "truncated_risk": false,
+              "source": "adaptive-context-v1"
+            },
+            "model_optimization": {
+              "base_model": "qwen3:4b-instruct",
+              "selected_model": "qwen3:4b-instruct",
+              "quantization": "Q4_K_M",
+              "quality_score": 1.0,
+              "tokens_per_second": 8.895,
+              "resident_size_mb": 2684.99,
+              "context_length": 2048,
+              "measured_at": "2026-09-18T13:15:44.749650+00:00",
+              "source": "local-model-optimization"
+            },
+            "resource_admission": {
+              "queue_wait_seconds": 0.015,
+              "queue_depth_at_admission": 0,
+              "admission_mode": "resident-no-load",
+              "ram_available_mb": 2822.56,
+              "ram_reserve_mb": 2407.85,
+              "estimated_model_ram_mb": 0.0,
+              "cpu_percent": 29.8,
+              "physical_cores": 10,
+              "logical_cores": 12
+            },
+            "residency_decision": {
+              "target_model": "qwen3:4b-instruct",
+              "target_was_resident": true,
+              "estimated_load_mb": 0.0,
+              "available_before_mb": 2827.71,
+              "reserve_mb": 2407.85,
+              "evicted_models": [],
+              "actions": [],
+              "safe_to_load": true,
+              "reason": "Target model is already resident; no additional model-load budget is charged."
+            }
+          },
+          "application_overhead_excluding_model_seconds": 0.627113
+        }
+      },
+      "ram_gate_before_direct_ollama": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2819.14,
+          "used_mb": 13233.18,
+          "percent": 82.4
+        }
+      },
+      "direct_ollama": {
+        "wall_seconds": 6.66889,
+        "time_to_first_token_seconds": 0.16428,
+        "ollama_total_duration_seconds": 6.650515,
+        "load_duration_seconds": 0.005095,
+        "tokens_per_second": 11.382,
+        "token_count": 74,
+        "prompt_token_count": 55,
+        "done_reason": "stop",
+        "response": "- Faulted outer race elements create uneven contact points on the bearing surface.  \n- As the bearing rotates, these irregularities cause periodic contact and separation of rolling elements.  \n- Each contact and separation event generates a transient force, resulting in periodic vibration impulses.  \n- The frequency of these impulses matches the rotational speed and fault pattern, creating detectable periodic vibrations."
+      },
+      "measured_load_seconds": {
+        "sovereignai": 0.006959,
+        "direct_ollama": 0.005095
+      },
+      "valid_warm_path": true,
+      "sovereignai_vs_direct_wall_ratio": 1.0153,
+      "memory_after_pair": {
+        "available_mb": 2777.09,
+        "used_mb": 13275.24,
+        "percent": 82.7
+      }
+    },
+    {
+      "round": 4,
+      "reset": {
+        "memory_before_reset": {
+          "available_mb": 2777.04,
+          "used_mb": 13275.29,
+          "percent": 82.7
+        },
+        "memory_after_unload": {
+          "available_mb": 5513.05,
+          "used_mb": 10539.28,
+          "percent": 65.7
+        },
+        "prewarm": {
+          "model": "qwen3:4b-instruct",
+          "wall_seconds": 3.353371,
+          "load_duration_seconds": 2.820528,
+          "response": "READY",
+          "memory_after": {
+            "available_mb": 2826.19,
+            "used_mb": 13226.14,
+            "percent": 82.4
+          }
+        },
+        "memory_after_rewarm": {
+          "available_mb": 2826.13,
+          "used_mb": 13226.2,
+          "percent": 82.4
+        }
+      },
+      "exact_runner_warmup": {
+        "wall_seconds": 4.370015,
+        "load_duration_seconds": 2.916635,
+        "response": "READY",
+        "options": {
+          "num_ctx": 2048,
+          "num_predict": 1,
+          "temperature": 0.2,
+          "num_thread": 5,
+          "num_batch": 128
+        },
+        "memory_after": {
+          "available_mb": 2827.95,
+          "used_mb": 13224.38,
+          "percent": 82.4
+        }
+      },
+      "pre_pair_ram_gate": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2827.95,
+          "used_mb": 13224.38,
+          "percent": 82.4
+        }
+      },
+      "order": [
+        "direct_ollama",
+        "sovereignai"
+      ],
+      "memory_before_pair": {
+        "available_mb": 2827.95,
+        "used_mb": 13224.38,
+        "percent": 82.4
+      },
+      "ram_gate_before_direct_ollama": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2827.95,
+          "used_mb": 13224.38,
+          "percent": 82.4
+        }
+      },
+      "direct_ollama": {
+        "wall_seconds": 6.16666,
+        "time_to_first_token_seconds": 1.178207,
+        "ollama_total_duration_seconds": 6.16,
+        "load_duration_seconds": 0.008118,
+        "tokens_per_second": 11.639,
+        "token_count": 58,
+        "prompt_token_count": 55,
+        "done_reason": "stop",
+        "response": "- Faulted outer-race elements create localized irregularities in the bearing surface.  \n- These irregularities cause periodic contact points during rotation.  \n- Each contact point generates a pulsating force as the bearing rotates.  \n- This results in periodic vibration impulses detectable in the system."
+      },
+      "ram_gate_before_sovereignai": {
+        "ready": true,
+        "wait_seconds": 0.0,
+        "minimum_available_mb": 2503.85,
+        "memory": {
+          "available_mb": 2828.93,
+          "used_mb": 13223.4,
+          "percent": 82.4
+        }
+      },
+      "sovereignai": {
+        "wall_seconds": 7.497992,
+        "conversation_id": "dbe661bf-7ff8-46d5-8670-30b0a173c752",
+        "response": "- Faulted outer race elements create uneven contact points on the bearing surface.  \n- As the bearing rotates, these irregularities cause periodic contact and separation of the rolling elements.  \n- Each contact and separation event generates a transient force, resulting in a repeating vibration impulse.  \n- The frequency of these impulses matches the rotational speed and fault pattern, creating detectable periodic vibrations.",
+        "model": "qwen3:4b-instruct",
+        "provider": "ollama",
+        "fallback": false,
+        "runtime_metrics": {
+          "endpoint_total_seconds": 7.492138,
+          "request_setup_seconds": 0.000158,
+          "routing_seconds": 0.006172,
+          "provider_setup_seconds": 0.000656,
+          "generation_seconds": 7.476459,
+          "persistence_commit_seconds": 0.008691,
+          "measured_phase_seconds": 7.492136,
+          "provider_generation": {
+            "model": "qwen3:4b-instruct",
+            "time_to_first_token_seconds": 0.703,
+            "tokens_per_second": 11.25,
+            "total_duration_seconds": 6.871735,
+            "load_duration_seconds": 0.005648,
+            "token_count": 76,
+            "prompt_token_count": 55,
+            "warm_status": "warm",
+            "queue_wait_seconds": 0.016,
+            "done_reason": "stop",
+            "output_truncated": false,
+            "completed": true,
+            "requested_model": "qwen3:4b-instruct",
+            "effective_model": "qwen3:4b-instruct",
+            "runtime_profile": {
+              "mode": "FAST",
+              "num_ctx": 4096,
+              "num_predict": 384,
+              "temperature": 0.2
+            },
+            "cpu_tuning": {
+              "model": "qwen3:4b-instruct",
+              "measured_at": "2026-09-17T22:01:29.955772+00:00",
+              "num_thread": 5,
+              "num_batch": 128,
+              "num_ctx": 4096,
+              "median_tokens_per_second": 9.099,
+              "mean_tokens_per_second": 9.533,
+              "measured_runs": 3,
+              "warmup_runs": 1,
+              "source": "local-cpu-tuning"
+            },
+            "context_plan": {
+              "execution_mode": "FAST",
+              "estimated_prompt_tokens": 201,
+              "output_reserve_tokens": 384,
+              "required_tokens": 585,
+              "selected_num_ctx": 2048,
+              "profile_max_num_ctx": 4096,
+              "truncated_risk": false,
+              "source": "adaptive-context-v1"
+            },
+            "model_optimization": {
+              "base_model": "qwen3:4b-instruct",
+              "selected_model": "qwen3:4b-instruct",
+              "quantization": "Q4_K_M",
+              "quality_score": 1.0,
+              "tokens_per_second": 8.895,
+              "resident_size_mb": 2684.99,
+              "context_length": 2048,
+              "measured_at": "2026-09-18T13:15:44.749650+00:00",
+              "source": "local-model-optimization"
+            },
+            "resource_admission": {
+              "queue_wait_seconds": 0.016,
+              "queue_depth_at_admission": 0,
+              "admission_mode": "resident-no-load",
+              "ram_available_mb": 2805.93,
+              "ram_reserve_mb": 2407.85,
+              "estimated_model_ram_mb": 0.0,
+              "cpu_percent": 37.3,
+              "physical_cores": 10,
+              "logical_cores": 12
+            },
+            "residency_decision": {
+              "target_model": "qwen3:4b-instruct",
+              "target_was_resident": true,
+              "estimated_load_mb": 0.0,
+              "available_before_mb": 2828.57,
+              "reserve_mb": 2407.85,
+              "evicted_models": [],
+              "actions": [],
+              "safe_to_load": true,
+              "reason": "Target model is already resident; no additional model-load budget is charged."
+            }
+          },
+          "application_overhead_excluding_model_seconds": 0.620403
+        }
+      },
+      "measured_load_seconds": {
+        "sovereignai": 0.005648,
+        "direct_ollama": 0.008118
+      },
+      "valid_warm_path": true,
+      "sovereignai_vs_direct_wall_ratio": 1.2159,
+      "memory_after_pair": {
+        "available_mb": 2791.36,
+        "used_mb": 13260.96,
+        "percent": 82.6
+      }
+    }
+  ],
+  "summary": {
+    "sovereignai": {
+      "median_endpoint_total_seconds": 7.10807,
+      "median_request_setup_seconds": 0.000132,
+      "median_routing_seconds": 0.005135,
+      "median_provider_setup_seconds": 0.000538,
+      "median_generation_seconds": 7.095899,
+      "median_persistence_commit_seconds": 0.008494,
+      "median_application_overhead_excluding_model_seconds": 0.613624,
+      "median_client_wall_seconds": 7.132959,
+      "median_provider_time_to_first_token_seconds": 1.0545,
+      "median_provider_queue_wait_seconds": 0.0155,
+      "median_provider_load_duration_seconds": 0.006304,
+      "median_provider_tokens_per_second": 11.7525
+    },
+    "direct_ollama": {
+      "median_wall_seconds": 6.48209,
+      "median_time_to_first_token_seconds": 0.660016,
+      "median_ollama_total_duration_seconds": 6.469869,
+      "median_load_duration_seconds": 0.007607,
+      "median_tokens_per_second": 11.461
+    },
+    "median_sovereignai_vs_direct_wall_ratio": 1.069877,
+    "median_application_overhead_fraction": 0.0863
+  },
+  "interpretation_note": "Each round unloads/reloads the model, configures the exact runner with a one-token warm-up, and then waits for available RAM to exceed the unchanged SovereignAI reserve plus a benchmark-only headroom margin before timing requests. A round is excluded if either measured call still incurs material model load."
+}

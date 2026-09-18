@@ -1,0 +1,51 @@
+name: Local AI Runtime checks
+
+on:
+  push:
+    branches:
+      - perf/local-runtime-latency-phase1
+  pull_request:
+    paths:
+      - "backend/app/resources/**"
+      - "backend/app/llm/**"
+      - "backend/app/agent/**"
+      - "backend/app/api/chat.py"
+      - "backend/app/core/config.py"
+      - "backend/app/main.py"
+      - "backend/scripts/benchmark_local_cpu.py"
+      - "backend/scripts/benchmark_cpu_tuning.py"
+      - "backend/scripts/benchmark_model_optimization.py"
+      - "backend/scripts/benchmark_inference_backends.py"
+      - "backend/scripts/benchmark_kv_cache.py"
+      - "backend/scripts/confirm_kv_cache_4096.py"
+      - "backend/scripts/benchmark_end_to_end_latency.py"
+      - "backend/scripts/start_ollama_optimized.ps1"
+      - "tests/test_phase20_runtime_foundation.py"
+      - "tests/test_phase21_residency.py"
+      - "tests/test_phase22_cpu_ram_scheduler.py"
+      - "tests/test_phase23_adaptive_residency.py"
+      - "tests/test_phase24_cpu_tuning.py"
+      - "tests/test_phase25_model_optimization.py"
+      - "tests/test_phase26_backend_selection.py"
+      - "tests/test_phase27_kv_cache_optimization.py"
+      - ".github/workflows/runtime-checks.yml"
+
+jobs:
+  runtime-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lightweight runtime test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx pydantic pydantic-settings sqlalchemy PyYAML psutil
+      - name: Compile benchmark scripts
+        run: |
+          python -m py_compile backend/scripts/benchmark_inference_backends.py backend/scripts/benchmark_kv_cache.py backend/scripts/confirm_kv_cache_4096.py backend/scripts/benchmark_end_to_end_latency.py
+      - name: Run Local AI Runtime tests
+        run: |
+          pytest -q tests/test_phase20_runtime_foundation.py tests/test_phase21_residency.py tests/test_phase22_cpu_ram_scheduler.py tests/test_phase23_adaptive_residency.py tests/test_phase24_cpu_tuning.py tests/test_phase25_model_optimization.py tests/test_phase26_backend_selection.py tests/test_phase27_kv_cache_optimization.py

@@ -1,0 +1,194 @@
+{
+  "benchmark_design": "provider-preflight-fresh-vs-shared-http-client-v2-self-warm",
+  "model": "qwen3:4b-instruct",
+  "ollama_url": "http://127.0.0.1:11434",
+  "repeats": 8,
+  "prewarm": {
+    "wall_seconds": 3.475816,
+    "load_duration_seconds": 3.061762,
+    "response": "READY",
+    "keep_alive": "15m",
+    "resident_after": true
+  },
+  "current_fresh_client_runs": [
+    {
+      "provider_construct_seconds": 0.000198,
+      "residency_prepare_seconds": 0.38835,
+      "scheduler_admission_seconds": 0.011735,
+      "preflight_total_seconds": 0.400283,
+      "target_was_resident": true,
+      "ram_available_mb": 2440.03,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 7.6e-05,
+      "residency_prepare_seconds": 0.024593,
+      "scheduler_admission_seconds": 0.013051,
+      "preflight_total_seconds": 0.03772,
+      "target_was_resident": true,
+      "ram_available_mb": 2485.77,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.015
+    },
+    {
+      "provider_construct_seconds": 7.3e-05,
+      "residency_prepare_seconds": 0.026848,
+      "scheduler_admission_seconds": 0.011769,
+      "preflight_total_seconds": 0.038689,
+      "target_was_resident": true,
+      "ram_available_mb": 2496.39,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.0
+    },
+    {
+      "provider_construct_seconds": 7e-05,
+      "residency_prepare_seconds": 0.022451,
+      "scheduler_admission_seconds": 0.011856,
+      "preflight_total_seconds": 0.034377,
+      "target_was_resident": true,
+      "ram_available_mb": 2522.52,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.015
+    },
+    {
+      "provider_construct_seconds": 6.1e-05,
+      "residency_prepare_seconds": 0.021281,
+      "scheduler_admission_seconds": 0.012087,
+      "preflight_total_seconds": 0.03343,
+      "target_was_resident": true,
+      "ram_available_mb": 2525.5,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.0
+    },
+    {
+      "provider_construct_seconds": 5.7e-05,
+      "residency_prepare_seconds": 0.022196,
+      "scheduler_admission_seconds": 0.013171,
+      "preflight_total_seconds": 0.035425,
+      "target_was_resident": true,
+      "ram_available_mb": 2535.09,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.015
+    },
+    {
+      "provider_construct_seconds": 7.7e-05,
+      "residency_prepare_seconds": 0.024126,
+      "scheduler_admission_seconds": 0.012512,
+      "preflight_total_seconds": 0.036715,
+      "target_was_resident": true,
+      "ram_available_mb": 2540.09,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 5.7e-05,
+      "residency_prepare_seconds": 0.020392,
+      "scheduler_admission_seconds": 0.011014,
+      "preflight_total_seconds": 0.031463,
+      "target_was_resident": true,
+      "ram_available_mb": 2548.92,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.0
+    }
+  ],
+  "shared_client_runs": [
+    {
+      "provider_construct_seconds": 8.5e-05,
+      "residency_prepare_seconds": 0.017102,
+      "scheduler_admission_seconds": 0.013252,
+      "preflight_total_seconds": 0.030439,
+      "target_was_resident": true,
+      "ram_available_mb": 2452.2,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 8.7e-05,
+      "residency_prepare_seconds": 0.015396,
+      "scheduler_admission_seconds": 0.01298,
+      "preflight_total_seconds": 0.028463,
+      "target_was_resident": true,
+      "ram_available_mb": 2471.16,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.015
+    },
+    {
+      "provider_construct_seconds": 7.1e-05,
+      "residency_prepare_seconds": 0.015125,
+      "scheduler_admission_seconds": 0.01259,
+      "preflight_total_seconds": 0.027786,
+      "target_was_resident": true,
+      "ram_available_mb": 2509.11,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 6.9e-05,
+      "residency_prepare_seconds": 0.014515,
+      "scheduler_admission_seconds": 0.012541,
+      "preflight_total_seconds": 0.027126,
+      "target_was_resident": true,
+      "ram_available_mb": 2517.91,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.015
+    },
+    {
+      "provider_construct_seconds": 5.7e-05,
+      "residency_prepare_seconds": 0.014622,
+      "scheduler_admission_seconds": 0.011148,
+      "preflight_total_seconds": 0.025827,
+      "target_was_resident": true,
+      "ram_available_mb": 2529.18,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 5.3e-05,
+      "residency_prepare_seconds": 0.013598,
+      "scheduler_admission_seconds": 0.010634,
+      "preflight_total_seconds": 0.024285,
+      "target_was_resident": true,
+      "ram_available_mb": 2532.13,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.0
+    },
+    {
+      "provider_construct_seconds": 6.7e-05,
+      "residency_prepare_seconds": 0.015227,
+      "scheduler_admission_seconds": 0.011247,
+      "preflight_total_seconds": 0.026542,
+      "target_was_resident": true,
+      "ram_available_mb": 2545.25,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.016
+    },
+    {
+      "provider_construct_seconds": 5.9e-05,
+      "residency_prepare_seconds": 0.013227,
+      "scheduler_admission_seconds": 0.010539,
+      "preflight_total_seconds": 0.023826,
+      "target_was_resident": true,
+      "ram_available_mb": 2548.39,
+      "ram_reserve_mb": 2407.85,
+      "scheduler_queue_wait_seconds": 0.0
+    }
+  ],
+  "summary": {
+    "current_fresh_client": {
+      "median_provider_construct_seconds": 7.2e-05,
+      "median_residency_prepare_seconds": 0.023289,
+      "median_scheduler_admission_seconds": 0.011971,
+      "median_preflight_total_seconds": 0.03607
+    },
+    "shared_client": {
+      "median_provider_construct_seconds": 6.8e-05,
+      "median_residency_prepare_seconds": 0.014873,
+      "median_scheduler_admission_seconds": 0.011894,
+      "median_preflight_total_seconds": 0.026834
+    },
+    "median_shared_client_savings_seconds": 0.009236,
+    "shared_vs_current_preflight_ratio": 0.7439
+  },
+  "interpretation_note": "The target model is pre-warmed outside the measured section. The current /api/chat path constructs a new OllamaProvider without an injected AsyncClient, so the residency /api/ps check uses a short-lived HTTP client. The shared-client arm reuses one AsyncClient across rounds while keeping the same residency and scheduler policy."
+}
