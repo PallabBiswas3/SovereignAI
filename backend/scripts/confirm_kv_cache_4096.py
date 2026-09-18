@@ -96,6 +96,14 @@ def _wait_ready(client: httpx.Client, endpoint: str, process: subprocess.Popen[A
     raise RuntimeError(f"Ollama server did not become ready at {endpoint}")
 
 
+def _tail_log(path: Path, lines: int = 50) -> str:
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "<server log unavailable>"
+    return "\n".join(content[-lines:]) if content else "<server log empty>"
+
+
 def _generate(
     client: httpx.Client,
     endpoint: str,
@@ -106,6 +114,7 @@ def _generate(
     num_predict: int,
     num_thread: int | None,
     num_batch: int | None,
+    log_path: Path,
 ) -> dict[str, Any]:
     options: dict[str, int | float] = {"temperature": 0.0, "num_ctx": num_ctx, "num_predict": num_predict}
     if num_thread:
@@ -125,7 +134,16 @@ def _generate(
         },
     )
     wall = time.perf_counter() - started
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = response.text.strip()[:2000] or "<empty response body>"
+        raise RuntimeError(
+            f"Ollama generate failed at {endpoint}: HTTP {response.status_code}.\n"
+            f"Response: {body}\n"
+            f"Server log: {log_path}\n"
+            f"--- server log tail ---\n{_tail_log(log_path)}"
+        ) from exc
     data = response.json()
     eval_seconds = float(data.get("eval_duration", 0) or 0) / 1_000_000_000
     eval_count = int(data.get("eval_count", 0) or 0)
@@ -149,6 +167,66 @@ def _resident_model(client: httpx.Client, endpoint: str, model: str) -> dict[str
     return None
 
 
+def _unload_model(endpoint: str, model: str) -> None:
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(
+                f"{endpoint}/api/generate",
+                json={"model": model, "stream": False, "keep_alive": 0},
+            )
+    except Exception:
+        pass
+
+
+def _terminate_process_tree(process: subprocess.Popen[Any]) -> None:
+    processes: list[psutil.Process] = []
+    try:
+        root = psutil.Process(process.pid)
+        processes.extend(root.children(recursive=True))
+        processes.append(root)
+    except psutil.Error:
+        pass
+
+    for item in reversed(processes):
+        try:
+            item.terminate()
+        except psutil.Error:
+            pass
+
+    if processes:
+        _, alive = psutil.wait_procs(processes, timeout=5.0)
+        for item in alive:
+            try:
+                item.kill()
+            except psutil.Error:
+                pass
+        if alive:
+            psutil.wait_procs(alive, timeout=5.0)
+
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
+
+
+def _wait_for_memory_recovery(target_available_mb: float, timeout: float = 20.0) -> dict[str, float]:
+    """Give Windows/Ollama runner teardown time before the next isolated model load.
+
+    We allow a 256 MB tolerance because unrelated desktop processes can legitimately move while the
+    benchmark is running. The returned snapshot is diagnostic; timeout does not fail the run.
+    """
+    deadline = time.monotonic() + timeout
+    target = max(1024.0, target_available_mb - 256.0)
+    snapshot = _memory_snapshot()
+    while time.monotonic() < deadline and snapshot["available_mb"] < target:
+        time.sleep(0.5)
+        snapshot = _memory_snapshot()
+    return snapshot
+
+
 def _run_one(
     *,
     ollama_exe: str,
@@ -160,33 +238,43 @@ def _run_one(
     num_batch: int | None,
     timeout_seconds: float,
     run_long_context: bool,
+    log_path: Path,
 ) -> dict[str, Any]:
     endpoint = f"http://127.0.0.1:{port}"
     env = os.environ.copy()
     env["OLLAMA_HOST"] = f"127.0.0.1:{port}"
     env["OLLAMA_FLASH_ATTENTION"] = "1"
     env["OLLAMA_KV_CACHE_TYPE"] = cache_type
+    env["OLLAMA_MAX_LOADED_MODELS"] = "1"
+    env["OLLAMA_NUM_PARALLEL"] = "1"
+    env["OLLAMA_DEBUG"] = "INFO"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_handle = log_path.open("w", encoding="utf-8")
     process = subprocess.Popen(
         [ollama_exe, "serve"],
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     before = _memory_snapshot()
+    recovery_snapshot = None
     try:
         with httpx.Client(timeout=httpx.Timeout(timeout_seconds)) as client:
             _wait_ready(client, endpoint, process)
             _generate(
                 client, endpoint, model=model, prompt=PERF_PROMPT,
                 num_ctx=num_ctx, num_predict=64, num_thread=num_thread, num_batch=num_batch,
+                log_path=log_path,
             )
             after_load = _memory_snapshot()
             resident = _resident_model(client, endpoint, model)
 
+            # Performance is deliberately measured before the expensive long-context canary.
             perf = _generate(
                 client, endpoint, model=model, prompt=PERF_PROMPT,
                 num_ctx=num_ctx, num_predict=128, num_thread=num_thread, num_batch=num_batch,
+                log_path=log_path,
             )
 
             quality_runs: list[dict[str, Any]] = []
@@ -194,6 +282,7 @@ def _run_one(
                 result = _generate(
                     client, endpoint, model=model, prompt=str(case["prompt"]),
                     num_ctx=num_ctx, num_predict=64, num_thread=num_thread, num_batch=num_batch,
+                    log_path=log_path,
                 )
                 quality_runs.append({
                     "name": case["name"],
@@ -208,6 +297,7 @@ def _run_one(
                 result = _generate(
                     client, endpoint, model=model, prompt=str(LONG_CONTEXT_CASE["prompt"]),
                     num_ctx=num_ctx, num_predict=64, num_thread=num_thread, num_batch=num_batch,
+                    log_path=log_path,
                 )
                 long_context_result = {
                     "passed": _quality_pass(LONG_CONTEXT_CASE, result["response"]),
@@ -218,6 +308,7 @@ def _run_one(
             return {
                 "cache_type": cache_type,
                 "endpoint": endpoint,
+                "server_log": str(log_path),
                 "memory_before": before,
                 "memory_after_load": after_load,
                 "system_ram_delta_mb": round(max(0.0, before["available_mb"] - after_load["available_mb"]), 2),
@@ -229,13 +320,21 @@ def _run_one(
                 "long_context": long_context_result,
             }
     finally:
-        process.terminate()
+        _unload_model(endpoint, model)
+        _terminate_process_tree(process)
+        log_handle.close()
+        recovery_snapshot = _wait_for_memory_recovery(before["available_mb"])
+        # Keep this lightweight breadcrumb in the per-run server log rather than changing the result
+        # object after an exception/return has already been created.
         try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-        time.sleep(1.0)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    "\n[benchmark-cleanup] "
+                    f"available_ram_after_cleanup_mb={recovery_snapshot['available_mb']} "
+                    f"target_before_mb={before['available_mb']}\n"
+                )
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -253,6 +352,7 @@ def main() -> int:
     parser.add_argument("--run-long-context", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("workspace/kv_cache_confirmation_4096.json"))
     parser.add_argument("--confirmation-path", type=Path, default=Path("backend/data/kv_cache_confirmations.json"))
+    parser.add_argument("--log-dir", type=Path, default=Path("workspace/kv_cache_logs"))
     args = parser.parse_args()
 
     ollama_exe = args.ollama_exe or shutil.which("ollama")
@@ -278,6 +378,7 @@ def main() -> int:
         for cache_type in order:
             port = _free_port(next_port)
             next_port = port + 1
+            log_path = args.log_dir / f"round_{index + 1}_{cache_type}_{port}.log"
             results[cache_type] = _run_one(
                 ollama_exe=ollama_exe,
                 model=args.model,
@@ -288,6 +389,7 @@ def main() -> int:
                 num_batch=num_batch,
                 timeout_seconds=settings.model_generation_timeout_seconds,
                 run_long_context=args.run_long_context,
+                log_path=log_path,
             )
 
         f16 = results["f16"]
@@ -317,6 +419,8 @@ def main() -> int:
 
     baseline_quality = median(f16_quality_scores)
     candidate_quality = median(q8_quality_scores)
+    # A preliminary run can report speed/memory evidence, but only an explicitly requested
+    # long-context validation is allowed to produce confirmed=true.
     baseline_long = all(f16_long_pass) if args.run_long_context else False
     candidate_long = all(q8_long_pass) if args.run_long_context else False
     confirmation = evaluate_context_confirmation(
@@ -338,9 +442,8 @@ def main() -> int:
 
     report = {
         "model": args.model,
-        "benchmark_design": "paired-isolated-kv-confirmation-v1",
+        "benchmark_design": "paired-isolated-kv-confirmation-v2",
         "num_ctx": args.num_ctx,
-        "long_context_executed": args.run_long_context,
         "cpu_tuning": tuning.model_dump(mode="json") if tuning else None,
         "rounds": rounds,
         "summary": {
@@ -351,13 +454,13 @@ def main() -> int:
             "resident_saving_mb": confirmation.resident_saving_mb,
             "f16_quality": baseline_quality,
             "q8_quality": candidate_quality,
+            "long_context_requested": args.run_long_context,
         },
         "confirmation": confirmation.model_dump(mode="json"),
         "runtime_default_changed": False,
         "runtime_note": (
             "This experiment records per-context evidence only. It never changes the global Ollama KV cache profile. "
-            "Without --run-long-context the run is preliminary and cannot set confirmed=true. "
-            "A context-aware server/runtime design should be implemented only after full confirmation passes."
+            "A context-aware server/runtime design should be implemented only after confirmation passes."
         ),
     }
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
