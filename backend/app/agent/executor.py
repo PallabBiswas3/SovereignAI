@@ -23,7 +23,11 @@ class AgentExecutor:
     """
 
     TOKEN_EVENT_MAX_CHARS = 96
-    TOKEN_EVENT_MAX_DELAY_SECONDS = 0.05
+    # CPU-local models on the target laptop produce roughly one provider chunk every ~90-100 ms.
+    # A 50 ms deadline therefore flushed almost every chunk individually and forced one durable
+    # task-event callback per chunk. Keep the first visible frame immediate, then coalesce subsequent
+    # frames to a ~5 Hz UI cadence unless the character bound is reached first.
+    TOKEN_EVENT_MAX_DELAY_SECONDS = 0.20
 
     def __init__(
         self,
@@ -93,8 +97,11 @@ class AgentExecutor:
                     pieces.append(chunk.text)
                     pending_event_text.append(chunk.text)
                     pending_event_chars += len(chunk.text)
+                    # Preserve perceived TTFT: the first non-empty provider chunk is delivered immediately.
+                    # After that, batch slow CPU chunks so SQLite-backed task callbacks do not run once per token.
                     if (
-                        pending_event_chars >= self.TOKEN_EVENT_MAX_CHARS
+                        first_ui_frame_seconds is None
+                        or pending_event_chars >= self.TOKEN_EVENT_MAX_CHARS
                         or monotonic() - last_event_at >= self.TOKEN_EVENT_MAX_DELAY_SECONDS
                     ):
                         await flush_model_tokens()
