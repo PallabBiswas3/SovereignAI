@@ -11,11 +11,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+import psutil
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.config import get_settings
 from app.llm.ollama_provider import OllamaProvider
 
 SYSTEM_PROMPT = "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources."
@@ -33,6 +35,39 @@ def _require_local(url: str) -> None:
 
 def _median(values: list[float]) -> float | None:
     return round(median(values), 6) if values else None
+
+
+def _memory_snapshot() -> dict[str, float]:
+    memory = psutil.virtual_memory()
+    return {
+        "available_mb": round(memory.available / 1024 / 1024, 2),
+        "used_mb": round(memory.used / 1024 / 1024, 2),
+        "total_mb": round(memory.total / 1024 / 1024, 2),
+        "percent": round(float(memory.percent), 2),
+    }
+
+
+def _ram_threshold(headroom_mb: float) -> tuple[float, float]:
+    settings = get_settings()
+    memory = psutil.virtual_memory()
+    total_mb = memory.total / 1024 / 1024
+    reserve_mb = max(float(settings.model_ram_reserve_mb), total_mb * float(settings.model_ram_reserve_fraction))
+    return reserve_mb, reserve_mb + max(0.0, headroom_mb)
+
+
+async def _wait_for_ram(minimum_available_mb: float, timeout_seconds: float) -> dict[str, Any]:
+    started = perf_counter()
+    deadline = asyncio.get_running_loop().time() + max(0.0, timeout_seconds)
+    snapshot = _memory_snapshot()
+    while snapshot["available_mb"] < minimum_available_mb and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.5)
+        snapshot = _memory_snapshot()
+    return {
+        "ready": snapshot["available_mb"] >= minimum_available_mb,
+        "wait_seconds": round(perf_counter() - started, 6),
+        "minimum_available_mb": round(minimum_available_mb, 2),
+        "memory": snapshot,
+    }
 
 
 class _TimedLifecycle:
@@ -82,6 +117,16 @@ class _TimedLifecycle:
         return self.inner.all(*args, **kwargs)
 
 
+async def _resident_names(client: httpx.AsyncClient, endpoint: str) -> set[str]:
+    response = await client.get(f"{endpoint.rstrip('/')}/api/ps", timeout=5.0)
+    response.raise_for_status()
+    return {
+        str(item.get("name") or item.get("model") or "").strip()
+        for item in response.json().get("models", [])
+        if isinstance(item, dict)
+    }
+
+
 async def _ensure_warm(client: httpx.AsyncClient, endpoint: str, model: str, timeout: float) -> dict[str, Any]:
     payload = {
         "model": model,
@@ -92,7 +137,7 @@ async def _ensure_warm(client: httpx.AsyncClient, endpoint: str, model: str, tim
         "options": {
             "num_ctx": 2048,
             "num_predict": 1,
-            "temperature": 0.0,
+            "temperature": 0.2,
             "num_thread": 5,
             "num_batch": 128,
         },
@@ -102,9 +147,51 @@ async def _ensure_warm(client: httpx.AsyncClient, endpoint: str, model: str, tim
     wall = perf_counter() - started
     response.raise_for_status()
     data = response.json()
+    names = await _resident_names(client, endpoint)
+    resident = model in names or (":" not in model and f"{model}:latest" in names)
+    if not resident:
+        raise RuntimeError(f"{model} did not become resident after exact-runner warm-up")
     return {
         "wall_seconds": round(wall, 6),
         "load_duration_seconds": round(float(data.get("load_duration", 0) or 0) / 1_000_000_000, 6),
+        "memory_after": _memory_snapshot(),
+    }
+
+
+async def _reset_and_warm(
+    client: httpx.AsyncClient,
+    endpoint: str,
+    model: str,
+    timeout: float,
+    settle_seconds: float,
+) -> dict[str, Any]:
+    before = _memory_snapshot()
+    response = await client.post(
+        f"{endpoint.rstrip('/')}/api/generate",
+        json={"model": model, "stream": False, "keep_alive": 0},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    deadline = asyncio.get_running_loop().time() + 15.0
+    while asyncio.get_running_loop().time() < deadline:
+        names = await _resident_names(client, endpoint)
+        if model not in names and (":" in model or f"{model}:latest" not in names):
+            break
+        await asyncio.sleep(0.25)
+    names = await _resident_names(client, endpoint)
+    if model in names or (":" not in model and f"{model}:latest" in names):
+        raise RuntimeError(f"{model} remained resident after unload request")
+
+    if settle_seconds > 0:
+        await asyncio.sleep(settle_seconds)
+    after_unload = _memory_snapshot()
+    warm = await _ensure_warm(client, endpoint, model, timeout)
+    return {
+        "memory_before_reset": before,
+        "memory_after_unload": after_unload,
+        "exact_runner_warmup": warm,
+        "memory_after_warm": _memory_snapshot(),
     }
 
 
@@ -180,21 +267,128 @@ async def _run_provider_once(
     }
 
 
+def _summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    keys = (
+        "provider_construct_seconds",
+        "provider_wall_seconds",
+        "ollama_total_duration_seconds",
+        "provider_wrapper_overhead_seconds",
+        "residency_prepare_seconds",
+        "queue_wait_seconds",
+        "lifecycle_begin_seconds",
+        "lifecycle_mark_busy_seconds",
+        "lifecycle_complete_seconds",
+        "known_timed_wrapper_seconds",
+        "residual_wrapper_seconds",
+        "time_to_first_token_seconds",
+        "tokens_per_second",
+        "token_count",
+        "load_duration_seconds",
+    )
+    for key in keys:
+        values = [float(run[key]) for run in runs if isinstance(run.get(key), (int, float))]
+        out[f"median_{key}"] = _median(values)
+    return out
+
+
+def _build_report(
+    *,
+    args: argparse.Namespace,
+    reserve_mb: float,
+    minimum_available_mb: float,
+    rounds: list[dict[str, Any]],
+    fresh_runs: list[dict[str, Any]],
+    shared_runs: list[dict[str, Any]],
+    status: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "benchmark_design": "actual-ollama-provider-generate-wrapper-overhead-v2-ram-stable",
+        "status": status,
+        "error": error,
+        "model": args.model,
+        "requested_repeats": max(4, args.repeats),
+        "completed_rounds": len(rounds),
+        "ram_reserve_mb": round(reserve_mb, 2),
+        "ram_headroom_mb": args.ram_headroom_mb,
+        "minimum_benchmark_available_mb": round(minimum_available_mb, 2),
+        "rounds": rounds,
+        "summary": {
+            "fresh_client_provider": _summarize(fresh_runs),
+            "shared_client_provider": _summarize(shared_runs),
+        },
+        "interpretation_note": (
+            "Every comparison round resets the target model, performs an exact-runner warm-up outside measured "
+            "calls, and waits for available RAM to exceed the unchanged production reserve plus benchmark-only "
+            "headroom. The measured calls use the real OllamaProvider.generate() path."
+        ),
+    }
+
+
 async def _run(args: argparse.Namespace) -> dict[str, Any]:
     _require_local(args.ollama_url)
     repeats = max(4, args.repeats)
     timeout = httpx.Timeout(args.timeout)
+    reserve_mb, minimum_available_mb = _ram_threshold(args.ram_headroom_mb)
 
     fresh_runs: list[dict[str, Any]] = []
     shared_runs: list[dict[str, Any]] = []
+    rounds: list[dict[str, Any]] = []
 
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as warm_client:
-        warmup = await _ensure_warm(warm_client, args.ollama_url, args.model, args.timeout)
-
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as shared_client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as control_client, httpx.AsyncClient(
+        timeout=timeout, follow_redirects=False
+    ) as shared_client:
         for index in range(repeats):
+            round_record: dict[str, Any] = {
+                "round": index + 1,
+                "reset": await _reset_and_warm(
+                    control_client,
+                    args.ollama_url,
+                    args.model,
+                    args.timeout,
+                    max(0.0, args.settle_seconds),
+                ),
+            }
+            gate = await _wait_for_ram(minimum_available_mb, args.ram_wait_seconds)
+            round_record["pre_round_ram_gate"] = gate
+            if not gate["ready"]:
+                rounds.append(round_record)
+                report = _build_report(
+                    args=args,
+                    reserve_mb=reserve_mb,
+                    minimum_available_mb=minimum_available_mb,
+                    rounds=rounds,
+                    fresh_runs=fresh_runs,
+                    shared_runs=shared_runs,
+                    status="blocked_by_ram",
+                    error=(
+                        f"Available RAM did not reach {minimum_available_mb:.0f} MB after reset/warm. "
+                        "Close memory-heavy applications and rerun; the production reserve was not changed."
+                    ),
+                )
+                return report
+
             order = ["fresh", "shared"] if index % 2 == 0 else ["shared", "fresh"]
+            round_record["order"] = order
             for target in order:
+                target_gate = await _wait_for_ram(minimum_available_mb, args.ram_wait_seconds)
+                round_record[f"ram_gate_before_{target}"] = target_gate
+                if not target_gate["ready"]:
+                    rounds.append(round_record)
+                    return _build_report(
+                        args=args,
+                        reserve_mb=reserve_mb,
+                        minimum_available_mb=minimum_available_mb,
+                        rounds=rounds,
+                        fresh_runs=fresh_runs,
+                        shared_runs=shared_runs,
+                        status="blocked_by_ram",
+                        error=(
+                            f"Available RAM fell below benchmark headroom before {target}. "
+                            "Close memory-heavy applications and rerun; the production reserve was not changed."
+                        ),
+                    )
                 run = await _run_provider_once(
                     endpoint=args.ollama_url,
                     model=args.model,
@@ -202,50 +396,33 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     shared_client=shared_client if target == "shared" else None,
                 )
                 run["client_mode"] = target
+                round_record[target] = run
                 (shared_runs if target == "shared" else fresh_runs).append(run)
 
-    def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        keys = (
-            "provider_construct_seconds",
-            "provider_wall_seconds",
-            "ollama_total_duration_seconds",
-            "provider_wrapper_overhead_seconds",
-            "residency_prepare_seconds",
-            "queue_wait_seconds",
-            "lifecycle_begin_seconds",
-            "lifecycle_mark_busy_seconds",
-            "lifecycle_complete_seconds",
-            "known_timed_wrapper_seconds",
-            "residual_wrapper_seconds",
-            "time_to_first_token_seconds",
-            "tokens_per_second",
-            "token_count",
-            "load_duration_seconds",
-        )
-        for key in keys:
-            values = [float(run[key]) for run in runs if isinstance(run.get(key), (int, float))]
-            out[f"median_{key}"] = _median(values)
-        return out
+            round_record["memory_after_round"] = _memory_snapshot()
+            rounds.append(round_record)
 
-    return {
-        "benchmark_design": "actual-ollama-provider-generate-wrapper-overhead-v1",
-        "model": args.model,
-        "repeats": repeats,
-        "warmup": warmup,
-        "fresh_client_provider_runs": fresh_runs,
-        "shared_client_provider_runs": shared_runs,
-        "summary": {
-            "fresh_client_provider": summarize(fresh_runs),
-            "shared_client_provider": summarize(shared_runs),
-        },
-        "interpretation_note": (
-            "This benchmark calls the real OllamaProvider.generate() path used by /api/chat. It measures provider "
-            "wall time against Ollama's own total_duration and separately times adaptive residency, scheduler queue "
-            "wait, and lifecycle bookkeeping. The residual is intentionally diagnostic: it contains remaining "
-            "client creation/stream parsing/chunk-yield/stats/cleanup work plus timing-definition differences."
-        ),
-    }
+            progress = _build_report(
+                args=args,
+                reserve_mb=reserve_mb,
+                minimum_available_mb=minimum_available_mb,
+                rounds=rounds,
+                fresh_runs=fresh_runs,
+                shared_runs=shared_runs,
+                status="running" if len(rounds) < repeats else "complete",
+            )
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(progress, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    return _build_report(
+        args=args,
+        reserve_mb=reserve_mb,
+        minimum_available_mb=minimum_available_mb,
+        rounds=rounds,
+        fresh_runs=fresh_runs,
+        shared_runs=shared_runs,
+        status="complete",
+    )
 
 
 def main() -> int:
@@ -255,6 +432,9 @@ def main() -> int:
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--repeats", type=int, default=8)
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--settle-seconds", type=float, default=2.0)
+    parser.add_argument("--ram-headroom-mb", type=float, default=96.0)
+    parser.add_argument("--ram-wait-seconds", type=float, default=20.0)
     parser.add_argument("--output", type=Path, default=Path("workspace/provider_generate_overhead.json"))
     args = parser.parse_args()
 
@@ -263,7 +443,7 @@ def main() -> int:
     print(serialized)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(serialized + "\n", encoding="utf-8")
-    return 0
+    return 0 if report.get("status") == "complete" else 2
 
 
 if __name__ == "__main__":
