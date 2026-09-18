@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import Conversation, Message, get_db
-from app.llm.ollama_provider import OllamaProvider
+from app.llm.provider_factory import create_local_model_provider
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.router.schemas import RoutingDecision
@@ -49,7 +49,14 @@ async def chat(
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.message, payload.model_override)
     selected = registry.get(routing.model_id)
-    provider = OllamaProvider(selected.endpoint, settings.allow_deterministic_fallback)
+    provider = create_local_model_provider(
+        settings,
+        model=selected.model_tag,
+        ollama_endpoint=selected.endpoint,
+        role=selected.role,
+        memory_requirement=selected.memory_requirement,
+        execution_mode="FAST",
+    )
     result = await provider.generate(
         payload.message,
         selected.model_tag,
