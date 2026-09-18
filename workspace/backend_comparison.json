@@ -1,0 +1,199 @@
+{
+  "model": "qwen3:4b-instruct",
+  "benchmark_design": "paired-interleaved-v2",
+  "llama_cpp_endpoint_requested": "http://127.0.0.1:8080",
+  "llama_cpp_endpoint_used": "http://127.0.0.1:8081",
+  "llama_cpp_model": "qwen3:4b-instruct",
+  "llama_cpp_identity_matches": true,
+  "selection_rules": {
+    "same_logical_model_required": true,
+    "minimum_quality": 0.9,
+    "quality_floor_vs_ollama": 0.95,
+    "minimum_speedup": 1.05,
+    "decision_metric": "median paired llama_cpp/ollama throughput ratio"
+  },
+  "ollama": {
+    "quality_score": 1.0,
+    "quality_cases": [
+      {
+        "name": "arithmetic",
+        "passed": true,
+        "response": "17 * 19 = 323\n\nThe integer result is 323."
+      },
+      {
+        "name": "industrial_extraction",
+        "passed": true,
+        "response": "8.2 mm/s"
+      },
+      {
+        "name": "instruction_following",
+        "passed": true,
+        "response": "SAFE_LOCAL_ONLY"
+      },
+      {
+        "name": "numeric_comparison",
+        "passed": true,
+        "response": "0.875"
+      }
+    ],
+    "summary": {
+      "median_tokens_per_second": 10.68,
+      "median_wall_seconds": 12.147983
+    },
+    "runs": [
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+        "wall_seconds": 13.394613,
+        "tokens_per_second": 9.696,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+        "wall_seconds": 11.89744,
+        "tokens_per_second": 10.93,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+        "wall_seconds": 12.061067,
+        "tokens_per_second": 10.722,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+        "wall_seconds": 12.234899,
+        "tokens_per_second": 10.638,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      }
+    ]
+  },
+  "llama_cpp": {
+    "available": true,
+    "error": null,
+    "quality_score": 1.0,
+    "quality_cases": [
+      {
+        "name": "arithmetic",
+        "passed": true,
+        "response": "17 * 19 = 323\n\nThe integer result is 323."
+      },
+      {
+        "name": "industrial_extraction",
+        "passed": true,
+        "response": "8.2 mm/s"
+      },
+      {
+        "name": "instruction_following",
+        "passed": true,
+        "response": "SAFE_LOCAL_ONLY"
+      },
+      {
+        "name": "numeric_comparison",
+        "passed": true,
+        "response": "0.875"
+      }
+    ],
+    "summary": {
+      "median_tokens_per_second": 9.107,
+      "median_wall_seconds": 14.124289
+    },
+    "runs": [
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when the element aligns with the defect, generating a repeating impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step\" or \"",
+        "wall_seconds": 15.042406,
+        "tokens_per_second": 8.573,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when the element aligns with the defect, generating a repeating impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step\" or \"",
+        "wall_seconds": 14.704387,
+        "tokens_per_second": 8.748,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when the element aligns with the defect, generating a repeating impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step\" or \"",
+        "wall_seconds": 13.434289,
+        "tokens_per_second": 9.564,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when the element aligns with the defect, generating a repeating impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step\" or \"",
+        "wall_seconds": 13.544191,
+        "tokens_per_second": 9.467,
+        "generated_tokens": 128,
+        "prompt_tokens": 27,
+        "done_reason": "length"
+      }
+    ]
+  },
+  "interleaved_rounds": [
+    {
+      "round": 1,
+      "order": [
+        "ollama",
+        "llama_cpp"
+      ],
+      "ollama_tokens_per_second": 9.696,
+      "llama_cpp_tokens_per_second": 8.573,
+      "llama_cpp_vs_ollama_ratio": 0.8842
+    },
+    {
+      "round": 2,
+      "order": [
+        "llama_cpp",
+        "ollama"
+      ],
+      "ollama_tokens_per_second": 10.93,
+      "llama_cpp_tokens_per_second": 8.748,
+      "llama_cpp_vs_ollama_ratio": 0.8004
+    },
+    {
+      "round": 3,
+      "order": [
+        "ollama",
+        "llama_cpp"
+      ],
+      "ollama_tokens_per_second": 10.722,
+      "llama_cpp_tokens_per_second": 9.564,
+      "llama_cpp_vs_ollama_ratio": 0.892
+    },
+    {
+      "round": 4,
+      "order": [
+        "llama_cpp",
+        "ollama"
+      ],
+      "ollama_tokens_per_second": 10.638,
+      "llama_cpp_tokens_per_second": 9.467,
+      "llama_cpp_vs_ollama_ratio": 0.8899
+    }
+  ],
+  "median_speedup_from_backend_medians": 0.8527,
+  "paired_speed_ratio_llama_vs_ollama": 0.8871,
+  "selected": {
+    "model": "qwen3:4b-instruct",
+    "backend": "ollama",
+    "endpoint": "http://127.0.0.1:11434",
+    "backend_model": "qwen3:4b-instruct",
+    "quality_score": 1.0,
+    "median_tokens_per_second": 10.68,
+    "median_wall_seconds": 12.147983,
+    "speedup_vs_ollama": 1.0,
+    "measured_at": "2026-09-18T13:58:07.955763+00:00",
+    "source": "local-backend-benchmark"
+  }
+}

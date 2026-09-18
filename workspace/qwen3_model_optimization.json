@@ -1,0 +1,256 @@
+{
+  "base_model": "qwen3:4b-instruct",
+  "endpoint": "http://127.0.0.1:11434",
+  "cpu_tuning": {
+    "model": "qwen3:4b-instruct",
+    "measured_at": "2026-09-17T22:01:29.955772+00:00",
+    "num_thread": 5,
+    "num_batch": 128,
+    "num_ctx": 4096,
+    "median_tokens_per_second": 9.099,
+    "mean_tokens_per_second": 9.533,
+    "measured_runs": 3,
+    "warmup_runs": 1,
+    "source": "local-cpu-tuning"
+  },
+  "quality_threshold": 0.9,
+  "candidate_models": [
+    "qwen3:4b-instruct"
+  ],
+  "context_results": [
+    {
+      "num_ctx": 2048,
+      "median_tokens_per_second": 10.306,
+      "mean_wall_seconds": 12.570115,
+      "mean_prompt_eval_seconds": 0.108462,
+      "available_ram_before_mb": 2403.23,
+      "available_ram_after_mb": 682.19,
+      "resident_size_mb": 2684.99,
+      "resident_context_length": 2048,
+      "runs": [
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 12.671744,
+          "load_seconds": 0.009799,
+          "prompt_eval_seconds": 0.096624,
+          "decode_seconds": 12.539374,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.208,
+          "done_reason": "length"
+        },
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 12.468486,
+          "load_seconds": 0.008471,
+          "prompt_eval_seconds": 0.1203,
+          "decode_seconds": 12.303019,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.404,
+          "done_reason": "length"
+        }
+      ]
+    },
+    {
+      "num_ctx": 4096,
+      "median_tokens_per_second": 10.543,
+      "mean_wall_seconds": 12.372035,
+      "mean_prompt_eval_seconds": 0.103524,
+      "available_ram_before_mb": 3429.05,
+      "available_ram_after_mb": 618.89,
+      "resident_size_mb": 2973.49,
+      "resident_context_length": 4096,
+      "runs": [
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 11.417624,
+          "load_seconds": 0.019345,
+          "prompt_eval_seconds": 0.10502,
+          "decode_seconds": 11.256477,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.371,
+          "done_reason": "length"
+        },
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 13.326446,
+          "load_seconds": 0.007726,
+          "prompt_eval_seconds": 0.102029,
+          "decode_seconds": 13.175992,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.715,
+          "done_reason": "length"
+        }
+      ]
+    },
+    {
+      "num_ctx": 8192,
+      "median_tokens_per_second": 10.733,
+      "mean_wall_seconds": 12.083487,
+      "mean_prompt_eval_seconds": 0.101712,
+      "available_ram_before_mb": 3656.66,
+      "available_ram_after_mb": 457.65,
+      "resident_size_mb": 3550.49,
+      "resident_context_length": 8192,
+      "runs": [
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 11.720084,
+          "load_seconds": 0.013628,
+          "prompt_eval_seconds": 0.095029,
+          "decode_seconds": 11.575913,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.057,
+          "done_reason": "length"
+        },
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a periodic fluctuation in the contact force, generating a repeating impulse at each revolution.\n\n3. **Impulse Generation at Fixed Angular Position**: The fault location is fixed relative to the bearing housing. As the bearing rotates, the rolling",
+          "wall_seconds": 12.44689,
+          "load_seconds": 0.009746,
+          "prompt_eval_seconds": 0.108394,
+          "decode_seconds": 12.296869,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.409,
+          "done_reason": "length"
+        }
+      ]
+    }
+  ],
+  "model_results": [
+    {
+      "model": "qwen3:4b-instruct",
+      "quantization": "Q4_K_M",
+      "quality_score": 1.0,
+      "median_tokens_per_second": 8.895,
+      "resident_size_mb": 2684.99,
+      "efficiency_tps_per_gib": 3.3924,
+      "quality_runs": [
+        {
+          "name": "arithmetic",
+          "passed": true,
+          "response": "17 * 19 = 323\n\nThe integer result is 323.",
+          "wall_seconds": 8.124392
+        },
+        {
+          "name": "industrial_extraction",
+          "passed": true,
+          "response": "8.2 mm/s",
+          "wall_seconds": 2.968502
+        },
+        {
+          "name": "instruction_following",
+          "passed": true,
+          "response": "SAFE_LOCAL_ONLY",
+          "wall_seconds": 0.952505
+        },
+        {
+          "name": "numeric_comparison",
+          "passed": true,
+          "response": "0.875",
+          "wall_seconds": 1.79612
+        },
+        {
+          "name": "ordered_extraction",
+          "passed": true,
+          "response": "Pump-102 | 7.4 | 7.1 mm/s",
+          "wall_seconds": 3.918007
+        }
+      ],
+      "performance_runs": [
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a repeating, time-dependent fluctuation in the contact force, generating a periodic impulse at each revolution.\n\n3. **Harmonic Excitation**: The fault manifests as a discrete defect at a specific angular position. As the bearing rotates,",
+          "wall_seconds": 15.070807,
+          "load_seconds": 0.011971,
+          "prompt_eval_seconds": 1.014042,
+          "decode_seconds": 14.010161,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.136,
+          "done_reason": "length"
+        },
+        {
+          "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+          "wall_seconds": 14.93808,
+          "load_seconds": 0.010124,
+          "prompt_eval_seconds": 0.100765,
+          "decode_seconds": 14.793042,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.653,
+          "done_reason": "length"
+        }
+      ]
+    }
+  ],
+  "selected": {
+    "model": "qwen3:4b-instruct",
+    "quantization": "Q4_K_M",
+    "quality_score": 1.0,
+    "median_tokens_per_second": 8.895,
+    "resident_size_mb": 2684.99,
+    "efficiency_tps_per_gib": 3.3924,
+    "quality_runs": [
+      {
+        "name": "arithmetic",
+        "passed": true,
+        "response": "17 * 19 = 323\n\nThe integer result is 323.",
+        "wall_seconds": 8.124392
+      },
+      {
+        "name": "industrial_extraction",
+        "passed": true,
+        "response": "8.2 mm/s",
+        "wall_seconds": 2.968502
+      },
+      {
+        "name": "instruction_following",
+        "passed": true,
+        "response": "SAFE_LOCAL_ONLY",
+        "wall_seconds": 0.952505
+      },
+      {
+        "name": "numeric_comparison",
+        "passed": true,
+        "response": "0.875",
+        "wall_seconds": 1.79612
+      },
+      {
+        "name": "ordered_extraction",
+        "passed": true,
+        "response": "Pump-102 | 7.4 | 7.1 mm/s",
+        "wall_seconds": 3.918007
+      }
+    ],
+    "performance_runs": [
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution across the rolling elements during rotation, leading to periodic variations in contact forces.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly engage and disengage with the damaged outer race. This causes a repeating, time-dependent fluctuation in the contact force, generating a periodic impulse at each revolution.\n\n3. **Harmonic Excitation**: The fault manifests as a discrete defect at a specific angular position. As the bearing rotates,",
+        "wall_seconds": 15.070807,
+        "load_seconds": 0.011971,
+        "prompt_eval_seconds": 1.014042,
+        "decode_seconds": 14.010161,
+        "generated_tokens": 128,
+        "tokens_per_second": 9.136,
+        "done_reason": "length"
+      },
+      {
+        "response": "1. **Asymmetric Load Distribution**: In an outer-race fault, a localized defect on the outer raceway creates an uneven contact surface. This results in non-uniform load distribution during rotation, causing periodic variations in the contact force between the rolling elements and the damaged raceway.\n\n2. **Cyclic Contact Force Variation**: As the bearing rotates, the rolling elements repeatedly pass over the faulted region. This leads to a periodic increase in contact force when approaching the defect and a decrease when moving away, generating a repeating force impulse.\n\n3. **Impulse Generation via Surface Interaction**: The faulted raceway acts as a \"step",
+        "wall_seconds": 14.93808,
+        "load_seconds": 0.010124,
+        "prompt_eval_seconds": 0.100765,
+        "decode_seconds": 14.793042,
+        "generated_tokens": 128,
+        "tokens_per_second": 8.653,
+        "done_reason": "length"
+      }
+    ]
+  },
+  "saved_profile": {
+    "base_model": "qwen3:4b-instruct",
+    "selected_model": "qwen3:4b-instruct",
+    "quantization": "Q4_K_M",
+    "quality_score": 1.0,
+    "tokens_per_second": 8.895,
+    "resident_size_mb": 2684.99,
+    "context_length": 2048,
+    "measured_at": "2026-09-18T13:15:44.749650+00:00",
+    "source": "local-model-optimization"
+  },
+  "selection_rule": "quality >= threshold and within 0.05 of baseline; maximize decode-tps per resident GiB; require >=3% efficiency improvement before switching away from baseline"
+}
