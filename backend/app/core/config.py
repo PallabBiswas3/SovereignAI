@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     workspace_root: Path = PROJECT_DIR / "workspace"
     knowledge_root: Path = PROJECT_DIR / "knowledge_base"
     ollama_url: str = "http://127.0.0.1:11434"
+    llama_cpp_url: str = "http://127.0.0.1:8080"
+    llama_cpp_context_size: int = 4096
+    llama_cpp_kv_cache_type_k: str = "f16"
+    llama_cpp_kv_cache_type_v: str = "f16"
+    model_backend_selection_enabled: bool = True
+    model_backend_selection_path: Path = BACKEND_DIR / "data" / "backend_selection.json"
+    model_backend_min_speedup: float = 1.05
     allow_deterministic_fallback: bool = True
     max_upload_mb: int = 25
     embedding_provider: str = "semantic"
@@ -83,7 +90,7 @@ class Settings(BaseSettings):
     bm25_index_version: str = "bm25-v1"
     fusion_strategy_version: str = "rrf-v1"
     reranker_enabled: bool = True
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6v2"
     reranker_local_files_only: bool = True
     reranker_version: str = "cross-encoder-v1"
     context_max_fraction_of_window: float = 0.60
@@ -114,5 +121,6 @@ def get_settings() -> Settings:
     settings.model_footprints_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_cpu_tuning_path.parent.mkdir(parents=True, exist_ok=True)
     settings.model_optimization_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.model_backend_selection_path.parent.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings
