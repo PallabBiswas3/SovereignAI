@@ -36,11 +36,97 @@ def _measured_load_seconds(target: str, run: dict[str, Any]) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
+def _reserve_from_calibration(calibration: dict[str, Any]) -> float:
+    runtime = calibration.get("runtime_metrics") if isinstance(calibration.get("runtime_metrics"), dict) else {}
+    provider = runtime.get("provider_generation") if isinstance(runtime.get("provider_generation"), dict) else {}
+    admission = provider.get("resource_admission") if isinstance(provider.get("resource_admission"), dict) else {}
+    value = admission.get("ram_reserve_mb")
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _wait_for_ram_headroom(*, minimum_available_mb: float, timeout_seconds: float) -> dict[str, Any]:
+    """Wait for Windows/background-memory jitter to settle before a timed request.
+
+    This does not alter SovereignAI's admission reserve. It only prevents a benchmark from starting
+    while available memory is sitting exactly on the production safety boundary.
+    """
+    started = time.monotonic()
+    best = _memory_snapshot()
+    while time.monotonic() - started < timeout_seconds:
+        current = _memory_snapshot()
+        if current["available_mb"] > best["available_mb"]:
+            best = current
+        if current["available_mb"] >= minimum_available_mb:
+            return {
+                "ready": True,
+                "wait_seconds": round(time.monotonic() - started, 3),
+                "minimum_available_mb": round(minimum_available_mb, 2),
+                "memory": current,
+            }
+        time.sleep(0.25)
+    current = _memory_snapshot()
+    return {
+        "ready": current["available_mb"] >= minimum_available_mb,
+        "wait_seconds": round(time.monotonic() - started, 3),
+        "minimum_available_mb": round(minimum_available_mb, 2),
+        "memory": current,
+        "best_available_mb": best["available_mb"],
+    }
+
+
+def _exact_runner_warmup(
+    client: httpx.Client,
+    ollama_url: str,
+    *,
+    effective_model: str,
+    options: dict[str, int | float],
+    keep_alive: str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Configure the exact runner with minimal prompt/output-cache growth.
+
+    Context, thread count and batch size match the measured path. Only num_predict is reduced to 1
+    because output length does not define the runner shape and a full benchmark answer would consume
+    avoidable prompt/cache memory before timing begins.
+    """
+    warm_options = dict(options)
+    warm_options["num_predict"] = 1
+    payload: dict[str, Any] = {
+        "model": effective_model,
+        "prompt": "/no_think\nReply with one token: READY",
+        "system": SYSTEM_PROMPT,
+        "stream": False,
+        "think": False,
+        "keep_alive": keep_alive,
+        "options": warm_options,
+    }
+    started = time.perf_counter()
+    response = client.post(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        json=payload,
+        timeout=timeout_seconds,
+    )
+    wall = time.perf_counter() - started
+    if not response.is_success:
+        raise RuntimeError(
+            f"Exact-runner warm-up failed with HTTP {response.status_code}: {response.text[:2000]}"
+        )
+    data = response.json()
+    return {
+        "wall_seconds": round(wall, 6),
+        "load_duration_seconds": round(float(data.get("load_duration", 0) or 0) / 1_000_000_000, 6),
+        "response": str(data.get("response") or "").strip(),
+        "options": warm_options,
+        "memory_after": _memory_snapshot(),
+    }
+
+
 def _build_report(
     *,
     args: argparse.Namespace,
     calibration: dict[str, Any],
     direct_settings: dict[str, Any],
+    ram_reserve_mb: float,
     rounds: list[dict[str, Any]],
     chat_runs: list[dict[str, Any]],
     direct_runs: list[dict[str, Any]],
@@ -61,7 +147,7 @@ def _build_report(
         else None
     )
     return {
-        "benchmark_design": "paired-e2e-warm-path-v4-exact-runner-prewarm",
+        "benchmark_design": "paired-e2e-warm-path-v4-exact-runner-prewarm-ram-stable",
         "status": status,
         "error": error,
         "prompt": args.prompt,
@@ -69,6 +155,9 @@ def _build_report(
         "completed_rounds": len(rounds),
         "invalid_warm_path_rounds": invalid_rounds,
         "max_measured_load_seconds": args.max_measured_load_seconds,
+        "ram_reserve_mb": round(ram_reserve_mb, 2),
+        "ram_headroom_mb": args.ram_headroom_mb,
+        "minimum_benchmark_available_mb": round(ram_reserve_mb + args.ram_headroom_mb, 2),
         "calibration": {
             "model": calibration.get("model"),
             "provider": calibration.get("provider"),
@@ -84,17 +173,16 @@ def _build_report(
             else None,
         },
         "interpretation_note": (
-            "Each round unloads the model, performs the ordinary preload, then performs an exact-runner warm-up "
-            "using the same effective model, system prompt, context, output budget, temperature, num_thread and "
-            "num_batch as measured requests. A round is excluded from the paired wall ratio if either measured "
-            "request still reports material model load time."
+            "Each round unloads/reloads the model, configures the exact runner with a one-token warm-up, and then "
+            "waits for available RAM to exceed the unchanged SovereignAI reserve plus a benchmark-only headroom "
+            "margin before timing requests. A round is excluded if either measured call still incurs material model load."
         ),
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Phase 11 v4: exact-runner warm paired SovereignAI vs direct Ollama latency benchmark."
+        description="Phase 11 v4: stable exact-runner warm SovereignAI vs direct Ollama latency benchmark."
     )
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
@@ -103,6 +191,8 @@ def main() -> int:
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--keep-alive", default="60s")
     parser.add_argument("--settle-seconds", type=float, default=2.0)
+    parser.add_argument("--ram-headroom-mb", type=float, default=96.0)
+    parser.add_argument("--ram-wait-seconds", type=float, default=20.0)
     parser.add_argument("--max-measured-load-seconds", type=float, default=0.25)
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--output", type=Path, default=Path("workspace/e2e_latency_v4.json"))
@@ -147,6 +237,10 @@ def main() -> int:
                 f"Prewarmed model {args.model} differs from routed model {direct_settings['effective_model']}"
             )
         conversation_id = str(calibration["conversation_id"])
+        ram_reserve_mb = _reserve_from_calibration(calibration)
+        if ram_reserve_mb <= 0:
+            raise RuntimeError("Calibration did not expose the SovereignAI RAM reserve")
+        minimum_available_mb = ram_reserve_mb + max(0.0, args.ram_headroom_mb)
 
         for index in range(repeats):
             reset = _reset_and_rewarm(
@@ -157,56 +251,119 @@ def main() -> int:
                 timeout_seconds=args.timeout,
                 settle_seconds=max(0.0, args.settle_seconds),
             )
-
-            # The lightweight READY preload can use different runner options. Force the exact benchmark
-            # runner configuration before either target is timed; this warm-up is deliberately unmeasured.
-            exact_warm = _direct_ollama_stream(
+            exact_warm = _exact_runner_warmup(
                 client,
                 args.ollama_url,
-                prompt=args.prompt,
                 effective_model=direct_settings["effective_model"],
-                system=SYSTEM_PROMPT,
                 options=direct_settings["options"],
                 keep_alive=args.keep_alive,
                 timeout_seconds=args.timeout,
             )
-
-            order = ["sovereignai", "direct_ollama"] if index % 2 == 0 else ["direct_ollama", "sovereignai"]
+            pre_pair_ram = _wait_for_ram_headroom(
+                minimum_available_mb=minimum_available_mb,
+                timeout_seconds=max(0.0, args.ram_wait_seconds),
+            )
             pair: dict[str, Any] = {
                 "round": index + 1,
-                "order": order,
                 "reset": reset,
                 "exact_runner_warmup": exact_warm,
-                "memory_before_pair": _memory_snapshot(),
+                "pre_pair_ram_gate": pre_pair_ram,
             }
+            if not pre_pair_ram["ready"]:
+                pair["valid_warm_path"] = False
+                pair["error"] = (
+                    f"RAM did not recover to benchmark threshold {minimum_available_mb:.0f} MB; "
+                    f"available={pre_pair_ram['memory']['available_mb']:.0f} MB"
+                )
+                rounds.append(pair)
+                invalid_rounds.append(index + 1)
+                progress = _build_report(
+                    args=args,
+                    calibration=calibration,
+                    direct_settings=direct_settings,
+                    ram_reserve_mb=ram_reserve_mb,
+                    rounds=rounds,
+                    chat_runs=chat_runs,
+                    direct_runs=direct_runs,
+                    paired_ratios=paired_ratios,
+                    invalid_rounds=invalid_rounds,
+                    status="running" if len(rounds) < repeats else "complete",
+                )
+                _write_report(args.output, progress)
+                continue
+
+            order = ["sovereignai", "direct_ollama"] if index % 2 == 0 else ["direct_ollama", "sovereignai"]
+            pair["order"] = order
+            pair["memory_before_pair"] = _memory_snapshot()
+
+            failed = False
             for target in order:
-                if target == "sovereignai":
-                    run = _chat_call(
-                        client,
-                        args.api_url,
-                        prompt=args.prompt,
-                        conversation_id=conversation_id,
-                        timeout_seconds=args.timeout,
+                target_ram = _wait_for_ram_headroom(
+                    minimum_available_mb=minimum_available_mb,
+                    timeout_seconds=max(0.0, args.ram_wait_seconds),
+                )
+                pair[f"ram_gate_before_{target}"] = target_ram
+                if not target_ram["ready"]:
+                    pair["error"] = (
+                        f"RAM gate failed before {target}: "
+                        f"available={target_ram['memory']['available_mb']:.0f} MB, "
+                        f"required={minimum_available_mb:.0f} MB"
                     )
-                    if run["fallback"]:
-                        raise RuntimeError(f"Round {index + 1} /api/chat fell back")
-                    chat_runs.append(run)
-                else:
-                    run = _direct_ollama_stream(
-                        client,
-                        args.ollama_url,
-                        prompt=args.prompt,
-                        effective_model=direct_settings["effective_model"],
-                        system=SYSTEM_PROMPT,
-                        options=direct_settings["options"],
-                        keep_alive=args.keep_alive,
-                        timeout_seconds=args.timeout,
-                    )
-                    direct_runs.append(run)
-                pair[target] = run
+                    failed = True
+                    break
+                try:
+                    if target == "sovereignai":
+                        run = _chat_call(
+                            client,
+                            args.api_url,
+                            prompt=args.prompt,
+                            conversation_id=conversation_id,
+                            timeout_seconds=args.timeout,
+                        )
+                        if run["fallback"]:
+                            raise RuntimeError(f"Round {index + 1} /api/chat fell back")
+                        chat_runs.append(run)
+                    else:
+                        run = _direct_ollama_stream(
+                            client,
+                            args.ollama_url,
+                            prompt=args.prompt,
+                            effective_model=direct_settings["effective_model"],
+                            system=SYSTEM_PROMPT,
+                            options=direct_settings["options"],
+                            keep_alive=args.keep_alive,
+                            timeout_seconds=args.timeout,
+                        )
+                        direct_runs.append(run)
+                    pair[target] = run
+                except RuntimeError as exc:
+                    pair["error"] = str(exc)
+                    failed = True
+                    break
+
+            if failed or "sovereignai" not in pair or "direct_ollama" not in pair:
+                pair["valid_warm_path"] = False
+                pair["memory_after_pair"] = _memory_snapshot()
+                rounds.append(pair)
+                invalid_rounds.append(index + 1)
+                progress = _build_report(
+                    args=args,
+                    calibration=calibration,
+                    direct_settings=direct_settings,
+                    ram_reserve_mb=ram_reserve_mb,
+                    rounds=rounds,
+                    chat_runs=chat_runs,
+                    direct_runs=direct_runs,
+                    paired_ratios=paired_ratios,
+                    invalid_rounds=invalid_rounds,
+                    status="running" if len(rounds) < repeats else "complete",
+                )
+                _write_report(args.output, progress)
+                continue
 
             measured_loads = {
-                target: _measured_load_seconds(target, pair[target]) for target in ("sovereignai", "direct_ollama")
+                target: _measured_load_seconds(target, pair[target])
+                for target in ("sovereignai", "direct_ollama")
             }
             pair["measured_load_seconds"] = measured_loads
             valid_warm_path = all(
@@ -231,6 +388,7 @@ def main() -> int:
                 args=args,
                 calibration=calibration,
                 direct_settings=direct_settings,
+                ram_reserve_mb=ram_reserve_mb,
                 rounds=rounds,
                 chat_runs=chat_runs,
                 direct_runs=direct_runs,
@@ -240,18 +398,21 @@ def main() -> int:
             )
             _write_report(args.output, progress)
 
-    status = "complete" if len(invalid_rounds) < repeats else "invalid"
+    valid_rounds = repeats - len(invalid_rounds)
+    status = "complete" if valid_rounds >= max(2, repeats // 2) else "insufficient-valid-rounds"
+    error = None if status == "complete" else f"Only {valid_rounds} of {repeats} rounds were valid."
     report = _build_report(
         args=args,
         calibration=calibration,
         direct_settings=direct_settings,
+        ram_reserve_mb=ram_reserve_mb,
         rounds=rounds,
         chat_runs=chat_runs,
         direct_runs=direct_runs,
         paired_ratios=paired_ratios,
         invalid_rounds=invalid_rounds,
         status=status,
-        error=("All rounds still incurred material model loading." if status == "invalid" else None),
+        error=error,
     )
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
     print(serialized)
