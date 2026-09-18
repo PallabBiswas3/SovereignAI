@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     bm25_index_version: str = "bm25-v1"
     fusion_strategy_version: str = "rrf-v1"
     reranker_enabled: bool = True
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6v2"
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_local_files_only: bool = True
     reranker_version: str = "cross-encoder-v1"
     context_max_fraction_of_window: float = 0.60
