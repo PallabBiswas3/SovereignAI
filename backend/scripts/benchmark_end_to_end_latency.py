@@ -10,13 +10,17 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+import psutil
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 SYSTEM_PROMPT = "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources."
-DEFAULT_PROMPT = "Explain in four concise technical points why an outer-race bearing fault creates periodic vibration impulses."
+DEFAULT_PROMPT = (
+    "Answer with exactly four short bullets, one sentence each: why does an outer-race "
+    "bearing fault create periodic vibration impulses?"
+)
 DEFAULT_MODEL = "qwen3:4b-instruct"
 
 
@@ -30,12 +34,26 @@ def _median(values: list[float]) -> float | None:
     return round(median(values), 6) if values else None
 
 
+def _memory_snapshot() -> dict[str, float]:
+    memory = psutil.virtual_memory()
+    return {
+        "available_mb": round(memory.available / (1024 * 1024), 2),
+        "used_mb": round(memory.used / (1024 * 1024), 2),
+        "percent": round(float(memory.percent), 2),
+    }
+
+
 def _response_error(response: httpx.Response) -> str:
     try:
         payload = response.json()
     except Exception:
         return response.text.strip()[:2000]
     return json.dumps(payload, ensure_ascii=False)
+
+
+def _write_report(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def _chat_call(
@@ -82,7 +100,7 @@ def _prewarm_model(
     keep_alive: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    """Warm the target model before chat calibration so Phase 11 measures the warm path by design."""
+    """Load the target model outside measured requests so Phase 11 measures only the warm path."""
     payload = {
         "model": model,
         "prompt": "/no_think\nReply with exactly READY.",
@@ -112,6 +130,82 @@ def _prewarm_model(
         "wall_seconds": round(wall, 6),
         "load_duration_seconds": round(float(data.get("load_duration", 0) or 0) / 1_000_000_000, 6),
         "response": str(data.get("response") or "").strip(),
+        "memory_after": _memory_snapshot(),
+    }
+
+
+def _resident_models(client: httpx.Client, ollama_url: str) -> set[str]:
+    response = client.get(f"{ollama_url.rstrip('/')}/api/ps", timeout=5.0)
+    response.raise_for_status()
+    items = response.json().get("models", [])
+    return {
+        str(item.get("name") or item.get("model") or "").strip()
+        for item in items
+        if isinstance(item, dict)
+    }
+
+
+def _model_is_resident(client: httpx.Client, ollama_url: str, model: str) -> bool:
+    names = _resident_models(client, ollama_url)
+    return model in names or (":" not in model and f"{model}:latest" in names)
+
+
+def _unload_model(
+    client: httpx.Client,
+    ollama_url: str,
+    *,
+    model: str,
+    timeout_seconds: float,
+) -> None:
+    response = client.post(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        json={"model": model, "keep_alive": 0, "stream": False},
+        timeout=timeout_seconds,
+    )
+    if not response.is_success:
+        raise RuntimeError(
+            f"Ollama unload failed with HTTP {response.status_code}: {_response_error(response)}"
+        )
+
+
+def _reset_and_rewarm(
+    client: httpx.Client,
+    ollama_url: str,
+    *,
+    model: str,
+    keep_alive: str,
+    timeout_seconds: float,
+    settle_seconds: float,
+) -> dict[str, Any]:
+    """Clear per-run model/prompt state, then reload before measurements start."""
+    before = _memory_snapshot()
+    _unload_model(client, ollama_url, model=model, timeout_seconds=timeout_seconds)
+
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if not _model_is_resident(client, ollama_url, model):
+            break
+        time.sleep(0.25)
+    if _model_is_resident(client, ollama_url, model):
+        raise RuntimeError(f"Model {model} remained resident after unload request")
+
+    if settle_seconds > 0:
+        time.sleep(settle_seconds)
+    after_unload = _memory_snapshot()
+    warm = _prewarm_model(
+        client,
+        ollama_url,
+        model=model,
+        keep_alive=keep_alive,
+        timeout_seconds=timeout_seconds,
+    )
+    if not _model_is_resident(client, ollama_url, model):
+        raise RuntimeError(f"Model {model} was not resident after prewarm")
+    return {
+        "memory_before_reset": before,
+        "memory_after_unload": after_unload,
+        "prewarm": warm,
+        "memory_after_rewarm": _memory_snapshot(),
     }
 
 
@@ -240,20 +334,86 @@ def _summarize_chat(runs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _summarize_direct(runs: list[dict[str, Any]]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
-    for name in ("wall_seconds", "time_to_first_token_seconds", "ollama_total_duration_seconds", "load_duration_seconds", "tokens_per_second"):
+    for name in (
+        "wall_seconds",
+        "time_to_first_token_seconds",
+        "ollama_total_duration_seconds",
+        "load_duration_seconds",
+        "tokens_per_second",
+    ):
         values = [float(run[name]) for run in runs if isinstance(run.get(name), (int, float))]
         summary[f"median_{name}"] = _median(values)
     return summary
 
 
+def _build_report(
+    *,
+    args: argparse.Namespace,
+    prewarm: dict[str, Any],
+    calibration: dict[str, Any],
+    direct_settings: dict[str, Any],
+    rounds: list[dict[str, Any]],
+    chat_runs: list[dict[str, Any]],
+    direct_runs: list[dict[str, Any]],
+    paired_wall_ratios: list[float],
+    status: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    chat_summary = _summarize_chat(chat_runs)
+    direct_summary = _summarize_direct(direct_runs)
+    endpoint_total = chat_summary.get("median_endpoint_total_seconds")
+    app_overhead = chat_summary.get("median_application_overhead_excluding_model_seconds")
+    overhead_fraction = (
+        float(app_overhead) / float(endpoint_total)
+        if isinstance(app_overhead, (int, float))
+        and isinstance(endpoint_total, (int, float))
+        and endpoint_total > 0
+        else None
+    )
+    return {
+        "benchmark_design": "paired-e2e-warm-path-v3-reset-between-rounds",
+        "status": status,
+        "error": error,
+        "prompt": args.prompt,
+        "api_url": args.api_url,
+        "ollama_url": args.ollama_url,
+        "requested_repeats": max(2, args.repeats),
+        "completed_rounds": len(rounds),
+        "reset_between_rounds": True,
+        "settle_seconds": args.settle_seconds,
+        "initial_prewarm": prewarm,
+        "calibration": {
+            "model": calibration.get("model"),
+            "provider": calibration.get("provider"),
+            "direct_runtime_settings": direct_settings,
+        },
+        "rounds": rounds,
+        "summary": {
+            "sovereignai": chat_summary,
+            "direct_ollama": direct_summary,
+            "median_sovereignai_vs_direct_wall_ratio": _median(paired_wall_ratios),
+            "median_application_overhead_fraction": round(overhead_fraction, 4) if overhead_fraction is not None else None,
+        },
+        "interpretation_note": (
+            "This is a warm-path paired benchmark. The model is unloaded and re-warmed outside measured calls "
+            "before every pair so prompt-cache growth from prior rounds does not consume the OS RAM reserve. "
+            "Direct Ollama uses the effective model, context, output budget, temperature and CPU tuning emitted "
+            "by the calibration /api/chat request. Reset/prewarm time is recorded but excluded from target latency."
+        ),
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Paired warm-path SovereignAI /api/chat versus direct Ollama latency benchmark.")
+    parser = argparse.ArgumentParser(
+        description="Paired warm-path SovereignAI /api/chat versus direct Ollama latency benchmark."
+    )
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Model to pre-warm before /api/chat calibration.")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--keep-alive", default="60s")
+    parser.add_argument("--settle-seconds", type=float, default=2.0)
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--output", type=Path, default=Path("workspace/e2e_latency.json"))
     args = parser.parse_args()
@@ -261,6 +421,11 @@ def main() -> int:
     _require_local(args.api_url)
     _require_local(args.ollama_url)
     repeats = max(2, args.repeats)
+
+    rounds: list[dict[str, Any]] = []
+    chat_runs: list[dict[str, Any]] = []
+    direct_runs: list[dict[str, Any]] = []
+    paired_wall_ratios: list[float] = []
 
     with httpx.Client(follow_redirects=False) as client:
         api_health = client.get(f"{args.api_url.rstrip('/')}/docs", timeout=5.0)
@@ -295,104 +460,107 @@ def main() -> int:
             )
         conversation_id = str(calibration["conversation_id"])
 
-        # Warm the direct path once with exactly the runtime settings emitted by /api/chat.
-        _direct_ollama_stream(
-            client,
-            args.ollama_url,
-            prompt=args.prompt,
-            effective_model=direct_settings["effective_model"],
-            system=SYSTEM_PROMPT,
-            options=direct_settings["options"],
-            keep_alive=args.keep_alive,
-            timeout_seconds=args.timeout,
-        )
-
-        rounds: list[dict[str, Any]] = []
-        chat_runs: list[dict[str, Any]] = []
-        direct_runs: list[dict[str, Any]] = []
-        paired_wall_ratios: list[float] = []
         for index in range(repeats):
+            reset = _reset_and_rewarm(
+                client,
+                args.ollama_url,
+                model=direct_settings["effective_model"],
+                keep_alive=args.keep_alive,
+                timeout_seconds=args.timeout,
+                settle_seconds=max(0.0, args.settle_seconds),
+            )
             order = ["sovereignai", "direct_ollama"] if index % 2 == 0 else ["direct_ollama", "sovereignai"]
-            pair: dict[str, Any] = {}
-            for target in order:
-                if target == "sovereignai":
-                    run = _chat_call(
-                        client,
-                        args.api_url,
-                        prompt=args.prompt,
-                        conversation_id=conversation_id,
-                        timeout_seconds=args.timeout,
-                    )
-                    if run["fallback"]:
-                        raise RuntimeError(f"Round {index + 1} /api/chat fell back instead of using the local model")
-                    chat_runs.append(run)
-                    pair[target] = run
-                else:
-                    run = _direct_ollama_stream(
-                        client,
-                        args.ollama_url,
-                        prompt=args.prompt,
-                        effective_model=direct_settings["effective_model"],
-                        system=SYSTEM_PROMPT,
-                        options=direct_settings["options"],
-                        keep_alive=args.keep_alive,
-                        timeout_seconds=args.timeout,
-                    )
-                    direct_runs.append(run)
-                    pair[target] = run
-
-            sovereign_wall = float(pair["sovereignai"]["wall_seconds"])
-            direct_wall = float(pair["direct_ollama"]["wall_seconds"])
-            ratio = sovereign_wall / direct_wall if direct_wall > 0 else 0.0
-            if ratio > 0:
-                paired_wall_ratios.append(ratio)
-            rounds.append({
+            pair: dict[str, Any] = {
                 "round": index + 1,
                 "order": order,
-                "sovereignai": pair["sovereignai"],
-                "direct_ollama": pair["direct_ollama"],
-                "sovereignai_vs_direct_wall_ratio": round(ratio, 4) if ratio else None,
-            })
+                "reset": reset,
+                "memory_before_pair": _memory_snapshot(),
+            }
+            try:
+                for target in order:
+                    if target == "sovereignai":
+                        run = _chat_call(
+                            client,
+                            args.api_url,
+                            prompt=args.prompt,
+                            conversation_id=conversation_id,
+                            timeout_seconds=args.timeout,
+                        )
+                        if run["fallback"]:
+                            raise RuntimeError(
+                                f"Round {index + 1} /api/chat fell back instead of using the local model"
+                            )
+                        chat_runs.append(run)
+                        pair[target] = run
+                    else:
+                        run = _direct_ollama_stream(
+                            client,
+                            args.ollama_url,
+                            prompt=args.prompt,
+                            effective_model=direct_settings["effective_model"],
+                            system=SYSTEM_PROMPT,
+                            options=direct_settings["options"],
+                            keep_alive=args.keep_alive,
+                            timeout_seconds=args.timeout,
+                        )
+                        direct_runs.append(run)
+                        pair[target] = run
 
-    chat_summary = _summarize_chat(chat_runs)
-    direct_summary = _summarize_direct(direct_runs)
-    endpoint_total = chat_summary.get("median_endpoint_total_seconds")
-    app_overhead = chat_summary.get("median_application_overhead_excluding_model_seconds")
-    overhead_fraction = (
-        float(app_overhead) / float(endpoint_total)
-        if isinstance(app_overhead, (int, float)) and isinstance(endpoint_total, (int, float)) and endpoint_total > 0
-        else None
+                sovereign_wall = float(pair["sovereignai"]["wall_seconds"])
+                direct_wall = float(pair["direct_ollama"]["wall_seconds"])
+                ratio = sovereign_wall / direct_wall if direct_wall > 0 else 0.0
+                if ratio > 0:
+                    paired_wall_ratios.append(ratio)
+                pair["sovereignai_vs_direct_wall_ratio"] = round(ratio, 4) if ratio else None
+                pair["memory_after_pair"] = _memory_snapshot()
+                rounds.append(pair)
+
+                progress = _build_report(
+                    args=args,
+                    prewarm=prewarm,
+                    calibration=calibration,
+                    direct_settings=direct_settings,
+                    rounds=rounds,
+                    chat_runs=chat_runs,
+                    direct_runs=direct_runs,
+                    paired_wall_ratios=paired_wall_ratios,
+                    status="running" if len(rounds) < repeats else "complete",
+                )
+                _write_report(args.output, progress)
+            except Exception as exc:
+                pair["memory_at_failure"] = _memory_snapshot()
+                pair["error"] = str(exc)
+                partial_rounds = rounds + [pair]
+                failure = _build_report(
+                    args=args,
+                    prewarm=prewarm,
+                    calibration=calibration,
+                    direct_settings=direct_settings,
+                    rounds=partial_rounds,
+                    chat_runs=chat_runs,
+                    direct_runs=direct_runs,
+                    paired_wall_ratios=paired_wall_ratios,
+                    status="incomplete",
+                    error=str(exc),
+                )
+                _write_report(args.output, failure)
+                print(json.dumps(failure, indent=2, ensure_ascii=False))
+                return 2
+
+    report = _build_report(
+        args=args,
+        prewarm=prewarm,
+        calibration=calibration,
+        direct_settings=direct_settings,
+        rounds=rounds,
+        chat_runs=chat_runs,
+        direct_runs=direct_runs,
+        paired_wall_ratios=paired_wall_ratios,
+        status="complete",
     )
-
-    report = {
-        "benchmark_design": "paired-e2e-warm-path-v2",
-        "prompt": args.prompt,
-        "api_url": args.api_url,
-        "ollama_url": args.ollama_url,
-        "repeats": repeats,
-        "prewarm": prewarm,
-        "calibration": {
-            "model": calibration["model"],
-            "provider": calibration["provider"],
-            "direct_runtime_settings": direct_settings,
-        },
-        "rounds": rounds,
-        "summary": {
-            "sovereignai": chat_summary,
-            "direct_ollama": direct_summary,
-            "median_sovereignai_vs_direct_wall_ratio": _median(paired_wall_ratios),
-            "median_application_overhead_fraction": round(overhead_fraction, 4) if overhead_fraction is not None else None,
-        },
-        "interpretation_note": (
-            "This is a warm-path paired benchmark. The target model is explicitly pre-warmed before /api/chat "
-            "calibration so the backend RAM admission controller evaluates it as resident. Direct Ollama then uses "
-            "the effective model, context, output budget, temperature and CPU tuning emitted by calibration."
-        ),
-    }
     serialized = json.dumps(report, indent=2, ensure_ascii=False)
     print(serialized)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(serialized + "\n", encoding="utf-8")
+    _write_report(args.output, report)
     return 0
 
 
