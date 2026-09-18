@@ -69,5 +69,58 @@ class KvCacheOptimizationStore:
         return data
 
 
+def select_kv_cache_result(
+    results: list[dict[str, Any]],
+    *,
+    min_quality: float,
+    max_tps_regression: float,
+    min_ram_saving_mb: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Choose the most memory-efficient cache that stays inside quality/performance guardrails."""
+    baseline = next((item for item in results if item.get("cache_type") == "f16"), None)
+    if baseline is None:
+        raise ValueError("f16 baseline result is required")
+    base_tps = float(baseline.get("median_tokens_per_second") or 0.0)
+    base_ram = float(baseline.get("system_ram_delta_mb") or 0.0)
+    if base_tps <= 0:
+        raise ValueError("f16 baseline requires positive median throughput")
+
+    eligible: list[tuple[float, float, int, dict[str, Any]]] = []
+    rank = {"f16": 0, "q8_0": 1, "q4_0": 2}
+    for item in results:
+        cache_type = str(item.get("cache_type") or "")
+        if cache_type not in rank:
+            raise ValueError(f"unsupported KV cache type in benchmark result: {cache_type}")
+        tps = float(item.get("median_tokens_per_second") or 0.0)
+        ram = float(item.get("system_ram_delta_mb") or 0.0)
+        quality = float(item.get("quality_score") or 0.0)
+        tps_ratio = tps / base_tps if tps > 0 else 0.0
+        ram_saving = max(0.0, base_ram - ram)
+        item["tps_ratio_vs_f16"] = round(tps_ratio, 4) if tps_ratio else None
+        item["ram_saving_vs_f16_mb"] = round(ram_saving, 2)
+        qualifies = (
+            cache_type == "f16"
+            or (
+                quality >= min_quality
+                and tps_ratio >= 1.0 - max_tps_regression
+                and ram_saving >= min_ram_saving_mb
+            )
+        )
+        item["eligible"] = qualifies
+        if qualifies:
+            eligible.append((ram_saving, tps_ratio, rank[cache_type], item))
+
+    # Maximize RAM saved first. If savings are effectively tied, prefer throughput and then the
+    # less aggressive representation so q8_0 wins a tie over q4_0.
+    selected = max(eligible, key=lambda value: (value[0], value[1], -value[2]))[3]
+    policy = {
+        "minimum_quality": min_quality,
+        "maximum_tps_regression": max_tps_regression,
+        "minimum_ram_saving_mb": min_ram_saving_mb,
+        "selection_priority": "maximize RAM saving subject to quality and throughput guardrails",
+    }
+    return selected, policy
+
+
 def _key(value: str) -> str:
     return value.strip().lower()
