@@ -63,6 +63,7 @@ class AgentExecutor:
             pieces: list[str] = []
             pending_event_text: list[str] = []
             pending_event_chars = 0
+            emitted_event_chars = 0
             last_event_at = monotonic()
             event_callback_seconds = 0.0
             event_callback_count = 0
@@ -71,7 +72,7 @@ class AgentExecutor:
             provider_name = "local"
 
             async def flush_model_tokens() -> None:
-                nonlocal pending_event_chars, last_event_at
+                nonlocal pending_event_chars, emitted_event_chars, last_event_at
                 nonlocal event_callback_seconds, event_callback_count, first_ui_frame_seconds
                 if not pending_event_text:
                     return
@@ -82,6 +83,7 @@ class AgentExecutor:
                 await self._emit("model_token", {"text": text, "model": self.model})
                 event_callback_seconds += monotonic() - callback_started_at
                 event_callback_count += 1
+                emitted_event_chars += len(text)
                 first_ui_frame_seconds = first_ui_frame_seconds or (monotonic() - generation_started_at)
                 last_event_at = monotonic()
 
@@ -126,6 +128,16 @@ class AgentExecutor:
                 event_callback_count=event_callback_count,
                 first_ui_frame_seconds=first_ui_frame_seconds,
             )
+            run.runtime_metrics["stream_batching"] = {
+                "max_chars": self.TOKEN_EVENT_MAX_CHARS,
+                "max_delay_seconds": self.TOKEN_EVENT_MAX_DELAY_SECONDS,
+                "first_frame_immediate": True,
+                "emitted_event_count": event_callback_count,
+                "emitted_character_count": emitted_event_chars,
+                "mean_chars_per_event": round(emitted_event_chars / event_callback_count, 2)
+                if event_callback_count
+                else 0.0,
+            }
             await self._emit(
                 "generation_completed",
                 {"model": self.model, "provider": provider_name, "runtime_metrics": run.runtime_metrics},
