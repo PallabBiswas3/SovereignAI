@@ -31,7 +31,6 @@ type ValidationReport = {
 };
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-const ollama = "http://127.0.0.1:11434";
 const prompt = "Answer with exactly four short bullets, one sentence each: why does an outer-race bearing fault create periodic vibration impulses?";
 
 function cookie(name: string) {
@@ -62,32 +61,15 @@ function numeric(run: RunMetrics, key: keyof RunMetrics): number | null {
 }
 
 async function prewarmModel() {
-  const started = performance.now();
-  const response = await fetch(`${ollama}/api/generate`, {
+  const response = await fetch("/api/phase12/prewarm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "qwen3:4b-instruct",
-      prompt: "/no_think\nReply with exactly READY.",
-      stream: false,
-      think: false,
-      keep_alive: "15m",
-      options: {
-        num_ctx: 2048,
-        num_predict: 1,
-        temperature: 0.2,
-        num_thread: 5,
-        num_batch: 128,
-      },
-    }),
+    cache: "no-store",
   });
-  if (!response.ok) throw new Error(`Ollama prewarm returned ${response.status}: ${await response.text()}`);
-  const payload = await response.json();
-  return {
-    wall_seconds: Number(((performance.now() - started) / 1000).toFixed(6)),
-    load_duration_seconds: Number(((Number(payload.load_duration ?? 0)) / 1_000_000_000).toFixed(6)),
-    response: String(payload.response ?? "").trim(),
-  };
+  if (!response.ok) throw new Error(`Phase 12 prewarm returned ${response.status}: ${await response.text()}`);
+  const payload = await response.json() as Record<string, unknown>;
+  if (payload.resident !== true) throw new Error("Exact-runner prewarm completed but qwen3:4b-instruct is not resident.");
+  return payload;
 }
 
 function runTask(label: string, setVisibleText: (value: string) => void): Promise<RunMetrics> {
@@ -140,7 +122,6 @@ function runTask(label: string, setVisibleText: (value: string) => void): Promis
         if (finished) return;
         finished = true;
         stream.close();
-        // Let React commit the final token and one animation frame complete before resolving.
         requestAnimationFrame(() => resolve(record));
       };
 
@@ -292,8 +273,8 @@ export default function Phase12LatencyPage() {
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 32, fontFamily: "system-ui, sans-serif" }}>
       <h1>Phase 12 — one-click user-visible latency validation</h1>
       <p>
-        This page prewarms the exact local runner, performs one unmeasured full-path warm-up, then three measured
-        FAST/GENERAL tasks through the real task API, SSE stream, React state update, and next browser paint frame.
+        One click performs one exact-runner prewarm, one unmeasured full-path warm-up, then three measured FAST/GENERAL
+        tasks through the real task API, SSE stream, React state update, and next browser paint frame.
       </p>
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
         <button onClick={runSuite} disabled={running} style={{ padding: "10px 16px" }}>
