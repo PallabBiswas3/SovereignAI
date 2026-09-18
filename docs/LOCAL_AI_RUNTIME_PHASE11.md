@@ -53,15 +53,16 @@ This negative result is retained intentionally. q8_0 may still be useful on a ma
 - KV cache: `f16`
 - normal model concurrency: 1 generation
 - keep-alive: approximately 60 s
+- local Ollama loopback endpoint: `http://127.0.0.1:11434`
 - llama.cpp: implemented but not selected (paired backend benchmark favored Ollama)
 
 ## Phase 11 — end-to-end SovereignAI latency
 
-Provider-side tuning is now sufficiently explored. The next question is application overhead: how much slower is a complete SovereignAI chat request than calling the same local model directly?
+Phase 11 asked a narrower systems question: after provider/runtime tuning, how much latency does a complete SovereignAI `/api/chat` request add over invoking the same local Ollama model directly?
 
 ### Instrumented `/api/chat` phases
 
-Every `/api/chat` response now includes `runtime_metrics` containing:
+Every `/api/chat` response includes `runtime_metrics` containing:
 
 - `endpoint_total_seconds`
 - `request_setup_seconds`
@@ -71,48 +72,26 @@ Every `/api/chat` response now includes `runtime_metrics` containing:
 - `persistence_commit_seconds`
 - `measured_phase_seconds`
 - `application_overhead_excluding_model_seconds`
-- nested provider-generation telemetry, including TTFT, queue wait, load time, decode throughput, warm/cold status, CPU tuning and adaptive-context plan.
+- nested provider-generation telemetry including TTFT, queue wait, load time, decode throughput, warm/cold status, CPU tuning and adaptive-context plan.
 
-### Paired benchmark
+### Benchmark evolution
 
-`backend/scripts/benchmark_end_to_end_latency.py` performs a warm-path paired comparison between:
+The first paired benchmark was not sufficient for a strong latency claim because the first measured request after each reset could pay an Ollama runner reload while the second request reused that exact runner configuration. This produced order-dependent ratios above and below 1.0.
 
-1. `POST /api/chat`
-2. direct Ollama `/api/generate`
+The final `benchmark_end_to_end_latency_v4.py` design therefore:
 
-The benchmark first calibrates from a real SovereignAI response. The direct Ollama request then uses the same:
-
-- effective model
-- system prompt
-- selected adaptive context
-- output-token budget
-- temperature
-- `num_thread`
-- `num_batch`
-
-Rounds alternate order to reduce sustained-load/order bias.
-
-The benchmark reports:
-
-- SovereignAI client wall time
-- SovereignAI endpoint total time
-- direct Ollama wall time
-- paired SovereignAI/direct wall ratio
-- routing time
-- provider construction time
-- SQLite persistence/commit time
-- model generation time
-- application overhead excluding Ollama-reported model time
-- TTFT
-- queue wait
-- load time
-- decode throughput
+1. unloads/reloads the model between comparison rounds;
+2. performs runner warm-up outside the measured calls;
+3. enforces a benchmark-only RAM headroom gate without weakening the production scheduler reserve;
+4. rejects a measured pair if either target incurs material model load;
+5. alternates SovereignAI/direct order;
+6. uses the effective model, system prompt, adaptive context, output budget, temperature, CPU thread count and batch size emitted by the real SovereignAI calibration request.
 
 ### Windows loopback hostname finding
 
 A controlled hostname A/B benchmark exposed a real Windows-local latency penalty in the model registry configuration.
 
-Before this fix, `config/models.yaml` used `http://localhost:11434` while the standalone runtime benchmarks used `http://127.0.0.1:11434`. Twelve alternating trials against the same warm Ollama server showed:
+Before the fix, `config/models.yaml` used `http://localhost:11434` while standalone runtime benchmarks used `http://127.0.0.1:11434`. Twelve alternating trials against the same warm Ollama server showed:
 
 - `/api/ps` median request time via `localhost`: **269.768 ms**
 - `/api/ps` median request time via `127.0.0.1`: **5.385 ms**
@@ -123,29 +102,65 @@ Before this fix, `config/models.yaml` used `http://localhost:11434` while the st
 - median Ollama-reported model time remained close: **108.855 ms** (`localhost`) vs **101.366 ms** (`127.0.0.1`)
 - non-model request overhead was approximately **272.311 ms** via `localhost` vs **8.147 ms** via IPv4 loopback.
 
-This isolates the large delay to the hostname/network path on the target Windows environment rather than the model's inference work. The local model registry now uses `http://127.0.0.1:11434` consistently for general, coder and vision Ollama models.
+This isolated the large delay to the hostname/network path on the target Windows environment rather than the model's inference work. The local model registry now uses `http://127.0.0.1:11434` consistently for general, coder and vision Ollama models.
 
-This also explains why the earlier metric `endpoint_total - Ollama total_duration` exaggerated apparent SovereignAI application overhead: part of that difference was transport/hostname overhead outside Ollama's reported model duration.
+### Final validated Phase 11 result
 
-### Run
+After the IPv4-loopback fix, the exact-runner/RAM-stable v4 benchmark completed all four requested rounds with **zero invalid warm-path rounds**.
 
-Start Ollama using the validated f16 profile, start the SovereignAI backend locally, then from the repository root run:
+Measured model load during accepted calls remained only about **4.8-9.6 ms**, so the earlier runner-reload confound was removed.
+
+Median results:
+
+| Metric | SovereignAI | Direct Ollama |
+|---|---:|---:|
+| Client wall time | 6.859 s | 7.226 s |
+| Endpoint total | 6.837 s | — |
+| Model load | 6.1 ms | 7.4 ms |
+| Decode throughput | 11.410 tok/s | 10.934 tok/s |
+| TTFT | 0.555 s | 0.674 s |
+
+SovereignAI request-path medians:
+
+- request setup: **0.148 ms**
+- routing: **6.801 ms**
+- provider construction: **0.623 ms**
+- SQLite persistence/commit: **9.267 ms**
+- queue wait: **31 ms**
+- application overhead excluding Ollama-reported model time: **123.483 ms**
+- application-overhead fraction: **1.81%**
+
+The reported median paired wall ratio was `0.903984`, but it must **not** be interpreted as evidence that SovereignAI intrinsically makes Ollama faster. The responses do not contain identical output-token counts and the laptop exhibits normal TTFT/CPU/thermal variability. The robust conclusion is that SovereignAI's request wrapper adds only a small amount of latency relative to model generation and does not measurably degrade decode throughput.
+
+### Phase 11 conclusion
+
+Phase 11 is complete for the plain `/api/chat` path.
+
+Evidence supports the following claims:
+
+- the major application-level latency bug was the Windows `localhost` path and has been removed by using IPv4 loopback;
+- the production RAM safety reserve remains intact;
+- warm-path model-load contamination was eliminated in the final benchmark;
+- routing and persistence costs are each only single-digit milliseconds to roughly 10 ms;
+- normal queue/admission overhead is only a few tens of milliseconds;
+- total application overhead is about **123 ms median / 1.8% of endpoint latency** for this workload;
+- model decode throughput is effectively unchanged by the SovereignAI wrapper;
+- further micro-optimization of the basic `/api/chat` path is not justified by current evidence.
+
+The next performance target should therefore move outward to the real interactive path:
+
+`AgentExecutor -> model-token batching/persistence -> callbacks -> SSE -> browser first frame`.
+
+That path should be measured using realistic workloads such as GraphRAG Q&A, industrial diagnostics, tool calls, code generation and multi-step agents rather than another synthetic micro-optimization of the already-small chat wrapper.
+
+### Reproduce final Phase 11 benchmark
+
+Start Ollama using the validated f16 profile, restart the SovereignAI backend, then run from the repository root:
 
 ```powershell
-python backend/scripts/benchmark_end_to_end_latency.py `
+python backend/scripts/benchmark_end_to_end_latency_v4.py `
   --repeats 4 `
-  --output workspace/e2e_latency.json
+  --output workspace/e2e_latency_v4.json
 ```
 
-This is a warm-path benchmark by design. Cold-load behavior was already measured separately in earlier phases.
-
-### Decision rule
-
-Do not optimize a subsystem merely because it exists. Use the Phase 11 breakdown first:
-
-- if routing/provider setup is meaningful, cache immutable registries/providers where safe;
-- if SQLite commit time is meaningful, optimize transaction/event persistence;
-- if queue wait dominates, revisit scheduling only with evidence;
-- if application overhead is already tiny relative to model generation, stop micro-optimizing the request path and move to real workload quality/evaluation.
-
-The next code change after Phase 11 should therefore be determined by this measurement, not guessed in advance.
+A valid result requires every accepted pair to remain below the configured measured-load threshold and the production RAM admission reserve must not be weakened to make the benchmark pass.
