@@ -11,6 +11,7 @@ from adaptivefact.risk.model import RiskModelBundle
 from adaptivefact.verification.deterministic import DeterministicVerifierConfig
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from controlplane.detectors.base import Detector
+from controlplane.detectors.privacy import mask_privacy_values
 from controlplane.factuality import PreparedFactuality, build_response_record
 from controlplane.schema import (
     DetectorResult,
@@ -37,7 +38,10 @@ class HallucinationDetector(Detector):
         self._risk_cache_key: tuple[str, str] | None = None
 
     def prepare(self, interaction: Interaction, settings: dict[str, Any]) -> PreparedFactuality:
-        record = build_response_record(interaction)
+        record = build_response_record(
+            interaction,
+            factuality_response=mask_privacy_values(interaction.response),
+        )
         phase5 = Phase5Pipeline(
             ClaimExtractionConfig(**settings.get("extraction", {})),
             DeterministicVerifierConfig(**settings.get("verification", {})),
@@ -89,9 +93,6 @@ class HallucinationDetector(Detector):
             missing_entities = [entity for entity in claim.entities if entity.casefold() not in context_folded]
             if record.context and missing_entities:
                 unsupported_entity_claims += 1
-                # Missing a verbatim entity mention is useful for routing/audit but
-                # is too noisy to be policy-visible by default. The completed-pack
-                # evaluation identified this rule as a major over-intervention source.
                 if emit_unsupported_entities:
                     findings.append(
                         Finding(
