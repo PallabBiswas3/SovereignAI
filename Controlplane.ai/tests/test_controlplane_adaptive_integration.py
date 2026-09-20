@@ -88,24 +88,30 @@ def test_standard_depth_runs_retrieval_nli_and_policy_uses_result():
     assert "regulated-contradiction-review" in report.decision.matched_rules
 
 
-def test_customer_policy_blocks_confirmed_contradiction():
+def test_customer_policy_blocks_confirmed_contradiction_when_standard_verification_runs():
     service = AdaptiveFactVerificationService(
         nli=ExactEvidenceNLI(),
         nli_config=Phase6NLIConfig(min_contradiction_evidence_count=1),
     )
     checker = ControlPlane(audit_enabled=False, verification_service=service)
+    profile = checker.policy_repository.load("customer_support")
+    # This test isolates policy behavior after contradiction is confirmed. The
+    # risk router is tested separately, so force STANDARD here rather than making
+    # the expected policy action depend on a risk-model score.
+    profile.checks["hallucination"].settings["routing_standard_threshold"] = 0.0
     report = checker.check(
         Interaction(
-            profile="customer_support",
+            profile=profile.id,
             prompt="Who founded Tesla?",
             response="Elon Musk founded Tesla.",
             context="Elon Musk joined Tesla in 2004.",
-        )
+        ),
+        profile,
     )
 
     assert report.decision.action == EnforcementAction.BLOCK
     assert "customer-contradiction-block" in report.decision.matched_rules
-    assert report.final_response == checker.policy_repository.load("customer_support").blocked_response
+    assert report.final_response == profile.blocked_response
 
 
 def test_deep_depth_runs_bounded_agent_for_remaining_unknown_claims():
@@ -130,7 +136,7 @@ def test_deep_depth_runs_bounded_agent_for_remaining_unknown_claims():
     adaptive = next(item for item in report.detector_results if item.detector == "adaptivefact")
     assert adaptive.metadata["verification_depth"] == "deep"
     assert adaptive.metadata["agent"]["claims"] > 0
-    assert any(item.status == FindingStatus.UNKNOWN for item in adaptive.findings)
+    assert any(item.status == FindingStatus.UNDECIDABLE for item in adaptive.findings)
     assert report.decision.action == EnforcementAction.REVIEW
 
 
