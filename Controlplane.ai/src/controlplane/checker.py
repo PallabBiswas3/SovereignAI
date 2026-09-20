@@ -56,21 +56,44 @@ class ControlPlane:
 
         ordered_results = [results[name] for name in enabled]
         depth = self._hallucination_depth(profile, interaction, results.get("hallucination"))
-        if self.verification_service is not None and interaction.response.strip():
-            try:
-                verify_parameters = signature(self.verification_service.verify).parameters
-                if "prepared" in verify_parameters:
-                    verification_result = self.verification_service.verify(interaction, depth, prepared=prepared_factuality)
-                else:
-                    verification_result = self.verification_service.verify(interaction, depth)
-                ordered_results.append(verification_result)
-            except Exception as exc:
-                ordered_results.append(DetectorResult(detector="adaptivefact", error=f"{type(exc).__name__}: {exc}", metadata={"verification_depth": depth.value}))
+        if interaction.response.strip():
+            if self.verification_service is not None:
+                try:
+                    verify_parameters = signature(self.verification_service.verify).parameters
+                    if "prepared" in verify_parameters:
+                        verification_result = self.verification_service.verify(interaction, depth, prepared=prepared_factuality)
+                    else:
+                        verification_result = self.verification_service.verify(interaction, depth)
+                    ordered_results.append(verification_result)
+                except Exception as exc:
+                    ordered_results.append(DetectorResult(detector="adaptivefact", error=f"{type(exc).__name__}: {exc}", metadata={"verification_depth": depth.value}))
+            elif self._verification_required(interaction, depth, prepared_factuality):
+                ordered_results.append(
+                    DetectorResult(
+                        detector="adaptivefact",
+                        error="required factuality verification backend is unavailable",
+                        metadata={
+                            "verification_depth": depth.value,
+                            "reason": "consequential_or_deep_factuality_check_required",
+                        },
+                    )
+                )
 
         findings = [finding for result in ordered_results for finding in result.findings]
         for result in ordered_results:
             if result.error:
-                findings.append(Finding(category=RiskCategory.POLICY, subtype="detector_failure", severity=Severity.HIGH if interaction.consequential else Severity.MEDIUM, confidence=1.0, status=FindingStatus.UNKNOWN, message=f"Required detector '{result.detector}' failed: {result.error}", detector="controlplane", metadata={"failed_detector": result.detector}))
+                findings.append(
+                    Finding(
+                        category=RiskCategory.POLICY,
+                        subtype="detector_failure",
+                        severity=Severity.HIGH if interaction.consequential else Severity.MEDIUM,
+                        confidence=1.0,
+                        status=FindingStatus.UNKNOWN,
+                        message=f"Required detector '{result.detector}' failed: {result.error}",
+                        detector="controlplane",
+                        metadata={"failed_detector": result.detector},
+                    )
+                )
 
         elapsed_before_policy = (perf_counter() - started) * 1000.0
         budget_exceeded = elapsed_before_policy > profile.latency_budget_ms
@@ -80,6 +103,12 @@ class ControlPlane:
         if self.audit_enabled:
             self.audit_store.write(report, profile)
         return report
+
+    @staticmethod
+    def _verification_required(interaction: Interaction, depth: VerificationDepth, prepared: PreparedFactuality | None) -> bool:
+        if prepared is None or not prepared.record.atomic_claims:
+            return False
+        return interaction.consequential or depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP}
 
     @staticmethod
     def _hallucination_depth(profile: PolicyProfile, interaction: Interaction, hallucination_result: DetectorResult | None) -> VerificationDepth:
