@@ -1,0 +1,225 @@
+{
+  "benchmark_design": "generation-fresh-vs-shared-async-http-client-v1",
+  "model": "qwen3:4b-instruct",
+  "ollama_url": "http://127.0.0.1:11434",
+  "repeats": 8,
+  "options": {
+    "num_ctx": 2048,
+    "num_predict": 384,
+    "temperature": 0.2,
+    "num_thread": 5,
+    "num_batch": 128
+  },
+  "warmup": {
+    "wall_seconds": 6.311259,
+    "time_to_first_token_seconds": 6.308537,
+    "ollama_total_duration_seconds": 6.299718,
+    "load_duration_seconds": 4.732358,
+    "tokens_per_second": 1000000.0,
+    "token_count": 1,
+    "transport_overhead_seconds": 0.011541,
+    "response": "-"
+  },
+  "fresh_client_runs": [
+    {
+      "wall_seconds": 5.583909,
+      "time_to_first_token_seconds": 0.149874,
+      "ollama_total_duration_seconds": 5.575895,
+      "load_duration_seconds": 0.008643,
+      "tokens_per_second": 12.518,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.008014,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of the impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.007602
+    },
+    {
+      "wall_seconds": 6.005286,
+      "time_to_first_token_seconds": 0.151795,
+      "ollama_total_duration_seconds": 5.995867,
+      "load_duration_seconds": 0.007587,
+      "tokens_per_second": 11.455,
+      "token_count": 67,
+      "transport_overhead_seconds": 0.009419,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impulses as the rolling elements pass over the defect.  \n- Each impulse produces a corresponding vibration at a specific frequency related to rotation.  \n- The vibration is periodic because the defect repeats at consistent angular intervals.",
+      "client_construct_seconds": 0.010665
+    },
+    {
+      "wall_seconds": 6.799139,
+      "time_to_first_token_seconds": 0.149355,
+      "ollama_total_duration_seconds": 6.785778,
+      "load_duration_seconds": 0.00664,
+      "tokens_per_second": 9.932,
+      "token_count": 66,
+      "transport_overhead_seconds": 0.013362,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling contact surface.  \n- These irregularities generate periodic contact forces as the shaft rotates.  \n- The periodic forces translate into periodic vibration impulses transmitted through the system.  \n- The vibration frequency matches the rotational speed and fault pattern, creating detectable peaks.",
+      "client_construct_seconds": 0.013634
+    },
+    {
+      "wall_seconds": 6.116744,
+      "time_to_first_token_seconds": 0.142566,
+      "ollama_total_duration_seconds": 6.106426,
+      "load_duration_seconds": 0.0069,
+      "tokens_per_second": 11.391,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.010318,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.008581
+    },
+    {
+      "wall_seconds": 5.907784,
+      "time_to_first_token_seconds": 0.141338,
+      "ollama_total_duration_seconds": 5.897341,
+      "load_duration_seconds": 0.006809,
+      "tokens_per_second": 11.455,
+      "token_count": 66,
+      "transport_overhead_seconds": 0.010443,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling contact surface.  \n- These irregularities generate periodic contact forces as the shaft rotates.  \n- The periodic forces translate into periodic vibration impulses transmitted through the system.  \n- The vibration frequency matches the rotational speed and fault pattern, creating detectable impulses.",
+      "client_construct_seconds": 0.013781
+    },
+    {
+      "wall_seconds": 5.913216,
+      "time_to_first_token_seconds": 0.134667,
+      "ollama_total_duration_seconds": 5.90209,
+      "load_duration_seconds": 0.007129,
+      "tokens_per_second": 11.26,
+      "token_count": 65,
+      "transport_overhead_seconds": 0.011126,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling surface.  \n- These irregularities generate periodic contact forces as the roller elements rotate.  \n- The periodic forces translate into periodic vibration impulses transmitted through the shaft.  \n- The vibration frequency matches the rolling element revolution rate, creating a distinct pattern.",
+      "client_construct_seconds": 0.009265
+    },
+    {
+      "wall_seconds": 6.327123,
+      "time_to_first_token_seconds": 0.186228,
+      "ollama_total_duration_seconds": 6.31449,
+      "load_duration_seconds": 0.009797,
+      "tokens_per_second": 11.243,
+      "token_count": 69,
+      "transport_overhead_seconds": 0.012633,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling surface.  \n- These irregularities interact with the rotating shaft, generating periodic contact forces.  \n- As the shaft spins, these forces repeat at a frequency tied to the bearing's rotation.  \n- This periodicity manifests as detectable vibration impulses in the system.",
+      "client_construct_seconds": 0.013982
+    },
+    {
+      "wall_seconds": 6.255817,
+      "time_to_first_token_seconds": 0.153657,
+      "ollama_total_duration_seconds": 6.245527,
+      "load_duration_seconds": 0.007246,
+      "tokens_per_second": 11.15,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.010289,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling surface.  \n- These irregularities interact with the rotating shaft, generating periodic contact forces.  \n- The periodic forces translate into periodic vibration impulses at the operating speed.  \n- The vibration frequency matches the bearing's rotation and fault pattern, creating detectable impulses.",
+      "client_construct_seconds": 0.012835
+    }
+  ],
+  "shared_client_runs": [
+    {
+      "wall_seconds": 5.597379,
+      "time_to_first_token_seconds": 0.139681,
+      "ollama_total_duration_seconds": 5.588137,
+      "load_duration_seconds": 0.005641,
+      "tokens_per_second": 12.47,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.009241,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.628932,
+      "time_to_first_token_seconds": 0.158671,
+      "ollama_total_duration_seconds": 6.616195,
+      "load_duration_seconds": 0.008651,
+      "tokens_per_second": 10.98,
+      "token_count": 71,
+      "transport_overhead_seconds": 0.012737,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in detectable vibration peaks at specific rotational intervals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.083644,
+      "time_to_first_token_seconds": 0.153215,
+      "ollama_total_duration_seconds": 6.070729,
+      "load_duration_seconds": 0.007382,
+      "tokens_per_second": 11.474,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.012915,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.065461,
+      "time_to_first_token_seconds": 0.151373,
+      "ollama_total_duration_seconds": 6.055813,
+      "load_duration_seconds": 0.009899,
+      "tokens_per_second": 11.504,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.009648,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.837981,
+      "time_to_first_token_seconds": 0.160886,
+      "ollama_total_duration_seconds": 6.820893,
+      "load_duration_seconds": 0.008243,
+      "tokens_per_second": 10.64,
+      "token_count": 71,
+      "transport_overhead_seconds": 0.017088,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in detectable vibration peaks at specific rotational intervals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.327617,
+      "time_to_first_token_seconds": 0.135381,
+      "ollama_total_duration_seconds": 6.316436,
+      "load_duration_seconds": 0.003338,
+      "tokens_per_second": 10.988,
+      "token_count": 68,
+      "transport_overhead_seconds": 0.01118,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling element contact.  \n- These irregularities generate periodic impacts as the rolling elements pass over the defect.  \n- Each impact produces a vibration impulse at a consistent frequency related to rotation.  \n- The periodic nature of these impulses results in measurable, repeating vibration signals.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.050399,
+      "time_to_first_token_seconds": 0.150755,
+      "ollama_total_duration_seconds": 6.039002,
+      "load_duration_seconds": 0.00754,
+      "tokens_per_second": 11.025,
+      "token_count": 65,
+      "transport_overhead_seconds": 0.011397,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling surface.  \n- These irregularities interact with the rotating shaft, generating periodic contact forces.  \n- The periodic forces translate into periodic vibration impulses at the rotational frequency.  \n- The vibration amplitude is modulated by the fault's position and size.",
+      "client_construct_seconds": 0.0
+    },
+    {
+      "wall_seconds": 6.057238,
+      "time_to_first_token_seconds": 0.158551,
+      "ollama_total_duration_seconds": 6.0452,
+      "load_duration_seconds": 0.006709,
+      "tokens_per_second": 11.198,
+      "token_count": 66,
+      "transport_overhead_seconds": 0.012037,
+      "response": "- Faults in outer-race bearings cause localized irregularities in the rolling surface.  \n- These irregularities interact with the rotating shaft, generating periodic contact forces.  \n- The periodic forces translate into periodic vibration impulses at the rotational frequency.  \n- The vibration frequency matches the bearing's rotation speed, amplified by fault geometry.",
+      "client_construct_seconds": 0.0
+    }
+  ],
+  "summary": {
+    "fresh_client": {
+      "median_client_construct_seconds": 0.01175,
+      "median_wall_seconds": 6.061015,
+      "median_time_to_first_token_seconds": 0.149614,
+      "median_ollama_total_duration_seconds": 6.051146,
+      "median_load_duration_seconds": 0.007187,
+      "median_transport_overhead_seconds": 0.010381,
+      "median_tokens_per_second": 11.3255
+    },
+    "shared_client": {
+      "median_client_construct_seconds": 0.0,
+      "median_wall_seconds": 6.074552,
+      "median_time_to_first_token_seconds": 0.152294,
+      "median_ollama_total_duration_seconds": 6.063271,
+      "median_load_duration_seconds": 0.007461,
+      "median_transport_overhead_seconds": 0.011717,
+      "median_tokens_per_second": 11.1115
+    },
+    "median_shared_client_wall_savings_seconds": -0.013537
+  },
+  "interpretation_note": "Both arms call the same already-warm Ollama /api/generate endpoint with the same model and runtime options. The fresh arm constructs and closes a new AsyncClient for every generation, matching the current OllamaProvider request pattern. The shared arm reuses one AsyncClient across measured calls."
+}

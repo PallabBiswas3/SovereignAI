@@ -11,7 +11,9 @@ from app.llm.ollama_provider import OllamaProvider
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.rag.embeddings import CachedEmbeddingProvider, LocalHashEmbeddingProvider
 from app.resources.cache import CacheKeyBuilder, CacheNamespace, SQLiteCache
+from app.resources.latency import build_latency_breakdown
 from app.resources.lifecycle import ModelLifecycleManager, ModelLifecycleState
+from app.resources.runtime_profiles import generation_runtime_profile
 from app.resources.scheduler import ModelJob, ResourceScheduler
 from app.router.schemas import TaskProfile
 
@@ -38,6 +40,19 @@ def test_execution_mode_selection_is_explicit_and_auditable() -> None:
     assert deep.selected == ExecutionMode.deep
     assert explicit.selected == ExecutionMode.standard
     assert explicit.reason
+
+
+def test_runtime_profiles_bound_context_and_output_by_execution_depth() -> None:
+    fast = generation_runtime_profile("FAST")
+    standard = generation_runtime_profile("STANDARD")
+    deep = generation_runtime_profile("DEEP")
+    assert (fast.num_ctx, fast.num_predict) == (4096, 384)
+    assert (standard.num_ctx, standard.num_predict) == (8192, 1024)
+    assert (deep.num_ctx, deep.num_predict) == (16384, 1536)
+    assert fast.num_ctx < standard.num_ctx < deep.num_ctx
+    assert fast.num_predict < standard.num_predict < deep.num_predict
+    assert generation_runtime_profile("unknown").mode == "STANDARD"
+    assert generation_runtime_profile("FAST", structured=True).num_predict == 1024
 
 
 def test_instruction_models_receive_the_original_prompt() -> None:
@@ -72,6 +87,7 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
             client=client,
             scheduler=ResourceScheduler(),
             lifecycle=ModelLifecycleManager(),
+            execution_mode="STANDARD",
         )
         chunks = [chunk async for chunk in provider.stream("Inspect pump", "local:test")]
         await client.aclose()
@@ -80,13 +96,46 @@ def test_ollama_provider_streams_ndjson_and_records_metrics() -> None:
     pieces, stats = asyncio.run(run())
     assert pieces == ["Pump ", "ready."]
     assert requests[0]["stream"] is True
-    assert requests[0]["options"]["num_predict"] == 1280
+    assert requests[0]["options"]["num_ctx"] == 2048
+    assert requests[0]["options"]["num_predict"] == 1024
     assert requests[0]["keep_alive"]
     assert stats["token_count"] == 2
     assert stats["done_reason"] == "stop"
     assert stats["output_truncated"] is False
     assert stats["tokens_per_second"] == 2.0
     assert stats["warm_status"] == "cold"
+    assert stats["runtime_profile"]["mode"] == "STANDARD"
+    assert stats["runtime_profile"]["num_ctx"] == 8192
+    assert stats["context_plan"]["selected_num_ctx"] == 2048
+    assert stats["context_plan"]["profile_max_num_ctx"] == 8192
+
+
+def test_latency_breakdown_separates_model_queue_and_application_overhead() -> None:
+    metrics = {
+        "total_duration_seconds": 4.0,
+        "queue_wait_seconds": 0.5,
+        "load_duration_seconds": 0.25,
+        "time_to_first_token_seconds": 0.6,
+        "tokens_per_second": 20.0,
+        "prompt_token_count": 100,
+        "token_count": 80,
+        "warm_status": "warm",
+    }
+    breakdown = build_latency_breakdown(
+        metrics,
+        generation_wall_seconds=5.0,
+        event_callback_seconds=0.3,
+        event_callback_count=8,
+        first_ui_frame_seconds=0.7,
+    )
+    assert breakdown["model_reported_total_seconds"] == 4.0
+    assert breakdown["queue_wait_seconds"] == 0.5
+    assert breakdown["application_overhead_seconds"] == 0.5
+    assert breakdown["application_overhead_percent"] == 10.0
+    assert breakdown["event_callback_seconds"] == 0.3
+    assert breakdown["event_callback_count"] == 8
+    assert breakdown["first_ui_frame_seconds"] == 0.7
+    assert breakdown["decode_tokens_per_second"] == 20.0
 
 
 def test_generation_honors_preexisting_cancellation() -> None:

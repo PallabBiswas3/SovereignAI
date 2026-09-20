@@ -1,0 +1,1258 @@
+{
+  "model": "qwen3:4b-instruct",
+  "endpoint": "http://127.0.0.1:11434",
+  "cpu": {
+    "physical_cores": 10,
+    "logical_cores": 12
+  },
+  "benchmark": {
+    "num_ctx": 4096,
+    "num_predict": 128,
+    "keep_alive": "60s",
+    "warmups_per_visit": 1,
+    "measured_rounds": 3,
+    "threads": [
+      4,
+      5,
+      6
+    ],
+    "batches": [
+      64,
+      128
+    ],
+    "ranking_metric": "median_tokens_per_second",
+    "methodology": "seeded_interleaved_rounds_v2",
+    "seed": 20260918,
+    "cooldown_seconds": 1.0
+  },
+  "execution_order": [
+    {
+      "round": 1,
+      "sequence_index": 1,
+      "num_thread": 5,
+      "num_batch": 128
+    },
+    {
+      "round": 1,
+      "sequence_index": 2,
+      "num_thread": 6,
+      "num_batch": 64
+    },
+    {
+      "round": 1,
+      "sequence_index": 3,
+      "num_thread": 6,
+      "num_batch": 128
+    },
+    {
+      "round": 1,
+      "sequence_index": 4,
+      "num_thread": 4,
+      "num_batch": 64
+    },
+    {
+      "round": 1,
+      "sequence_index": 5,
+      "num_thread": 4,
+      "num_batch": 128
+    },
+    {
+      "round": 1,
+      "sequence_index": 6,
+      "num_thread": 5,
+      "num_batch": 64
+    },
+    {
+      "round": 2,
+      "sequence_index": 7,
+      "num_thread": 6,
+      "num_batch": 64
+    },
+    {
+      "round": 2,
+      "sequence_index": 8,
+      "num_thread": 4,
+      "num_batch": 64
+    },
+    {
+      "round": 2,
+      "sequence_index": 9,
+      "num_thread": 5,
+      "num_batch": 128
+    },
+    {
+      "round": 2,
+      "sequence_index": 10,
+      "num_thread": 4,
+      "num_batch": 128
+    },
+    {
+      "round": 2,
+      "sequence_index": 11,
+      "num_thread": 6,
+      "num_batch": 128
+    },
+    {
+      "round": 2,
+      "sequence_index": 12,
+      "num_thread": 5,
+      "num_batch": 64
+    },
+    {
+      "round": 3,
+      "sequence_index": 13,
+      "num_thread": 4,
+      "num_batch": 128
+    },
+    {
+      "round": 3,
+      "sequence_index": 14,
+      "num_thread": 5,
+      "num_batch": 128
+    },
+    {
+      "round": 3,
+      "sequence_index": 15,
+      "num_thread": 4,
+      "num_batch": 64
+    },
+    {
+      "round": 3,
+      "sequence_index": 16,
+      "num_thread": 5,
+      "num_batch": 64
+    },
+    {
+      "round": 3,
+      "sequence_index": 17,
+      "num_thread": 6,
+      "num_batch": 128
+    },
+    {
+      "round": 3,
+      "sequence_index": 18,
+      "num_thread": 6,
+      "num_batch": 64
+    }
+  ],
+  "best": {
+    "num_thread": 5,
+    "num_batch": 128,
+    "median_tokens_per_second": 9.099,
+    "mean_tokens_per_second": 9.533,
+    "min_tokens_per_second": 8.252,
+    "max_tokens_per_second": 11.249,
+    "median_wall_seconds": 14.236799,
+    "mean_prompt_eval_seconds": 0.107154,
+    "warmup_runs": [
+      {
+        "round": 1,
+        "sequence_index": 1,
+        "measured": false,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 15.923296,
+        "load_seconds": 3.309072,
+        "prompt_eval_seconds": 0.743355,
+        "decode_seconds": 11.846798,
+        "generated_tokens": 128,
+        "tokens_per_second": 10.805,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 27.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2340.15
+        },
+        "system_after": {
+          "cpu_percent": 62.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2644.9
+        }
+      },
+      {
+        "round": 2,
+        "sequence_index": 9,
+        "measured": false,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 18.678619,
+        "load_seconds": 3.303915,
+        "prompt_eval_seconds": 1.163884,
+        "decode_seconds": 14.167524,
+        "generated_tokens": 128,
+        "tokens_per_second": 9.035,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 25.3,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2661.97
+        },
+        "system_after": {
+          "cpu_percent": 46.6,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2678.23
+        }
+      },
+      {
+        "round": 3,
+        "sequence_index": 14,
+        "measured": false,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 19.646537,
+        "load_seconds": 3.286782,
+        "prompt_eval_seconds": 1.299945,
+        "decode_seconds": 15.022292,
+        "generated_tokens": 128,
+        "tokens_per_second": 8.521,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 11.2,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2737.12
+        },
+        "system_after": {
+          "cpu_percent": 47.3,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2710.46
+        }
+      }
+    ],
+    "runs": [
+      {
+        "round": 1,
+        "sequence_index": 1,
+        "measured": true,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 11.519393,
+        "load_seconds": 0.012367,
+        "prompt_eval_seconds": 0.093179,
+        "decode_seconds": 11.378793,
+        "generated_tokens": 128,
+        "tokens_per_second": 11.249,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 0.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2644.9
+        },
+        "system_after": {
+          "cpu_percent": 54.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2640.71
+        }
+      },
+      {
+        "round": 2,
+        "sequence_index": 9,
+        "measured": true,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 14.236799,
+        "load_seconds": 0.020213,
+        "prompt_eval_seconds": 0.109727,
+        "decode_seconds": 14.067098,
+        "generated_tokens": 128,
+        "tokens_per_second": 9.099,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 0.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2678.23
+        },
+        "system_after": {
+          "cpu_percent": 52.8,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2676.69
+        }
+      },
+      {
+        "round": 3,
+        "sequence_index": 14,
+        "measured": true,
+        "num_thread": 5,
+        "num_batch": 128,
+        "wall_seconds": 15.688856,
+        "load_seconds": 0.011271,
+        "prompt_eval_seconds": 0.118557,
+        "decode_seconds": 15.510811,
+        "generated_tokens": 128,
+        "tokens_per_second": 8.252,
+        "done_reason": "length",
+        "system_before": {
+          "cpu_percent": 0.0,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2710.46
+        },
+        "system_after": {
+          "cpu_percent": 53.9,
+          "current_frequency_mhz": 1300.0,
+          "available_ram_mb": 2685.78
+        }
+      }
+    ]
+  },
+  "saved_profile": {
+    "model": "qwen3:4b-instruct",
+    "measured_at": "2026-09-17T22:01:29.955772+00:00",
+    "num_thread": 5,
+    "num_batch": 128,
+    "num_ctx": 4096,
+    "median_tokens_per_second": 9.099,
+    "mean_tokens_per_second": 9.533,
+    "measured_runs": 3,
+    "warmup_runs": 1,
+    "source": "local-cpu-tuning"
+  },
+  "ranked_results": [
+    {
+      "num_thread": 5,
+      "num_batch": 128,
+      "median_tokens_per_second": 9.099,
+      "mean_tokens_per_second": 9.533,
+      "min_tokens_per_second": 8.252,
+      "max_tokens_per_second": 11.249,
+      "median_wall_seconds": 14.236799,
+      "mean_prompt_eval_seconds": 0.107154,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 1,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 15.923296,
+          "load_seconds": 3.309072,
+          "prompt_eval_seconds": 0.743355,
+          "decode_seconds": 11.846798,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.805,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 27.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2340.15
+          },
+          "system_after": {
+            "cpu_percent": 62.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2644.9
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 9,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 18.678619,
+          "load_seconds": 3.303915,
+          "prompt_eval_seconds": 1.163884,
+          "decode_seconds": 14.167524,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.035,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 25.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2661.97
+          },
+          "system_after": {
+            "cpu_percent": 46.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2678.23
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 14,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 19.646537,
+          "load_seconds": 3.286782,
+          "prompt_eval_seconds": 1.299945,
+          "decode_seconds": 15.022292,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.521,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 11.2,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2737.12
+          },
+          "system_after": {
+            "cpu_percent": 47.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2710.46
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 1,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 11.519393,
+          "load_seconds": 0.012367,
+          "prompt_eval_seconds": 0.093179,
+          "decode_seconds": 11.378793,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.249,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2644.9
+          },
+          "system_after": {
+            "cpu_percent": 54.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2640.71
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 9,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 14.236799,
+          "load_seconds": 0.020213,
+          "prompt_eval_seconds": 0.109727,
+          "decode_seconds": 14.067098,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.099,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2678.23
+          },
+          "system_after": {
+            "cpu_percent": 52.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2676.69
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 14,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 128,
+          "wall_seconds": 15.688856,
+          "load_seconds": 0.011271,
+          "prompt_eval_seconds": 0.118557,
+          "decode_seconds": 15.510811,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.252,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2710.46
+          },
+          "system_after": {
+            "cpu_percent": 53.9,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2685.78
+          }
+        }
+      ]
+    },
+    {
+      "num_thread": 4,
+      "num_batch": 64,
+      "median_tokens_per_second": 8.922,
+      "mean_tokens_per_second": 9.141,
+      "min_tokens_per_second": 8.48,
+      "max_tokens_per_second": 10.022,
+      "median_wall_seconds": 14.513113,
+      "mean_prompt_eval_seconds": 0.109275,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 4,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 16.258822,
+          "load_seconds": 3.077433,
+          "prompt_eval_seconds": 0.803984,
+          "decode_seconds": 12.356275,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.359,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 16.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2746.39
+          },
+          "system_after": {
+            "cpu_percent": 41.4,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2782.55
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 8,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 19.246206,
+          "load_seconds": 3.303598,
+          "prompt_eval_seconds": 1.474561,
+          "decode_seconds": 14.437962,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.866,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 13.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2723.53
+          },
+          "system_after": {
+            "cpu_percent": 45.2,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2679.86
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 15,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 20.411987,
+          "load_seconds": 3.277862,
+          "prompt_eval_seconds": 1.474762,
+          "decode_seconds": 15.628136,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.19,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 17.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2689.79
+          },
+          "system_after": {
+            "cpu_percent": 42.4,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2688.0
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 4,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 12.937839,
+          "load_seconds": 0.035781,
+          "prompt_eval_seconds": 0.094931,
+          "decode_seconds": 12.772153,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.022,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2782.55
+          },
+          "system_after": {
+            "cpu_percent": 43.2,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2735.72
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 8,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 14.513113,
+          "load_seconds": 0.010799,
+          "prompt_eval_seconds": 0.115615,
+          "decode_seconds": 14.34663,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.922,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2679.86
+          },
+          "system_after": {
+            "cpu_percent": 44.1,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2652.88
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 15,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 64,
+          "wall_seconds": 15.276924,
+          "load_seconds": 0.017004,
+          "prompt_eval_seconds": 0.117278,
+          "decode_seconds": 15.094209,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.48,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2688.0
+          },
+          "system_after": {
+            "cpu_percent": 42.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2666.14
+          }
+        }
+      ]
+    },
+    {
+      "num_thread": 6,
+      "num_batch": 128,
+      "median_tokens_per_second": 8.866,
+      "mean_tokens_per_second": 9.452,
+      "min_tokens_per_second": 8.32,
+      "max_tokens_per_second": 11.17,
+      "median_wall_seconds": 14.603348,
+      "mean_prompt_eval_seconds": 0.102166,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 3,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 15.714482,
+          "load_seconds": 3.040038,
+          "prompt_eval_seconds": 0.699193,
+          "decode_seconds": 11.956659,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.705,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 21.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2764.99
+          },
+          "system_after": {
+            "cpu_percent": 55.4,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2750.59
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 11,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 19.745377,
+          "load_seconds": 3.306286,
+          "prompt_eval_seconds": 1.191303,
+          "decode_seconds": 15.216849,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.412,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 21.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2668.53
+          },
+          "system_after": {
+            "cpu_percent": 60.1,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2866.68
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 17,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 19.978285,
+          "load_seconds": 3.321884,
+          "prompt_eval_seconds": 1.168724,
+          "decode_seconds": 15.447352,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.286,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 11.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2652.79
+          },
+          "system_after": {
+            "cpu_percent": 58.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2679.67
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 3,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 11.599601,
+          "load_seconds": 0.007873,
+          "prompt_eval_seconds": 0.092528,
+          "decode_seconds": 11.459032,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.17,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2750.59
+          },
+          "system_after": {
+            "cpu_percent": 60.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2743.02
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 11,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 15.579337,
+          "load_seconds": 0.018871,
+          "prompt_eval_seconds": 0.105889,
+          "decode_seconds": 15.384522,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.32,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2866.68
+          },
+          "system_after": {
+            "cpu_percent": 63.1,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2788.86
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 17,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 128,
+          "wall_seconds": 14.603348,
+          "load_seconds": 0.01441,
+          "prompt_eval_seconds": 0.10808,
+          "decode_seconds": 14.437294,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.866,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2679.67
+          },
+          "system_after": {
+            "cpu_percent": 62.4,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2653.79
+          }
+        }
+      ]
+    },
+    {
+      "num_thread": 4,
+      "num_batch": 128,
+      "median_tokens_per_second": 8.678,
+      "mean_tokens_per_second": 8.954,
+      "min_tokens_per_second": 8.083,
+      "max_tokens_per_second": 10.1,
+      "median_wall_seconds": 14.910658,
+      "mean_prompt_eval_seconds": 0.11748,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 5,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 17.07855,
+          "load_seconds": 3.051442,
+          "prompt_eval_seconds": 0.93388,
+          "decode_seconds": 13.068247,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.795,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 10.9,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2737.62
+          },
+          "system_after": {
+            "cpu_percent": 41.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2741.47
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 10,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 19.394305,
+          "load_seconds": 3.298847,
+          "prompt_eval_seconds": 1.199995,
+          "decode_seconds": 14.862825,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.612,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 13.7,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2675.98
+          },
+          "system_after": {
+            "cpu_percent": 41.1,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2694.17
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 13,
+          "measured": false,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 20.207796,
+          "load_seconds": 3.310965,
+          "prompt_eval_seconds": 1.328334,
+          "decode_seconds": 15.513508,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.251,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 17.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2732.24
+          },
+          "system_after": {
+            "cpu_percent": 43.5,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2765.36
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 5,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 12.825267,
+          "load_seconds": 0.022293,
+          "prompt_eval_seconds": 0.098501,
+          "decode_seconds": 12.673145,
+          "generated_tokens": 128,
+          "tokens_per_second": 10.1,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2741.47
+          },
+          "system_after": {
+            "cpu_percent": 40.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2706.42
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 10,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 14.910658,
+          "load_seconds": 0.010624,
+          "prompt_eval_seconds": 0.11305,
+          "decode_seconds": 14.749308,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.678,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2694.17
+          },
+          "system_after": {
+            "cpu_percent": 42.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2679.98
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 13,
+          "measured": true,
+          "num_thread": 4,
+          "num_batch": 128,
+          "wall_seconds": 16.036754,
+          "load_seconds": 0.013588,
+          "prompt_eval_seconds": 0.140889,
+          "decode_seconds": 15.835224,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.083,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2765.49
+          },
+          "system_after": {
+            "cpu_percent": 44.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2738.99
+          }
+        }
+      ]
+    },
+    {
+      "num_thread": 5,
+      "num_batch": 64,
+      "median_tokens_per_second": 8.586,
+      "mean_tokens_per_second": 8.612,
+      "min_tokens_per_second": 8.07,
+      "max_tokens_per_second": 9.179,
+      "median_wall_seconds": 15.079128,
+      "mean_prompt_eval_seconds": 0.118959,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 6,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 17.93851,
+          "load_seconds": 3.05224,
+          "prompt_eval_seconds": 1.1768,
+          "decode_seconds": 13.68968,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.35,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 23.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2709.26
+          },
+          "system_after": {
+            "cpu_percent": 49.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2754.71
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 12,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 20.10143,
+          "load_seconds": 3.586253,
+          "prompt_eval_seconds": 1.209595,
+          "decode_seconds": 15.260476,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.388,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 18.7,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2762.24
+          },
+          "system_after": {
+            "cpu_percent": 49.5,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2756.58
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 16,
+          "measured": false,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 19.659643,
+          "load_seconds": 3.307952,
+          "prompt_eval_seconds": 1.262445,
+          "decode_seconds": 15.04694,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.507,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 16.6,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2672.31
+          },
+          "system_after": {
+            "cpu_percent": 48.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2709.12
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 6,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 14.12848,
+          "load_seconds": 0.019751,
+          "prompt_eval_seconds": 0.115133,
+          "decode_seconds": 13.94458,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.179,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2754.71
+          },
+          "system_after": {
+            "cpu_percent": 57.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2733.31
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 12,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 15.079128,
+          "load_seconds": 0.009968,
+          "prompt_eval_seconds": 0.116397,
+          "decode_seconds": 14.908407,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.586,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2756.58
+          },
+          "system_after": {
+            "cpu_percent": 51.5,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2729.56
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 16,
+          "measured": true,
+          "num_thread": 5,
+          "num_batch": 64,
+          "wall_seconds": 16.050372,
+          "load_seconds": 0.013924,
+          "prompt_eval_seconds": 0.125348,
+          "decode_seconds": 15.862078,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.07,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2709.12
+          },
+          "system_after": {
+            "cpu_percent": 55.9,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2639.82
+          }
+        }
+      ]
+    },
+    {
+      "num_thread": 6,
+      "num_batch": 64,
+      "median_tokens_per_second": 8.535,
+      "mean_tokens_per_second": 9.315,
+      "min_tokens_per_second": 8.071,
+      "max_tokens_per_second": 11.338,
+      "median_wall_seconds": 15.148236,
+      "mean_prompt_eval_seconds": 0.099714,
+      "warmup_runs": [
+        {
+          "round": 1,
+          "sequence_index": 2,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 15.58757,
+          "load_seconds": 3.806284,
+          "prompt_eval_seconds": 0.68648,
+          "decode_seconds": 11.06671,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.566,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 25.7,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2636.47
+          },
+          "system_after": {
+            "cpu_percent": 50.9,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2745.27
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 7,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 18.463875,
+          "load_seconds": 3.306023,
+          "prompt_eval_seconds": 1.160389,
+          "decode_seconds": 13.949395,
+          "generated_tokens": 128,
+          "tokens_per_second": 9.176,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 20.1,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2738.24
+          },
+          "system_after": {
+            "cpu_percent": 57.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2758.7
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 18,
+          "measured": false,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 19.954167,
+          "load_seconds": 3.302254,
+          "prompt_eval_seconds": 1.190631,
+          "decode_seconds": 15.415896,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.303,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 14.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2686.94
+          },
+          "system_after": {
+            "cpu_percent": 57.2,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2721.26
+          }
+        }
+      ],
+      "runs": [
+        {
+          "round": 1,
+          "sequence_index": 2,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 11.430002,
+          "load_seconds": 0.010219,
+          "prompt_eval_seconds": 0.090687,
+          "decode_seconds": 11.28962,
+          "generated_tokens": 128,
+          "tokens_per_second": 11.338,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2745.27
+          },
+          "system_after": {
+            "cpu_percent": 59.8,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2750.71
+          }
+        },
+        {
+          "round": 2,
+          "sequence_index": 7,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 15.148236,
+          "load_seconds": 0.009049,
+          "prompt_eval_seconds": 0.100252,
+          "decode_seconds": 14.997138,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.535,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2758.7
+          },
+          "system_after": {
+            "cpu_percent": 63.3,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2715.62
+          }
+        },
+        {
+          "round": 3,
+          "sequence_index": 18,
+          "measured": true,
+          "num_thread": 6,
+          "num_batch": 64,
+          "wall_seconds": 16.040963,
+          "load_seconds": 0.010363,
+          "prompt_eval_seconds": 0.108204,
+          "decode_seconds": 15.860013,
+          "generated_tokens": 128,
+          "tokens_per_second": 8.071,
+          "done_reason": "length",
+          "system_before": {
+            "cpu_percent": 0.0,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2721.26
+          },
+          "system_after": {
+            "cpu_percent": 65.7,
+            "current_frequency_mhz": 1300.0,
+            "available_ram_mb": 2653.8
+          }
+        }
+      ]
+    }
+  ]
+}
