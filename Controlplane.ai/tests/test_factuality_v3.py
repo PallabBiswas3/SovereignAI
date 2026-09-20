@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from adaptivefact.data.schema import GenerationMetadata, ResponseRecord, VerificationStatus
 from adaptivefact.extraction.claim_extractor import ClaimExtractor
+from adaptivefact.extraction.numeric_date import extract_numbers
 from adaptivefact.verification.nli import NLIScorer, NLIScores
 from controlplane import ControlPlane, Interaction
 from controlplane.detectors.hallucination import HallucinationDetector
@@ -20,7 +21,10 @@ class ConflictingNLI(NLIScorer):
     def score(self, premises: list[str], hypotheses: list[str]) -> list[NLIScores]:
         output = []
         for premise in premises:
-            if "95 C" in premise:
+            # Check explicit negation before the shared value substring.
+            if "did not reach 95 C" in premise:
+                output.append(NLIScores(entailment=0.02, contradiction=0.96, neutral=0.02))
+            elif "95 C" in premise:
                 output.append(NLIScores(entailment=0.95, contradiction=0.02, neutral=0.03))
             else:
                 output.append(NLIScores(entailment=0.02, contradiction=0.96, neutral=0.02))
@@ -59,6 +63,12 @@ def _profile(name: str, depth: VerificationDepth) -> object:
     profile.checks["hallucination"].depth = depth
     profile.checks["hallucination"].settings["use_trained_risk"] = False
     return profile
+
+
+def test_asset_identifier_is_not_treated_as_numeric_fact():
+    assert extract_numbers("Pump-102 is blue.") == []
+    values = extract_numbers("Pump-102 reached 95 C.")
+    assert [item.normalized for item in values] == ["95"]
 
 
 def test_atomic_extractor_decontextualizes_followup_pronoun():
