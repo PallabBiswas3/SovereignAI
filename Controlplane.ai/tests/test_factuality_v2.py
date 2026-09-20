@@ -104,7 +104,7 @@ def test_typed_grounding_evidence_is_preserved_in_verifier_context():
     assert "7.1 mm/s" in (record.context or "")
 
 
-def test_unknown_reason_taxonomy_is_exposed():
+def test_unknown_reason_taxonomy_is_exposed_as_undecidable_metadata():
     service = AdaptiveFactVerificationService(nli=NeutralNLI())
     result = service.verify(
         Interaction(
@@ -115,8 +115,11 @@ def test_unknown_reason_taxonomy_is_exposed():
         VerificationDepth.STANDARD,
     )
 
-    unknown = next(item for item in result.findings if item.subtype == "claim_unknown")
-    assert unknown.metadata["unknown_reason"] in {
+    undecidable = next(item for item in result.findings if item.subtype == "claim_undecidable")
+    assert undecidable.status.value == "undecidable"
+    # Preserve the v2 reason taxonomy as compatibility metadata while exposing
+    # the stronger v3 state at the policy boundary.
+    assert undecidable.metadata["unknown_reason"] in {
         "no_evidence",
         "verifier_uncertain",
         "insufficient_support",
