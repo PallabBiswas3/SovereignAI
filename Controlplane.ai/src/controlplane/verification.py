@@ -50,13 +50,13 @@ class AdaptiveVerificationConfig:
 
 
 class AdaptiveFactVerificationService:
-    """Research-grounded factuality verifier.
+    """Evidence-grounded factuality verification with explicit abstention.
 
-    Phase 5 provides cheap deterministic support/conflict candidates. STANDARD
-    adds retrieval + NLI, DEEP adds bounded evidence search. A support scorer
-    such as MiniCheck/AlignScore can be plugged in, but it is never used as a
-    contradiction detector. Evidence quality determines whether low support is
-    strong enough to mean UNSUPPORTED or only UNDECIDABLE.
+    DeBERTa/NLI remains the contradiction-capable checker. Optional MiniCheck or
+    Align-style scorers estimate support only. Low support becomes UNSUPPORTED
+    only when the structured evidence set is sufficiently complete; otherwise
+    the claim becomes UNDECIDABLE. Support-model inference is batched once per
+    response to avoid a per-claim model-call latency multiplier.
     """
 
     name = "adaptivefact"
@@ -95,7 +95,6 @@ class AdaptiveFactVerificationService:
 
         phase6_runtime: dict = {}
         agent_runtime = {"claims": 0, "search_calls": 0, "nli_pairs": 0, "cost": 0.0, "latency_ms": 0.0}
-        support_runtime = {"backend": getattr(self.support_scorer, "name", None), "claims": 0, "latency_ms": 0.0}
 
         if depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP}:
             if self.phase6 is None:
@@ -123,12 +122,8 @@ class AdaptiveFactVerificationService:
             }
 
         support_started = perf_counter()
-        assessments: dict[str, EvidenceAssessment] = {}
-        for claim in record.atomic_claims:
-            assessment = self.evidence_gate.assess(interaction, claim)
-            assessments[claim.id] = assessment
-            self._finalize_claim_state(claim, assessment, depth=depth)
-        support_runtime["claims"] = sum("support_score" in claim.verification_scores for claim in record.atomic_claims)
+        assessments = {claim.id: self.evidence_gate.assess(interaction, claim) for claim in record.atomic_claims}
+        support_runtime = self._finalize_claim_states(record.atomic_claims, assessments, depth=depth)
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
 
         aggregation = aggregate_claims(record.atomic_claims, important_unknown_threshold=self.config.important_unknown_threshold)
@@ -152,11 +147,16 @@ class AdaptiveFactVerificationService:
                         "claim_id": claim.id,
                         "claim": claim.text,
                         "verification_text": claim.verification_text,
-                        "structure": {"subject": claim.subject, "predicate": claim.predicate, "object": claim.object, "qualifiers": claim.qualifiers},
+                        "structure": {
+                            "subject": claim.subject,
+                            "predicate": claim.predicate,
+                            "object": claim.object,
+                            "qualifiers": claim.qualifiers,
+                        },
                         "status": claim.status.value,
                         "confidence": claim.confidence,
                         "verifier": claim.verifier_used,
-                        "nli_scores": claim.verification_scores,
+                        "verification_scores": claim.verification_scores,
                         "evidence": claim.evidence,
                         "evidence_ids": claim.evidence_ids,
                         "evidence_quality": assessments[claim.id].quality,
@@ -167,46 +167,65 @@ class AdaptiveFactVerificationService:
             },
         )
 
-    def _finalize_claim_state(self, claim, assessment: EvidenceAssessment, *, depth: VerificationDepth) -> None:
-        if claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED}:
-            return
+    def _finalize_claim_states(self, claims, assessments: dict[str, EvidenceAssessment], *, depth: VerificationDepth) -> dict:
+        backend = getattr(self.support_scorer, "name", None)
+        batch_claims = []
+        batch_documents: list[str] = []
+        batch_texts: list[str] = []
 
-        method = claim.verifier_used or ""
-        if method == "nli_conflicting_evidence" or method == "agent:conflicting_evidence":
-            claim.status = VerificationStatus.CONFLICTING
-            claim.verifier_used = f"{method}:v3"
-            claim.verification_metadata["evidence_quality"] = assessment.quality
-            return
+        for claim in claims:
+            assessment = assessments[claim.id]
+            if claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED}:
+                continue
+            method = claim.verifier_used or ""
+            if method == "nli_conflicting_evidence" or method == "agent:conflicting_evidence":
+                claim.status = VerificationStatus.CONFLICTING
+                claim.verifier_used = f"{method}:v3"
+                claim.verification_metadata["evidence_quality"] = assessment.quality
+                continue
+            if assessment.quality in {"no_evidence", "irrelevant_evidence"}:
+                self._mark_undecidable(claim, assessment, "v3_evidence_insufficient")
+                continue
+            if self.support_scorer is not None and depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP} and assessment.selected_texts:
+                batch_claims.append(claim)
+                batch_documents.append("\n\n".join(assessment.selected_texts))
+                batch_texts.append(claim.verification_text)
+                continue
+            self._mark_undecidable(claim, assessment, method or "phase5_unresolved")
 
-        if assessment.quality in {"no_evidence", "irrelevant_evidence"}:
-            claim.status = VerificationStatus.UNDECIDABLE
-            claim.verifier_used = "v3_evidence_insufficient"
-            claim.verification_metadata.update({"evidence_quality": assessment.quality, "reason": assessment.reason})
-            return
+        scores: list[float] = []
+        if batch_claims:
+            scores = [float(value) for value in self.support_scorer.score(batch_documents, batch_texts)]  # type: ignore[union-attr]
+            if len(scores) != len(batch_claims):
+                raise RuntimeError("support scorer returned a different number of scores than requested claims")
+            for claim, score in zip(batch_claims, scores):
+                assessment = assessments[claim.id]
+                claim.verification_scores["support_score"] = score
+                claim.evidence = assessment.selected_texts
+                claim.evidence_ids = assessment.selected_ids
+                claim.verification_metadata.update({"support_backend": backend, "evidence_quality": assessment.quality})
+                if score >= self.config.support_supported_threshold:
+                    claim.status = VerificationStatus.SUPPORTED
+                    claim.confidence = score
+                    claim.verifier_used = f"support:{backend}:supported"
+                elif score <= self.config.support_unsupported_threshold and assessment.complete_enough_for_unsupported:
+                    claim.status = VerificationStatus.UNSUPPORTED
+                    claim.confidence = 1.0 - score
+                    claim.verifier_used = f"support:{backend}:unsupported"
+                else:
+                    self._mark_undecidable(claim, assessment, f"support:{backend}:inconclusive")
 
-        # Support-only models are used in STANDARD/DEEP, never to infer contradiction.
-        if self.support_scorer is not None and depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP} and assessment.selected_texts:
-            document = "\n\n".join(assessment.selected_texts)
-            score = float(self.support_scorer.score([document], [claim.verification_text])[0])
-            claim.verification_scores["support_score"] = score
-            claim.evidence = assessment.selected_texts
-            claim.evidence_ids = assessment.selected_ids
-            claim.verification_metadata.update({"support_backend": self.support_scorer.name, "evidence_quality": assessment.quality})
-            if score >= self.config.support_supported_threshold:
-                claim.status = VerificationStatus.SUPPORTED
-                claim.confidence = score
-                claim.verifier_used = f"support:{self.support_scorer.name}:supported"
-                return
-            if score <= self.config.support_unsupported_threshold and assessment.complete_enough_for_unsupported:
-                claim.status = VerificationStatus.UNSUPPORTED
-                claim.confidence = 1.0 - score
-                claim.verifier_used = f"support:{self.support_scorer.name}:unsupported"
-                return
+        return {
+            "backend": backend,
+            "claims": len(batch_claims),
+            "calls": 1 if batch_claims else 0,
+            "scores": scores,
+        }
 
-        # NLI neutral/low entailment is not enough to call a claim unsupported
-        # unless evidence completeness is known. Default unresolved state is abstention.
+    @staticmethod
+    def _mark_undecidable(claim, assessment: EvidenceAssessment, method: str) -> None:
         claim.status = VerificationStatus.UNDECIDABLE
-        claim.verifier_used = f"{method or 'phase5_unresolved'}:undecidable_v3"
+        claim.verifier_used = f"{method}:undecidable_v3"
         claim.verification_metadata.update({"evidence_quality": assessment.quality, "reason": assessment.reason})
 
     def _normalize_findings(self, record, response_status: ResponseLabel, *, interaction: Interaction, depth: VerificationDepth, assessments: dict[str, EvidenceAssessment]) -> list[Finding]:
@@ -223,7 +242,7 @@ class AdaptiveFactVerificationService:
                 "verifier": claim.verifier_used,
                 "response_status": response_status.value,
                 "verification_depth": depth.value,
-                "nli_scores": claim.verification_scores,
+                "verification_scores": claim.verification_scores,
                 "evidence_quality": assessment.quality,
                 "evidence_complete_enough": assessment.complete_enough_for_unsupported,
                 "evidence_reason": assessment.reason,
@@ -249,15 +268,14 @@ def build_support_scorer_from_env() -> SupportScorer | None:
             model_name=os.getenv("CONTROLPLANE_MINICHECK_MODEL", "flan-t5-large"),
             cache_dir=os.getenv("CONTROLPLANE_MINICHECK_CACHE", "./ckpts/minicheck"),
         )
-    if backend == "alignscore":
+    if backend in {"align", "alignscore"}:
         checkpoint = os.getenv("CONTROLPLANE_ALIGNSCORE_CHECKPOINT")
         if not checkpoint:
-            raise RuntimeError("CONTROLPLANE_ALIGNSCORE_CHECKPOINT is required for AlignScore")
+            raise RuntimeError("CONTROLPLANE_ALIGNSCORE_CHECKPOINT is required for Align/AlignScore-style verification")
         return AlignScoreSupportScorer(
             checkpoint_path=checkpoint,
             model=os.getenv("CONTROLPLANE_ALIGNSCORE_MODEL", "roberta-base"),
             device=os.getenv("CONTROLPLANE_ALIGNSCORE_DEVICE", "cpu"),
-            evaluation_mode=os.getenv("CONTROLPLANE_ALIGNSCORE_MODE", "nli_sp"),
         )
     raise ValueError(f"Unknown CONTROLPLANE_SUPPORT_BACKEND: {backend}")
 
