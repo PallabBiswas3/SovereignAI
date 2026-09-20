@@ -1,22 +1,9 @@
-"""
-Common schema for the Latency-Aware Adaptive Factuality / Hallucination
-Verification project.
+"""Common schema for AdaptiveFact and ControlPlane factuality evaluation.
 
-This is the backbone of the whole project (per §49 of the master project
-prompt, and the schema discussion in chat): every dataset loader converts
-raw data into a `ResponseRecord`, every pipeline stage reads/writes one,
-and every downstream ablation or analysis (numeric vs entity vs date
-hallucination, which claim types get escalated, etc.) depends on these
-fields being populated consistently.
-
-Design notes:
-- Every metadata block is optional at construction time because different
-  pipeline stages fill them in progressively (generation -> risk ->
-  verification -> timing). A record loaded straight from a dataset will
-  only have `generation_metadata` and ground truth populated.
-- `latency_ms` and `cost` are tracked at BOTH the claim level and the
-  response level, so per-claim-type cost/latency ablations (§52) can be
-  computed directly from stored records instead of re-derived later.
+The schema deliberately separates risk estimation from factual verification.
+Factuality v3 adds richer claim states and a structured/decontextualized claim
+representation while remaining backward compatible with older datasets that
+use ``unknown``.
 """
 
 from __future__ import annotations
@@ -27,37 +14,34 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
-
-
 class ClaimType(str, Enum):
-    """Coarse category of an atomic claim. Used for per-type ablations
-    (§6 hallucination taxonomy, §52 Experiments 2-4)."""
-
     NUMERIC = "numeric"
     ENTITY = "entity"
     DATE = "date"
     CITATION = "citation"
-    FACTUAL = "factual"  # general factual claim, no specific sub-type
+    FACTUAL = "factual"
     OTHER = "other"
 
 
 class VerificationStatus(str, Enum):
-    """Output of Problem C (Factual Verification), per §5 / §35."""
+    """Claim-level factuality state.
+
+    ``UNKNOWN`` is retained for legacy Phase-5/6 datasets. New ControlPlane v3
+    verification should prefer ``UNDECIDABLE`` when evidence is insufficient,
+    ``UNSUPPORTED`` when sufficiently complete evidence fails to support a
+    checkable claim, and ``CONFLICTING`` when strong sources disagree.
+    """
 
     SUPPORTED = "supported"
     CONTRADICTED = "contradicted"
-    UNKNOWN = "unknown"
-    UNVERIFIED = "unverified"  # not yet processed (default state)
+    UNSUPPORTED = "unsupported"
+    UNDECIDABLE = "undecidable"
+    CONFLICTING = "conflicting"
+    UNKNOWN = "unknown"  # legacy unresolved state
+    UNVERIFIED = "unverified"
 
 
 class ResponseLabel(str, Enum):
-    """Response-level ground truth or final decision label.
-    Mirrors §37 Final System Decision (ACCEPT / CORRECT / ABSTAIN) for
-    predictions, and a binary-ish ground truth for dataset labels."""
-
     SUPPORTED = "supported"
     HALLUCINATED = "hallucinated"
     MIXED = "mixed"
@@ -65,57 +49,54 @@ class ResponseLabel(str, Enum):
 
 
 class VerificationRoute(str, Enum):
-    """Which tier of the adaptive router a response was sent through.
-    Per §19 Adaptive Routing / §64 Final Target Architecture."""
-
     FAST_ACCEPT = "fast_accept"
     LIGHTWEIGHT = "lightweight"
     AGENTIC = "agentic"
-    NOT_ROUTED = "not_routed"  # ground-truth-only record, no pipeline run yet
+    NOT_ROUTED = "not_routed"
 
 
 class RiskModelVersion(str, Enum):
-    V1 = "v1"  # provider-independent (text/query/embedding/entity/number/date)
-    V2 = "v2"  # + logit-aware features
-    V3 = "v3"  # + hidden-state probe
+    V1 = "v1"
+    V2 = "v2"
+    V3 = "v3"
     NONE = "none"
 
 
-# ---------------------------------------------------------------------------
-# Sub-models
-# ---------------------------------------------------------------------------
-
-
 class HallucinationSpan(BaseModel):
-    """Raw ground-truth span annotation, preserved as-is from source
-    datasets that provide span-level labels (e.g. RAGTruth). Kept
-    separate from `Claim` because claim extraction (Phase 5/6) is a
-    pipeline component, not a dataset property -- this is ground truth,
-    not a prediction."""
-
     start: int
     end: int
     text: str
-    label_type: str  # dataset-specific raw label, e.g. "Evident Conflict"
+    label_type: str
     normalized_type: Optional[VerificationStatus] = None
     meta: Optional[str] = None
 
 
 class Claim(BaseModel):
-    """A single atomic factual claim extracted from a response, and the
-    result of verifying it. Per schema discussion in chat: every claim
-    carries its own latency/cost so per-claim-type ablations don't
-    require re-running the pipeline."""
+    """One independently verifiable factual claim.
+
+    ``text`` remains the original extracted unit for compatibility and span
+    evaluation. ``decontextualized_text`` is the self-contained form used for
+    retrieval/checking. Subject/predicate/object fields are lightweight
+    RefChecker-style structure: they are useful for retrieval, diagnostics and
+    evaluation but are not assumed to be a perfect semantic parse.
+    """
 
     id: str
     text: str
     type: ClaimType = ClaimType.OTHER
 
+    original_text: Optional[str] = None
+    decontextualized_text: Optional[str] = None
+    subject: Optional[str] = None
+    predicate: Optional[str] = None
+    object: Optional[str] = None
+    qualifiers: dict[str, str] = Field(default_factory=dict)
+    extraction_method: str = "heuristic"
+    parent_span: Optional[tuple[int, int]] = None
+
     entities: list[str] = Field(default_factory=list)
     numbers: list[str] = Field(default_factory=list)
     dates: list[str] = Field(default_factory=list)
-
-    # character offsets into the parent response, if known
     span: Optional[tuple[int, int]] = None
 
     risk_score: Optional[float] = None
@@ -123,29 +104,31 @@ class Claim(BaseModel):
     confidence: Optional[float] = None
 
     evidence: list[str] = Field(default_factory=list)
-    verifier_used: Optional[str] = None  # e.g. "deterministic_numeric", "nli:model_x", "agent"
+    evidence_ids: list[str] = Field(default_factory=list)
+    verifier_used: Optional[str] = None
     verification_scores: dict[str, float] = Field(default_factory=dict)
+    verification_metadata: dict[str, Any] = Field(default_factory=dict)
 
     latency_ms: Optional[float] = None
     cost: Optional[float] = None
 
+    @property
+    def verification_text(self) -> str:
+        return (self.decontextualized_text or self.text).strip()
+
 
 class GenerationMetadata(BaseModel):
-    """Everything about how the response was generated."""
-
     model: Optional[str] = None
     temperature: Optional[float] = None
-    task_type: Optional[str] = None  # e.g. "Summary", "QA", "Data2txt"
-    quality: Optional[str] = None  # dataset-specific QC flag, e.g. "good"
+    task_type: Optional[str] = None
+    quality: Optional[str] = None
     logits_available: bool = False
 
 
 class RiskMetadata(BaseModel):
-    """Output of Problem A (Risk Estimation). Per §9: r is a routing
-    signal, NOT a factual-correctness judgment -- keep it structurally
-    separate from VerificationMetadata."""
+    """Routing signal only; never a factual truth judgment."""
 
-    risk_score: Optional[float] = None  # raw, uncalibrated
+    risk_score: Optional[float] = None
     calibrated_risk_score: Optional[float] = None
     model_version: RiskModelVersion = RiskModelVersion.NONE
     feature_values: dict[str, float] = Field(default_factory=dict)
@@ -153,8 +136,6 @@ class RiskMetadata(BaseModel):
 
 
 class VerificationMetadata(BaseModel):
-    """Output of the routing + verification stages."""
-
     route: VerificationRoute = VerificationRoute.NOT_ROUTED
     claims_checked: int = 0
     llm_call_count: int = 0
@@ -165,11 +146,6 @@ class VerificationMetadata(BaseModel):
 
 
 class TimingMetadata(BaseModel):
-    """Wall-clock latency breakdown. Per the correction in chat: this
-    must be REAL wall-clock time around complete operations (network,
-    serialization, everything included), not framework-reported
-    inference time, or latency comparisons become meaningless."""
-
     generation_latency_ms: Optional[float] = None
     risk_latency_ms: Optional[float] = None
     verification_latency_ms: Optional[float] = None
@@ -177,20 +153,11 @@ class TimingMetadata(BaseModel):
     stage_breakdown_ms: dict[str, float] = Field(default_factory=dict)
 
 
-# ---------------------------------------------------------------------------
-# Top-level record
-# ---------------------------------------------------------------------------
-
-
 class ResponseRecord(BaseModel):
-    """The common unit of data for the whole project. One instance per
-    (query, response) pair, whether it came from a benchmark dataset or
-    was produced live by the pipeline."""
-
     id: str
-    dataset: str  # e.g. "ragtruth", "halueval"
-    source_id: Optional[str] = None  # dataset-internal id for the source document, if any
-    split: Optional[str] = None  # "train" / "test" / "dev"
+    dataset: str
+    source_id: Optional[str] = None
+    split: Optional[str] = None
 
     query: str
     context: Optional[str] = None
