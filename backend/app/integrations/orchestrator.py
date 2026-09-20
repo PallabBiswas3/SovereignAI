@@ -44,11 +44,7 @@ class IndustrialIntegrationOrchestrator:
         }
         results = await asyncio.gather(*(client.health() for client in clients.values()), return_exceptions=True)
         return {
-            name: (
-                {"status": "unavailable", "detail": str(result)}
-                if isinstance(result, Exception)
-                else result
-            )
+            name: ({"status": "unavailable", "detail": str(result)} if isinstance(result, Exception) else result)
             for name, result in zip(clients, results)
         }
 
@@ -101,9 +97,6 @@ class IndustrialIntegrationOrchestrator:
             diagnostic_payload = request.diagnostic.model_dump(mode="python")
             context = dict(diagnostic_payload.get("run_context") or {})
             context_metadata = dict(context.get("metadata") or {})
-            # Older benchmark payloads used a top-level synthetic flag, while the
-            # diagnostic tool contract permits extensible caller metadata only
-            # under run_context.metadata. Normalize that compatibility field here.
             if "synthetic" in context:
                 context_metadata["synthetic"] = bool(context.pop("synthetic"))
             context.update({"run_id": run_id, "source": "sovereign-ai"})
@@ -132,17 +125,13 @@ class IndustrialIntegrationOrchestrator:
                 if isinstance(failure, IntegrationServiceError):
                     raise failure
                 raise IntegrationServiceError(name, f"{name} integration failed: {failure}") from failure
-
             failed_services = [name for name, _ in failures]
             detail = "; ".join(f"{name}: {failure}" for name, failure in failures)
             raise IntegrationServiceError(
                 "multiple",
                 detail,
                 failed_services=failed_services,
-                retryable=any(
-                    isinstance(failure, IntegrationServiceError) and failure.retryable
-                    for _, failure in failures
-                ),
+                retryable=any(isinstance(failure, IntegrationServiceError) and failure.retryable for _, failure in failures),
             )
 
         candidate = request.candidate_response or self._compose_candidate(
@@ -155,6 +144,7 @@ class IndustrialIntegrationOrchestrator:
             ensure_ascii=True,
             default=str,
         )[:50000]
+        grounding_evidence = self._graph_grounding_evidence(evidence["graph-rag"])
         release_started = monotonic()
         report = await self.controlplane.check({
             "id": f"{run_id}-release",
@@ -162,9 +152,14 @@ class IndustrialIntegrationOrchestrator:
             "prompt": request.query,
             "response": candidate,
             "context": context,
+            "grounding_evidence": grounding_evidence,
             "consequential": request.consequential,
             "industry": "industrial",
-            "metadata": metadata,
+            "metadata": {
+                **metadata,
+                "grounding_evidence_count": len(grounding_evidence),
+                "grounding_evidence_source": "graph-rag" if grounding_evidence else None,
+            },
         })
         release_ms = (monotonic() - release_started) * 1000
         action = self._action(report)
@@ -186,6 +181,57 @@ class IndustrialIntegrationOrchestrator:
                 "total": round((monotonic() - total_started) * 1000, 3),
             },
         )
+
+    @staticmethod
+    def _graph_grounding_evidence(graph: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Translate the existing GraphRAG response at the service boundary.
+
+        Only provenance actually supplied by GraphRAG is copied. Missing IDs,
+        page numbers, revisions or scores are deliberately omitted rather than
+        invented. The original opaque context is still sent as a compatibility
+        fallback while ControlPlane v3 consumes this typed evidence directly.
+        """
+
+        if not isinstance(graph, dict):
+            return []
+        output: list[dict[str, Any]] = []
+        candidates: list[tuple[str, dict[str, Any]]] = []
+        candidates.extend(("claim", item) for item in (graph.get("claims") or []) if isinstance(item, dict))
+        candidates.extend(("chunk", item) for item in (graph.get("chunks") or []) if isinstance(item, dict))
+
+        for kind, item in candidates:
+            text = item.get("claim_text") if kind == "claim" else item.get("content")
+            text = text or item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            mapped: dict[str, Any] = {"text": text.strip(), "metadata": {"graph_item_type": kind}}
+
+            evidence_id = item.get("evidence_id") or item.get("claim_id") or item.get("chunk_id") or item.get("id")
+            if evidence_id is not None:
+                mapped["evidence_id"] = str(evidence_id)
+            document_id = item.get("document_id") or item.get("doc_id")
+            if document_id is not None:
+                mapped["document_id"] = str(document_id)
+            chunk_id = item.get("chunk_id")
+            if chunk_id is not None:
+                mapped["chunk_id"] = str(chunk_id)
+            source_name = item.get("source_name") or item.get("source") or item.get("title")
+            if source_name is not None:
+                mapped["source_name"] = str(source_name)
+            if item.get("page") is not None:
+                mapped["page"] = item.get("page")
+            if item.get("revision") is not None:
+                mapped["revision"] = str(item.get("revision"))
+            score = item.get("retrieval_score") if item.get("retrieval_score") is not None else item.get("score")
+            if isinstance(score, (int, float)) and score >= 0:
+                mapped["retrieval_score"] = float(score)
+            scope = item.get("authorization_scope") or item.get("access_scope")
+            if scope is not None:
+                mapped["authorization_scope"] = str(scope)
+            if item.get("evidence_set_complete") is not None:
+                mapped["metadata"]["evidence_set_complete"] = bool(item.get("evidence_set_complete"))
+            output.append(mapped)
+        return output
 
     @staticmethod
     def _action(report: dict[str, Any]) -> str:
