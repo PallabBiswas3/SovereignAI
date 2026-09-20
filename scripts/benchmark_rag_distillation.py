@@ -145,11 +145,21 @@ def event_type(name: str | None, envelope: dict[str, Any] | None) -> str | None:
     return None
 
 
+def _fmt_metric(value: Any, suffix: str = "") -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.3f}{suffix}"
+    return f"{value}{suffix}"
+
+
 def run_once(
     client: httpx.Client,
     *,
     prompt: str,
     iteration: int,
+    total_runs: int,
+    label: str,
     timeout_seconds: float,
 ) -> RagMeasurement:
     host_before = host_snapshot()
@@ -158,6 +168,15 @@ def run_once(
     runtime: dict[str, Any] = {}
     terminal_type: str | None = None
     terminal_payload: dict[str, Any] = {}
+
+    print(f"\n[{label}] Run {iteration}/{total_runs} started...", flush=True)
+    if host_before.memory_percent is not None:
+        print(
+            f"[{label}] Host before: RAM {host_before.memory_percent:.1f}% "
+            f"({host_before.memory_available_mb:.0f} MB available)",
+            flush=True,
+        )
+
     try:
         start = client.post(
             "/api/tasks/start",
@@ -170,6 +189,9 @@ def run_once(
         )
         start.raise_for_status()
         task_id = str(start.json()["task_id"])
+        print(f"[{label}] Task accepted: {task_id}", flush=True)
+        print(f"[{label}] Waiting for retrieval/prefill and first model token...", flush=True)
+
         with client.stream(
             "GET",
             f"/api/tasks/{task_id}/events",
@@ -182,13 +204,26 @@ def run_once(
                 payload = event_payload(envelope)
                 if kind == "model_token" and first_token_at is None:
                     first_token_at = time.perf_counter()
+                    print(
+                        f"[{label}] First token received after "
+                        f"{first_token_at - started:.2f} s; generation is in progress...",
+                        flush=True,
+                    )
                 elif kind == "generation_completed":
                     metrics = payload.get("runtime_metrics")
                     if isinstance(metrics, dict):
                         runtime = metrics
+                        print(
+                            f"[{label}] Model generation completed: "
+                            f"prompt={_fmt_metric(runtime.get('prompt_token_count'))} tokens, "
+                            f"output={_fmt_metric(runtime.get('token_count'))} tokens, "
+                            f"done_reason={_fmt_metric(runtime.get('done_reason'))}",
+                            flush=True,
+                        )
                 if kind in TERMINAL_EVENTS:
                     terminal_type = kind
                     terminal_payload = payload
+                    print(f"[{label}] Terminal event: {kind}", flush=True)
                     break
 
         elapsed = time.perf_counter() - started
@@ -209,7 +244,7 @@ def run_once(
             )
         )
         success = terminal_type == "task_completed"
-        return RagMeasurement(
+        measurement = RagMeasurement(
             iteration=iteration,
             success=success,
             total_seconds=round(elapsed, 6),
@@ -230,8 +265,22 @@ def run_once(
             host_after=host_snapshot(),
             error=None if success else json.dumps(terminal_payload, default=str)[:1000],
         )
+        print(
+            f"[{label}] Run {iteration}/{total_runs} {'completed' if success else 'failed'} | "
+            f"TTFT={_fmt_metric(measurement.ttft_seconds, ' s')} | "
+            f"total={_fmt_metric(measurement.total_seconds, ' s')} | "
+            f"prompt={_fmt_metric(measurement.prompt_token_count)} | "
+            f"evidence~={measurement.selected_evidence_tokens_estimate} | "
+            f"output={_fmt_metric(measurement.output_token_count)} | "
+            f"tok/s={_fmt_metric(measurement.tokens_per_second)} | "
+            f"truncated={measurement.output_truncated} | "
+            f"sources={measurement.selected_source_count} | "
+            f"governance={measurement.governance_decision or 'n/a'}",
+            flush=True,
+        )
+        return measurement
     except (httpx.HTTPError, KeyError, ValueError) as exc:
-        return RagMeasurement(
+        measurement = RagMeasurement(
             iteration=iteration,
             success=False,
             total_seconds=round(time.perf_counter() - started, 6),
@@ -252,6 +301,12 @@ def run_once(
             host_after=host_snapshot(),
             error=str(exc),
         )
+        print(
+            f"[{label}] Run {iteration}/{total_runs} failed after "
+            f"{measurement.total_seconds:.2f} s: {exc}",
+            flush=True,
+        )
+        return measurement
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -325,18 +380,26 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     client = httpx.Client(base_url=args.base_url.rstrip("/"), timeout=httpx.Timeout(args.timeout))
+    rows: list[RagMeasurement] = []
     try:
+        print(f"[{args.label}] Checking SovereignAI health...", flush=True)
         health = client.get("/health")
         health.raise_for_status()
-        rows = [
-            run_once(
-                client,
-                prompt=args.prompt,
-                iteration=iteration,
-                timeout_seconds=args.timeout,
+        print(
+            f"[{args.label}] Health OK. Starting {args.runs} Authorized/RAG benchmark run(s).",
+            flush=True,
+        )
+        for iteration in range(1, args.runs + 1):
+            rows.append(
+                run_once(
+                    client,
+                    prompt=args.prompt,
+                    iteration=iteration,
+                    total_runs=args.runs,
+                    label=args.label,
+                    timeout_seconds=args.timeout,
+                )
             )
-            for iteration in range(1, args.runs + 1)
-        ]
     finally:
         client.close()
 
@@ -354,7 +417,8 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     path = args.output_dir / f"rag_distillation_{args.label}.json"
     path.write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(json.dumps({"summary": document["summary"], "report": str(path)}, indent=2))
+    print(f"\n[{args.label}] All runs finished. Summary:", flush=True)
+    print(json.dumps({"summary": document["summary"], "report": str(path)}, indent=2), flush=True)
     return 0 if all(row.success for row in rows) else 2
 
 
