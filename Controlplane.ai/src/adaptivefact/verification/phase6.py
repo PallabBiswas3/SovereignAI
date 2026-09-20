@@ -81,7 +81,6 @@ class Phase6Pipeline:
                 query = claim.verification_text
                 if structured_items:
                     evidence_texts, evidence_scores = self._retrieve_structured(structured_items, query)
-                    evidence = []
                 else:
                     retrieved = evidence_index.retrieve(query, top_k=self.retrieval_config.top_k) if evidence_index is not None else []
                     seed = self._seed_evidence(claim)
@@ -117,6 +116,9 @@ class Phase6Pipeline:
             local_scores = scores[item.pair_start:item.pair_end]
             status, confidence, best_evidence, method, verification_scores = self._decide(local_scores, item.evidence_texts, item.evidence_scores)
 
+            # Preserve a deterministic exact support only when semantic checking is
+            # genuinely inconclusive. Explicit contradiction and CONFLICTING states
+            # must always override the earlier Phase-5 support decision.
             if prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN:
                 claim.status = prior_status
                 claim.confidence = prior_confidence
@@ -203,7 +205,7 @@ def decide_nli_evidence(scores: list[NLIScores], evidence_scores: list[float], c
     contradiction_corroborated = len(corroborating) >= config.min_contradiction_evidence_count or any(evidence_scores[index] >= 0.999 for index in corroborating)
 
     if contra_index is not None and contra_index != entail_index and best_entailment >= config.evidence_conflict_threshold and best_contradiction >= config.evidence_conflict_threshold:
-        return VerificationStatus.UNKNOWN, float(max(best_entailment, best_contradiction)), contra_index, "nli_conflicting_evidence"
+        return VerificationStatus.CONFLICTING, float(max(best_entailment, best_contradiction)), contra_index, "nli_conflicting_evidence"
     if contra_index is not None and contradiction_corroborated and best_contradiction >= config.contradiction_threshold and best_contradiction - best_entailment >= config.decision_margin:
         return VerificationStatus.CONTRADICTED, float(best_contradiction), contra_index, "nli_contradiction"
     if best_entailment >= config.entailment_threshold and best_entailment - best_contradiction >= config.decision_margin:
