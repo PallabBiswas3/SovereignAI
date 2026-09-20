@@ -99,10 +99,24 @@ class AdaptiveFactVerificationService:
         if depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP}:
             if self.phase6 is None:
                 raise RuntimeError(f"{depth.value} verification requires a configured NLI scorer")
-            unresolved = [claim for claim in record.atomic_claims if claim.status == VerificationStatus.UNKNOWN]
+
+            # Structured multi-source evidence must be allowed to challenge an
+            # early deterministic support decision. Legacy free-text context keeps
+            # v2 behavior and only sends unresolved claims to NLI.
+            recheck_supported = bool(interaction.grounding_evidence)
+            eligible = [
+                claim
+                for claim in record.atomic_claims
+                if claim.status == VerificationStatus.UNKNOWN
+                or (recheck_supported and claim.status == VerificationStatus.SUPPORTED)
+            ]
             limit = self.config.standard_nli_claim_limit if depth == VerificationDepth.STANDARD else self.config.deep_nli_claim_limit
-            selected = unresolved[: max(0, limit)]
-            _, phase6_runtime = self.phase6.process_records([record], claim_ids={claim.id for claim in selected})
+            selected = eligible[: max(0, limit)]
+            _, phase6_runtime = self.phase6.process_records(
+                [record],
+                claim_ids={claim.id for claim in selected},
+                recheck_supported=recheck_supported,
+            )
 
         if depth == VerificationDepth.DEEP:
             if self.agent is None:
@@ -157,6 +171,9 @@ class AdaptiveFactVerificationService:
                         "confidence": claim.confidence,
                         "verifier": claim.verifier_used,
                         "verification_scores": claim.verification_scores,
+                        # Backward-compatible alias used by factuality-v2
+                        # integration tests and downstream consumers.
+                        "nli_scores": claim.verification_scores,
                         "evidence": claim.evidence,
                         "evidence_ids": claim.evidence_ids,
                         "evidence_quality": assessments[claim.id].quality,
@@ -228,6 +245,17 @@ class AdaptiveFactVerificationService:
         claim.verifier_used = f"{method}:undecidable_v3"
         claim.verification_metadata.update({"evidence_quality": assessment.quality, "reason": assessment.reason})
 
+    @staticmethod
+    def _legacy_unknown_reason(claim, assessment: EvidenceAssessment) -> str:
+        method = claim.verifier_used or ""
+        if assessment.quality == "no_evidence":
+            return "no_evidence"
+        if "conflict_candidate" in method:
+            return "deterministic_conflict_candidate"
+        if "support:" in method:
+            return "insufficient_support"
+        return "verifier_uncertain"
+
     def _normalize_findings(self, record, response_status: ResponseLabel, *, interaction: Interaction, depth: VerificationDepth, assessments: dict[str, EvidenceAssessment]) -> list[Finding]:
         findings: list[Finding] = []
         for claim in record.atomic_claims:
@@ -243,6 +271,7 @@ class AdaptiveFactVerificationService:
                 "response_status": response_status.value,
                 "verification_depth": depth.value,
                 "verification_scores": claim.verification_scores,
+                "nli_scores": claim.verification_scores,
                 "evidence_quality": assessment.quality,
                 "evidence_complete_enough": assessment.complete_enough_for_unsupported,
                 "evidence_reason": assessment.reason,
@@ -255,6 +284,7 @@ class AdaptiveFactVerificationService:
             elif claim.status == VerificationStatus.CONFLICTING:
                 findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_conflicting", severity=Severity.HIGH if interaction.consequential else Severity.MEDIUM, confidence=float(claim.confidence or 0.5), status=FindingStatus.CONFLICTING, message="Strong evidence sources materially disagree about this factual claim.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
             else:
+                metadata["unknown_reason"] = self._legacy_unknown_reason(claim, assessment)
                 findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_undecidable", severity=Severity.HIGH if interaction.consequential else Severity.LOW, confidence=float(claim.confidence or 0.5), status=FindingStatus.UNDECIDABLE, message="Available evidence is insufficient to determine whether this factual claim is supported.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
         return findings
 
