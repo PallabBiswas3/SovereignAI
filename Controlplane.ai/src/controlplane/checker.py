@@ -12,6 +12,7 @@ from controlplane.detectors import (
     HallucinationDetector,
     PrivacyDetector,
 )
+from controlplane.factuality import PreparedFactuality
 from controlplane.policy import PolicyEngine, PolicyProfile, PolicyRepository
 from controlplane.schema import (
     CheckReport,
@@ -27,7 +28,7 @@ from controlplane.verification import VerificationService
 
 
 class ControlPlane:
-    """Execute enabled safety checks in parallel and enforce a versioned policy."""
+    """Execute enabled safety checks and enforce a versioned policy."""
 
     def __init__(
         self,
@@ -61,25 +62,56 @@ class ControlPlane:
         }
 
         results: dict[str, DetectorResult] = {}
-        if enabled:
-            with ThreadPoolExecutor(max_workers=len(enabled), thread_name_prefix="controlplane") as executor:
+        prepared_factuality: PreparedFactuality | None = None
+
+        # Prepare factuality once so the lightweight detector and deeper verifier
+        # operate on the exact same claims/evidence state.
+        hallucination_detector = enabled.get("hallucination")
+        if isinstance(hallucination_detector, HallucinationDetector) and interaction.response.strip():
+            try:
+                settings = profile.checks["hallucination"].settings
+                prepared_factuality = hallucination_detector.prepare(interaction, settings)
+                results["hallucination"] = hallucination_detector.detect_prepared(
+                    interaction,
+                    settings,
+                    prepared_factuality,
+                )
+            except Exception as exc:
+                results["hallucination"] = DetectorResult(
+                    detector="hallucination",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+        parallel_enabled = {
+            name: detector
+            for name, detector in enabled.items()
+            if name != "hallucination" or name not in results
+        }
+        if parallel_enabled:
+            with ThreadPoolExecutor(max_workers=len(parallel_enabled), thread_name_prefix="controlplane") as executor:
                 futures = {
                     executor.submit(detector.run, interaction, profile.checks[name].settings): name
-                    for name, detector in enabled.items()
+                    for name, detector in parallel_enabled.items()
                 }
                 for future in as_completed(futures):
                     name = futures[future]
                     try:
                         results[name] = future.result()
-                    except Exception as exc:  # defensive boundary around executor failures
+                    except Exception as exc:
                         results[name] = DetectorResult(detector=name, error=f"{type(exc).__name__}: {exc}")
 
         ordered_results = [results[name] for name in enabled]
         if self.verification_service is not None and interaction.response.strip():
             depth = self._hallucination_depth(profile)
             try:
-                ordered_results.append(self.verification_service.verify(interaction, depth))
-            except Exception as exc:  # fail closed through existing detector-failure policy rules
+                ordered_results.append(
+                    self.verification_service.verify(
+                        interaction,
+                        depth,
+                        prepared=prepared_factuality,
+                    )
+                )
+            except Exception as exc:
                 ordered_results.append(
                     DetectorResult(
                         detector="adaptivefact",
@@ -87,6 +119,7 @@ class ControlPlane:
                         metadata={"verification_depth": depth.value},
                     )
                 )
+
         findings = [finding for result in ordered_results for finding in result.findings]
         for result in ordered_results:
             if result.error:
