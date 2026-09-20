@@ -1,7 +1,7 @@
 # EXP-011 — ControlPlane factuality v2 hardening
 
 **Date:** 2026-09-21  
-**Status:** Implemented-unverified at system-evaluation level; focused regression suite passed locally  
+**Status:** Measured; partial success, calibration work still required  
 **Area:** ControlPlane / hallucination detection / factuality verification  
 **Branch:** `controlplane-factuality-v2`  
 **PR:** #7
@@ -121,7 +121,7 @@ Command:
     tests\test_controlplane.py
 ```
 
-Result after updating the legacy entity test to opt into the historical heuristic explicitly:
+Result:
 
 ```text
 26 passed
@@ -129,26 +129,9 @@ Result after updating the legacy entity test to opt into the historical heuristi
 
 The first run produced one expected legacy-test mismatch because that test assumed `unsupported_entity_claim` was always emitted. The production behavior was intentionally changed; the legacy test was corrected to opt into the heuristic so it continues testing entity parsing rather than the old default policy behavior.
 
-## Current interpretation
+## Integrated 1,000-case validation result
 
-The code-level compatibility/regression gate is passed.
-
-This does **not** yet prove that factuality v2 improves safety/calibration. The next gate is a before/after evaluation on the existing 1,000-case validation split.
-
-## Next experiment / measurement gate
-
-Run the same validation workload with separate output filenames so the previous baseline artifacts are preserved.
-
-### Lightweight factuality v2 validation
-
-```powershell
-Remove-Item Env:CONTROLPLANE_ADAPTIVE_VERIFICATION -ErrorAction SilentlyContinue
-..\.venv\Scripts\python.exe scripts\evaluate_controlplane.py `
-  --scenarios data\controlplane\generated\completed_pack_v1\controlplane_batch_generation\validation.jsonl `
-  --output results\controlplane\factuality_v2_validation_lightweight.json
-```
-
-### Integrated DeBERTa factuality v2 validation
+Command:
 
 ```powershell
 $env:CONTROLPLANE_ADAPTIVE_VERIFICATION='1'
@@ -158,45 +141,81 @@ $env:CONTROLPLANE_NLI_MODEL='cross-encoder/nli-deberta-v3-small'
   --output results\controlplane\factuality_v2_validation_integrated.json
 ```
 
-## Metrics to compare
-
-Primary safety/calibration metrics:
+Measured result:
 
 ```text
-unsafe-release rate
-over-intervention rate
-human-review rate
-action accuracy
-hallucination precision
-hallucination recall
-hallucination F1
-unknown-claim precision / recall
-unsupported-entity false positives
+n: 1000
+action accuracy: 65.60%
+unsafe-release rate: 0.671%
+over-intervention rate: 49.02%
+human-review rate: 26.10%
+hallucination precision: 46.86%
+hallucination recall: 100.00%
+hallucination F1: 63.82%
+claim_contradicted precision: 59.61%
+claim_contradicted recall: 98.37%
+claim_contradicted F1: 74.23%
+claim_unknown precision: 32.52%
+claim_unknown recall: 80.71%
+claim_unknown F1: 46.36%
+median latency: 103.7 ms
+p95 latency: 520.2 ms
+p99 latency: 838.2 ms
+mean latency: 147.0 ms
 ```
 
-Performance metrics:
+Comparison with the previous integrated validation baseline:
+
+| Metric | Previous | Factuality v2 | Interpretation |
+|---|---:|---:|---|
+| Action accuracy | 68.70% | 65.60% | regressed |
+| Unsafe-release rate | 0.67% | 0.67% | effectively unchanged |
+| Over-intervention | 49.02% | 49.02% | unchanged |
+| Human-review rate | 23.30% | 26.10% | regressed |
+| Hallucination F1 | 62.63% | 63.82% | modest improvement |
+| Median latency | 151.5 ms | 103.7 ms | improved ~31.6% |
+| p95 latency | 760.4 ms | 520.2 ms | improved ~31.6% |
+
+The entity-rule change did not materially reduce over-intervention because the dominant remaining source is `claim_unknown`, which produced 469 false-positive scenarios on this validation run.
+
+Contradiction handling is substantially stronger than unknown handling: `claim_contradicted` reached ~74.2% F1 with 98.4% recall, while `claim_unknown` remained noisy at ~46.4% F1.
+
+## Interpretation
+
+The experiment is a **partial success**:
+
+- shared Phase-5 reuse delivers a clear latency improvement;
+- unsafe-release behavior remains essentially unchanged;
+- hallucination F1 improves modestly;
+- over-intervention does not improve;
+- action accuracy and human-review burden regress;
+- the next bottleneck is UNKNOWN calibration, not contradiction detection.
+
+Therefore PR #7 is not yet ready to be accepted or merged solely on this result.
+
+## New instrumentation
+
+The evaluator now records `unknown_reason_metrics` so the next rerun can attribute `claim_unknown` false positives to reasons such as:
 
 ```text
-median latency
-p95 latency
-p99 latency
+no_evidence
+conflicting_evidence
+verifier_uncertain
+insufficient_support
 ```
 
-## Acceptance criteria
+This is required before tuning thresholds or policy because aggregate `claim_unknown` counts are not specific enough to identify the correct fix.
 
-The change should not be accepted merely because tests pass.
+## Next experiment
 
-Preferred outcome:
+1. Pull the updated evaluator.
+2. Rerun the same 1,000-case integrated validation set.
+3. Inspect `unknown_reason_metrics`.
+4. Change only the dominant noisy reason(s), preserving strict handling for consequential conflicting evidence and genuine no-evidence cases.
+5. Rerun validation before touching the frozen 2,000-case test.
 
-1. unsafe release remains near the current integrated baseline and does not materially regress;
-2. over-intervention decreases from the previous ~49% validation result;
-3. hallucination precision improves without collapsing recall;
-4. human-review burden decreases or remains justified by real unresolved evidence;
-5. shared Phase-5 reuse does not break STANDARD/DEEP verification;
-6. latency should be neutral or better after removing duplicated Phase-5 work.
-
-If the validation comparison is favorable, run the frozen 2,000-case test once and record that as the final pre-merge evaluation. Do not repeatedly tune against the frozen test split.
+Do **not** tune directly against the frozen test split.
 
 ## Decision
 
-**Pending validation-set measurement.**
+**Keep the architectural cleanup and shared Phase-5 reuse. Do not yet accept the current UNKNOWN-policy behavior. Continue calibration on the validation set.**
