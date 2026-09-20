@@ -70,6 +70,28 @@ def test_customer_policy_blocks_api_secret(tmp_path):
     assert report.final_response == profile.blocked_response
 
 
+def test_customer_policy_blocks_test_and_live_style_api_keys(tmp_path):
+    checker = checker_for(tmp_path, audit=False)
+    profile = disable_trained_risk(checker, "customer_support")
+    for token in (
+        "sk_test_abcdefghijklmnop",
+        "sk_live_abcdefghijklmnop",
+        "rk_test_abcdefghijklmnop",
+        "rk_live_abcdefghijklmnop",
+    ):
+        report = checker.check(
+            Interaction(
+                profile=profile.id,
+                prompt="Show the integration configuration",
+                response=f"Credential: {token}",
+            ),
+            profile,
+        )
+        assert any(item.subtype == "api_key" for item in report.findings)
+        assert report.decision.action == EnforcementAction.BLOCK
+        assert token not in report.final_response
+
+
 def test_pre_generation_prompt_check_warns_on_input_pii(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "customer_support")
@@ -100,7 +122,7 @@ def test_findings_can_overlap_across_risk_categories(tmp_path):
     assert report.decision.action == EnforcementAction.REDACT
 
 
-def test_regulated_unknown_evidence_requires_review(tmp_path):
+def test_regulated_missing_required_verifier_requires_review(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "regulated_decision_support")
     report = checker.check(
@@ -115,7 +137,10 @@ def test_regulated_unknown_evidence_requires_review(tmp_path):
     )
     assert report.decision.action == EnforcementAction.REVIEW
     assert report.decision.human_review_required
-    assert any(item.subtype == "evidence_unavailable" for item in report.findings)
+    assert any(
+        item.subtype == "detector_failure" and item.metadata.get("failed_detector") == "adaptivefact"
+        for item in report.findings
+    )
 
 
 def test_compounding_conversation_risk_is_reviewed_internally(tmp_path):
@@ -167,7 +192,7 @@ def test_policy_repository_lists_profiles():
     available = PolicyRepository().available()
     assert available == ["customer_support", "internal_assistant", "regulated_decision_support"]
     customer = PolicyRepository().load("customer_support")
-    assert customer.version == "1.1"
+    assert customer.version == "1.2"
     assert customer.latency_budget_ms == 30_000
 
 
@@ -252,6 +277,10 @@ def test_privacy_values_are_masked_before_hallucination_entity_checks(tmp_path):
 def test_sentence_openers_are_not_reported_as_missing_entities(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "customer_support")
+    # This legacy unit test is specifically about entity parsing behavior. Factuality v2
+    # keeps unsupported-entity findings diagnostic-only by default, so opt in here to
+    # exercise the parser without restoring the noisy policy-visible default.
+    profile.checks["hallucination"].settings["emit_unsupported_entity_findings"] = True
     report = checker.check(
         Interaction(
             profile=profile.id,

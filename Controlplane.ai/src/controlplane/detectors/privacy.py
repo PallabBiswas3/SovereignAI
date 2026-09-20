@@ -42,7 +42,12 @@ _PATTERNS = [
     PrivacyPattern(
         "api_key",
         re.compile(
-            r"\b(?:sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16}|(?:api[_ -]?key|secret)\s*[:=]\s*['\"]?[A-Za-z0-9_./+-]{12,})",
+            r"\b(?:"
+            r"sk-[A-Za-z0-9_-]{16,}|"
+            r"(?:sk|rk)_(?:test|live)_[A-Za-z0-9_-]{8,}|"
+            r"AKIA[0-9A-Z]{16}|"
+            r"(?:api[_ -]?key|secret)\s*[:=]\s*['\"]?[A-Za-z0-9_./+-]{12,}"
+            r")",
             re.I,
         ),
         Severity.CRITICAL,

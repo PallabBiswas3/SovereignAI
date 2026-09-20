@@ -1,5 +1,5 @@
 id: regulated_decision_support
-version: "1.0"
+version: "1.1"
 name: Regulated Decision Support
 description: Safety-first policy for consequential workflows requiring human accountability.
 geography: global
@@ -25,6 +25,10 @@ checks:
       risk_model: models/phase2/selected_model.joblib
       risk_manifest: models/phase2/manifest.json
       risk_threshold: 0.55
+      routing_standard_threshold: 0.25
+      routing_deep_threshold: 0.60
+      emit_risk_finding: false
+      emit_unsupported_entity_findings: false
   conversation:
     enabled: true
     depth: deep
@@ -56,18 +60,25 @@ rules:
       category: hallucination
       status: contradicted
     action: human_review
-  - id: regulated-factuality-review
-    description: Material factuality risk in consequential output requires review.
+  - id: regulated-consequential-unsupported-review
+    description: A consequential claim unsupported by sufficiently complete evidence requires review.
     when:
       category: hallucination
-      severity_at_least: medium
+      subtype: claim_unsupported
       consequential_only: true
     action: human_review
-  - id: regulated-evidence-gap-review
-    description: Missing evidence in a consequential decision cannot be treated as correctness.
+  - id: regulated-consequential-conflict-review
+    description: Consequential claims with materially conflicting evidence require review.
     when:
       category: hallucination
-      status: unknown
+      subtype: claim_conflicting
+      consequential_only: true
+    action: human_review
+  - id: regulated-consequential-undecidable-review
+    description: Consequential claims that cannot be decided from available evidence require review.
+    when:
+      category: hallucination
+      subtype: claim_undecidable
       consequential_only: true
     action: human_review
   - id: regulated-conversation-review

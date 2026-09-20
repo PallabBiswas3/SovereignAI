@@ -1,12 +1,9 @@
 id: customer_support
-version: "1.1"
+version: "1.2"
 name: Customer Support Assistant
-description: Customer-facing policy with strict output privacy controls and CPU-friendly verification latency.
+description: Customer-facing policy with strict output privacy controls and evidence-aware factuality verification.
 geography: global
 industry: general
-# Standard DeBERTa verification can take around 10 seconds on CPU. The budget
-# is observational until completion; consequential requests escalate only when
-# this full 30-second allowance is exceeded.
 latency_budget_ms: 30000
 default_action: allow
 
@@ -24,11 +21,14 @@ checks:
     enabled: true
     depth: standard
     settings:
-      # Enable after retraining the persisted estimator in the active sklearn environment.
       use_trained_risk: true
       risk_model: models/phase2/selected_model.joblib
       risk_manifest: models/phase2/manifest.json
       risk_threshold: 0.72
+      routing_standard_threshold: 0.30
+      routing_deep_threshold: 0.70
+      emit_risk_finding: false
+      emit_unsupported_entity_findings: false
   conversation:
     enabled: true
     depth: quick
@@ -66,11 +66,23 @@ rules:
       category: hallucination
       status: contradicted
     action: block
-  - id: customer-hallucination-warn
-    description: Warn when grounded factuality checks identify material risk.
+  - id: customer-unsupported-warn
+    description: Warn when sufficiently complete evidence fails to support a factual claim.
     when:
       category: hallucination
-      severity_at_least: medium
+      subtype: claim_unsupported
+    action: allow_with_warning
+  - id: customer-conflicting-warn
+    description: Warn when available evidence sources materially disagree.
+    when:
+      category: hallucination
+      subtype: claim_conflicting
+    action: allow_with_warning
+  - id: customer-deterministic-conflict-warn
+    description: Warn if a deterministic value conflict remains visible at the policy boundary.
+    when:
+      category: hallucination
+      subtype: grounded_value_conflict
     action: allow_with_warning
   - id: customer-control-failure-warn
     description: A failed safety control cannot silently pass.

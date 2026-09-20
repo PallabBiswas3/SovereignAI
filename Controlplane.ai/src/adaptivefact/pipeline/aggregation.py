@@ -21,23 +21,38 @@ def aggregate_claims(
 ) -> AggregationResult:
     counts = Counter(claim.status.value for claim in claims)
     contradictions = [claim for claim in claims if claim.status == VerificationStatus.CONTRADICTED]
+    unsupported = [claim for claim in claims if claim.status == VerificationStatus.UNSUPPORTED]
+    conflicting = [claim for claim in claims if claim.status == VerificationStatus.CONFLICTING]
+    unresolved_statuses = {
+        VerificationStatus.UNKNOWN,
+        VerificationStatus.UNDECIDABLE,
+        VerificationStatus.UNVERIFIED,
+    }
     important_unknown = [
         claim for claim in claims
-        if claim.status == VerificationStatus.UNKNOWN
-        and (claim.risk_score or 0.0) >= important_unknown_threshold
+        if claim.status in unresolved_statuses and (claim.risk_score or 0.0) >= important_unknown_threshold
     ]
 
-    if contradictions:
+    if contradictions or unsupported:
         return AggregationResult(
             label=ResponseLabel.HALLUCINATED,
-            reason=f"{len(contradictions)} claim(s) are contradicted by evidence.",
+            reason=(
+                f"{len(contradictions)} contradicted and {len(unsupported)} unsupported claim(s) detected."
+            ),
+            status_counts=dict(counts),
+            important_unknown_claims=len(important_unknown),
+        )
+    if conflicting:
+        return AggregationResult(
+            label=ResponseLabel.UNKNOWN,
+            reason=f"{len(conflicting)} claim(s) have materially conflicting evidence.",
             status_counts=dict(counts),
             important_unknown_claims=len(important_unknown),
         )
     if important_unknown:
         return AggregationResult(
             label=ResponseLabel.UNKNOWN,
-            reason=f"{len(important_unknown)} important claim(s) remain unresolved.",
+            reason=f"{len(important_unknown)} important claim(s) remain undecidable.",
             status_counts=dict(counts),
             important_unknown_claims=len(important_unknown),
         )
@@ -51,7 +66,7 @@ def aggregate_claims(
     if claims:
         return AggregationResult(
             label=ResponseLabel.MIXED,
-            reason="No contradiction was confirmed, but low-priority claims remain unresolved.",
+            reason="No contradiction was confirmed, but some claims remain unresolved.",
             status_counts=dict(counts),
             important_unknown_claims=0,
         )

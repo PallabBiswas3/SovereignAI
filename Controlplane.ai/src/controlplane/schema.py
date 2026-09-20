@@ -33,8 +33,12 @@ SEVERITY_RANK = {
 class FindingStatus(str, Enum):
     DETECTED = "detected"
     SUSPECTED = "suspected"
+    SUPPORTED = "supported"
     CONTRADICTED = "contradicted"
-    UNKNOWN = "unknown"
+    UNSUPPORTED = "unsupported"
+    UNDECIDABLE = "undecidable"
+    CONFLICTING = "conflicting"
+    UNKNOWN = "unknown"  # legacy compatibility
 
 
 class EnforcementAction(str, Enum):
@@ -67,6 +71,21 @@ class ConversationTurn(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class GroundingEvidence(BaseModel):
+    """Structured evidence supplied to ControlPlane by GraphRAG/retrieval."""
+
+    evidence_id: str = Field(default_factory=lambda: f"evidence-{uuid4()}")
+    text: str
+    source_name: str | None = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    page: int | None = None
+    revision: str | None = None
+    retrieval_score: float | None = Field(default=None, ge=0.0)
+    authorization_scope: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class Interaction(BaseModel):
     """A provider-independent interaction submitted to ControlPlane.ai."""
 
@@ -75,6 +94,7 @@ class Interaction(BaseModel):
     prompt: str
     response: str
     context: str | None = None
+    grounding_evidence: list[GroundingEvidence] = Field(default_factory=list)
     conversation: list[ConversationTurn] = Field(default_factory=list)
     geography: str | None = None
     industry: str | None = None

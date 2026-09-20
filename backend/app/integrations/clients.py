@@ -20,12 +20,15 @@ class IntegrationServiceError(RuntimeError):
         status_code: int | None = None,
         attempts: int = 1,
         retryable: bool = False,
+        failed_services: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         super().__init__(message)
         self.service = service
         self.status_code = status_code
         self.attempts = attempts
         self.retryable = retryable
+        services = list(failed_services or [service])
+        self.failed_services = list(dict.fromkeys(str(item) for item in services if str(item)))
 
 
 def validate_internal_service_url(value: str) -> str:

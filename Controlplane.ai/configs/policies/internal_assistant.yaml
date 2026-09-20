@@ -1,7 +1,7 @@
 id: internal_assistant
-version: "1.0"
+version: "1.1"
 name: Internal Knowledge Assistant
-description: Balanced internal policy emphasizing source grounding and auditability.
+description: Balanced internal policy emphasizing source grounding, auditability, and selective escalation.
 geography: global
 industry: general
 latency_budget_ms: 1500
@@ -25,6 +25,10 @@ checks:
       risk_model: models/phase2/selected_model.joblib
       risk_manifest: models/phase2/manifest.json
       risk_threshold: 0.65
+      routing_standard_threshold: 0.30
+      routing_deep_threshold: 0.70
+      emit_risk_finding: false
+      emit_unsupported_entity_findings: false
   conversation:
     enabled: true
     depth: standard
@@ -70,12 +74,32 @@ rules:
       category: hallucination
       status: contradicted
     action: human_review
-  - id: internal-factuality-warning
-    description: Warn on material factuality risk.
+  - id: internal-unsupported-warning
+    description: Warn when a sufficiently complete evidence set does not support a factual claim.
     when:
       category: hallucination
-      severity_at_least: medium
+      subtype: claim_unsupported
     action: allow_with_warning
+  - id: internal-conflicting-warning
+    description: Warn on conflicting evidence in ordinary internal assistance.
+    when:
+      category: hallucination
+      subtype: claim_conflicting
+    action: allow_with_warning
+  - id: internal-consequential-conflict-review
+    description: Consequential ambiguity from conflicting evidence requires accountable review.
+    when:
+      category: hallucination
+      subtype: claim_conflicting
+      consequential_only: true
+    action: human_review
+  - id: internal-consequential-undecidable-review
+    description: Consequential factual claims that cannot be decided from available evidence require review.
+    when:
+      category: hallucination
+      subtype: claim_undecidable
+      consequential_only: true
+    action: human_review
   - id: internal-compounding-review
     description: Escalate risky claims propagated across conversation turns.
     when:
