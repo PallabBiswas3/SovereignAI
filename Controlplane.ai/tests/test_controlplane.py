@@ -100,7 +100,7 @@ def test_findings_can_overlap_across_risk_categories(tmp_path):
     assert report.decision.action == EnforcementAction.REDACT
 
 
-def test_regulated_unknown_evidence_requires_review(tmp_path):
+def test_regulated_missing_required_verifier_requires_review(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "regulated_decision_support")
     report = checker.check(
@@ -115,7 +115,10 @@ def test_regulated_unknown_evidence_requires_review(tmp_path):
     )
     assert report.decision.action == EnforcementAction.REVIEW
     assert report.decision.human_review_required
-    assert any(item.subtype == "evidence_unavailable" for item in report.findings)
+    assert any(
+        item.subtype == "detector_failure" and item.metadata.get("failed_detector") == "adaptivefact"
+        for item in report.findings
+    )
 
 
 def test_compounding_conversation_risk_is_reviewed_internally(tmp_path):
@@ -167,7 +170,7 @@ def test_policy_repository_lists_profiles():
     available = PolicyRepository().available()
     assert available == ["customer_support", "internal_assistant", "regulated_decision_support"]
     customer = PolicyRepository().load("customer_support")
-    assert customer.version == "1.1"
+    assert customer.version == "1.2"
     assert customer.latency_budget_ms == 30_000
 
 
