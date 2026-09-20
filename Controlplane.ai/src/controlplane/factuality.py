@@ -21,7 +21,13 @@ class PreparedFactuality:
 
 
 def render_grounding_context(interaction: Interaction) -> str | None:
-    """Render legacy free-text and typed grounding evidence into one context."""
+    """Render legacy free-text and typed grounding evidence into one context.
+
+    This remains for backward compatibility with Phase-5 and callers that only
+    understand a free-text context. Phase-6 v3 additionally consumes the typed
+    evidence objects preserved in ``ResponseRecord.metadata`` so separate
+    sources are not collapsed into one NLI premise.
+    """
 
     parts: list[str] = []
     if interaction.context and interaction.context.strip():
@@ -44,6 +50,32 @@ def render_grounding_context(interaction: Interaction) -> str | None:
     return "\n\n".join(part for part in parts if part).strip() or None
 
 
+def _structured_evidence_metadata(interaction: Interaction) -> list[dict]:
+    """Serialize only evidence fields that are already present on the input.
+
+    The semantic verifier needs source boundaries, not just flattened text. We
+    intentionally keep this as plain metadata to avoid coupling AdaptiveFact's
+    data schema to the ControlPlane API model.
+    """
+
+    return [
+        {
+            "evidence_id": item.evidence_id,
+            "text": item.text,
+            "source_name": item.source_name,
+            "document_id": item.document_id,
+            "chunk_id": item.chunk_id,
+            "page": item.page,
+            "revision": item.revision,
+            "retrieval_score": item.retrieval_score,
+            "authorization_scope": item.authorization_scope,
+            "metadata": dict(item.metadata),
+        }
+        for item in interaction.grounding_evidence
+        if item.text.strip()
+    ]
+
+
 def build_response_record(
     interaction: Interaction,
     *,
@@ -61,5 +93,6 @@ def build_response_record(
         metadata={
             "consequential": interaction.consequential,
             "grounding_evidence_count": len(interaction.grounding_evidence),
+            "structured_evidence": _structured_evidence_metadata(interaction),
         },
     )
