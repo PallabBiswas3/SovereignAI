@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from adaptivefact.data.schema import GenerationMetadata, ResponseRecord
-from controlplane.detectors.privacy import mask_privacy_values
 from controlplane.schema import Interaction
 
 
@@ -22,13 +21,7 @@ class PreparedFactuality:
 
 
 def render_grounding_context(interaction: Interaction) -> str | None:
-    """Render legacy free-text and typed grounding evidence into one context.
-
-    Typed evidence preserves provenance in the Interaction contract while the
-    existing AdaptiveFact retrievers continue to consume plain text. This keeps
-    the change backward compatible and gives GraphRAG a structured hand-off
-    path without forcing a retrieval rewrite in the same change.
-    """
+    """Render legacy free-text and typed grounding evidence into one context."""
 
     parts: list[str] = []
     if interaction.context and interaction.context.strip():
@@ -51,13 +44,19 @@ def render_grounding_context(interaction: Interaction) -> str | None:
     return "\n\n".join(part for part in parts if part).strip() or None
 
 
-def build_response_record(interaction: Interaction) -> ResponseRecord:
+def build_response_record(
+    interaction: Interaction,
+    *,
+    factuality_response: str | None = None,
+) -> ResponseRecord:
+    """Build the canonical factuality record without importing detector modules."""
+
     return ResponseRecord(
         id=interaction.id,
         dataset="controlplane_live",
         query=interaction.prompt,
         context=render_grounding_context(interaction),
-        generated_response=mask_privacy_values(interaction.response),
+        generated_response=(interaction.response if factuality_response is None else factuality_response),
         generation_metadata=GenerationMetadata(model=interaction.metadata.get("model")),
         metadata={
             "consequential": interaction.consequential,
