@@ -34,14 +34,26 @@ class PendingClaim:
 
 
 class Phase6Pipeline:
-    """Retrieve evidence for unresolved claims and verify them with NLI."""
+    """Retrieve evidence for claims and verify them with NLI.
+
+    By default this preserves Phase-5 supported claims for legacy behavior. When
+    structured grounding evidence is supplied, callers may set
+    ``recheck_supported=True`` so a deterministic exact match cannot hide a
+    contradictory second source.
+    """
 
     def __init__(self, nli: NLIScorer, *, retrieval_config: EvidenceRetrieverConfig | None = None, nli_config: Phase6NLIConfig | None = None) -> None:
         self.nli = nli
         self.retrieval_config = retrieval_config or EvidenceRetrieverConfig()
         self.nli_config = nli_config or Phase6NLIConfig()
 
-    def process_records(self, records: list[ResponseRecord], *, claim_ids: set[str] | None = None) -> tuple[list[ResponseRecord], dict]:
+    def process_records(
+        self,
+        records: list[ResponseRecord],
+        *,
+        claim_ids: set[str] | None = None,
+        recheck_supported: bool = False,
+    ) -> tuple[list[ResponseRecord], dict]:
         started = perf_counter()
         premises: list[str] = []
         hypotheses: list[str] = []
@@ -53,15 +65,18 @@ class Phase6Pipeline:
             index_started = perf_counter()
             evidence_index = ContextTfidfIndex(record.context, self.retrieval_config)
             index_ms = (perf_counter() - index_started) * 1000.0
-            unresolved_claims = [
+            eligible_statuses = {VerificationStatus.UNKNOWN}
+            if recheck_supported or not self.nli_config.preserve_phase5_supported:
+                eligible_statuses.add(VerificationStatus.SUPPORTED)
+            candidate_claims = [
                 (claim_index, claim)
                 for claim_index, claim in enumerate(record.atomic_claims)
-                if claim.status == VerificationStatus.UNKNOWN and (claim_ids is None or claim.id in claim_ids)
+                if claim.status in eligible_statuses and (claim_ids is None or claim.id in claim_ids)
             ]
-            if unresolved_claims:
+            if candidate_claims:
                 retrieval_latencies.append(index_ms)
 
-            for claim_index, claim in unresolved_claims:
+            for claim_index, claim in candidate_claims:
                 retrieval_started = perf_counter()
                 query = claim.verification_text
                 retrieved = evidence_index.retrieve(query, top_k=self.retrieval_config.top_k)
@@ -70,7 +85,10 @@ class Phase6Pipeline:
                 retrieval_ms = (perf_counter() - retrieval_started) * 1000.0
                 retrieval_latencies.append(retrieval_ms)
                 if not evidence:
-                    claim.verifier_used = "phase6_no_evidence"
+                    # Preserve a deterministic supported result when there is no
+                    # semantic evidence to re-check it; unresolved claims remain unresolved.
+                    if claim.status != VerificationStatus.SUPPORTED:
+                        claim.verifier_used = "phase6_no_evidence"
                     no_evidence_claims += 1
                     continue
                 pair_start = len(premises)
@@ -86,15 +104,30 @@ class Phase6Pipeline:
         resolution_counts = Counter()
         for item in pending:
             claim = records[item.record_index].atomic_claims[item.claim_index]
+            prior_status = claim.status
+            prior_confidence = claim.confidence
+            prior_evidence = list(claim.evidence)
+            prior_method = claim.verifier_used
             local_scores = scores[item.pair_start:item.pair_end]
             status, confidence, best_evidence, method, verification_scores = self._decide(local_scores, item.evidence_texts, item.evidence_scores)
-            claim.status = status
-            claim.confidence = confidence
-            claim.evidence = best_evidence
-            claim.verifier_used = method
-            claim.verification_scores = verification_scores
+
+            # If semantic re-checking is inconclusive, retain a conservative
+            # Phase-5 exact support rather than degrading it merely because NLI
+            # was neutral. Explicit contradiction/conflict still overrides it.
+            if prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN:
+                claim.status = prior_status
+                claim.confidence = prior_confidence
+                claim.evidence = prior_evidence
+                claim.verifier_used = prior_method
+                claim.verification_scores = verification_scores
+            else:
+                claim.status = status
+                claim.confidence = confidence
+                claim.evidence = best_evidence
+                claim.verifier_used = method
+                claim.verification_scores = verification_scores
             claim.latency_ms = (claim.latency_ms or 0.0) + item.retrieval_ms
-            resolution_counts[status.value] += 1
+            resolution_counts[claim.status.value] += 1
 
         return records, {
             "nli_pairs": len(premises),
