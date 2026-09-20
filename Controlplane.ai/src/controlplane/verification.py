@@ -74,6 +74,7 @@ class AdaptiveFactVerificationService:
     ) -> None:
         self.agent = agent
         self.config = config or AdaptiveVerificationConfig()
+        self._phase5_customized = extraction_config is not None or deterministic_config is not None
         self.phase5 = Phase5Pipeline(extraction_config, deterministic_config)
         self.phase6 = (
             Phase6Pipeline(nli, retrieval_config=retrieval_config, nli_config=nli_config)
@@ -88,7 +89,7 @@ class AdaptiveFactVerificationService:
         prepared: PreparedFactuality | None = None,
     ) -> DetectorResult:
         started = perf_counter()
-        if prepared is None:
+        if prepared is None or self._phase5_customized:
             record = build_response_record(
                 interaction,
                 factuality_response=mask_privacy_values(interaction.response),
