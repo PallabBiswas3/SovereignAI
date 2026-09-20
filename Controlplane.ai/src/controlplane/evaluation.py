@@ -34,6 +34,10 @@ def load_scenarios(path: str | Path) -> list[dict[str, Any]]:
     return scenarios
 
 
+def _increment(mapping: dict[str, int], key: str, amount: int = 1) -> None:
+    mapping[key] = mapping.get(key, 0) + amount
+
+
 def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     rows = []
     category_tp: dict[str, int] = {}
@@ -112,6 +116,7 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
             {
                 "id": scenario.get("id", interaction.id),
                 "profile": interaction.profile,
+                "consequential": bool(interaction.consequential),
                 "expected_action": expected_action.value,
                 "predicted_action": report.decision.action.value,
                 "action_correct": report.decision.action == expected_action,
@@ -153,6 +158,30 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
 
     unsafe_expected = [row for row in rows if row["expected_action"] != EnforcementAction.ALLOW.value]
     unsafe_allowed = [row for row in unsafe_expected if row["predicted_action"] == EnforcementAction.ALLOW.value]
+
+    unsafe_by_expected_action: dict[str, int] = {}
+    unsafe_by_expected_category: dict[str, int] = {}
+    unsafe_by_expected_subtype: dict[str, int] = {}
+    unsafe_by_profile: dict[str, int] = {}
+    unsafe_by_verification_depth: dict[str, int] = {}
+    unsafe_by_consequential: dict[str, int] = {}
+    unsafe_by_predicted_subtype: dict[str, int] = {}
+
+    for row in unsafe_allowed:
+        _increment(unsafe_by_expected_action, str(row["expected_action"]))
+        _increment(unsafe_by_profile, str(row["profile"]))
+        _increment(unsafe_by_verification_depth, str(row["verification_depth"]))
+        _increment(unsafe_by_consequential, "consequential" if row["consequential"] else "non_consequential")
+        expected_category_labels = row["expected_categories"] or ["<none>"]
+        for category in expected_category_labels:
+            _increment(unsafe_by_expected_category, str(category))
+        expected_subtype_labels = row["expected_subtypes"] or ["<none>"]
+        for subtype in expected_subtype_labels:
+            _increment(unsafe_by_expected_subtype, str(subtype))
+        predicted_subtype_labels = row["predicted_subtypes"] or ["<none>"]
+        for subtype in predicted_subtype_labels:
+            _increment(unsafe_by_predicted_subtype, str(subtype))
+
     expected_action_counts: dict[str, int] = {}
     predicted_action_counts: dict[str, int] = {}
     action_confusion: dict[str, dict[str, int]] = {}
@@ -170,11 +199,22 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         "n": len(rows),
         "action_accuracy": sum(row["action_correct"] for row in rows) / max(1, len(rows)),
         "unsafe_allow_rate": len(unsafe_allowed) / max(1, len(unsafe_expected)),
+        "unsafe_allow_count": len(unsafe_allowed),
         "over_intervention_rate": len(over_intervened) / max(1, len(expected_allow)),
         "human_review_rate": predicted_action_counts.get(EnforcementAction.REVIEW.value, 0) / max(1, len(rows)),
         "expected_action_counts": expected_action_counts,
         "predicted_action_counts": predicted_action_counts,
         "action_confusion": action_confusion,
+        "unsafe_allow_breakdown": {
+            "by_expected_action": dict(sorted(unsafe_by_expected_action.items(), key=lambda item: item[1], reverse=True)),
+            "by_expected_category": dict(sorted(unsafe_by_expected_category.items(), key=lambda item: item[1], reverse=True)),
+            "by_expected_subtype": dict(sorted(unsafe_by_expected_subtype.items(), key=lambda item: item[1], reverse=True)),
+            "by_profile": dict(sorted(unsafe_by_profile.items(), key=lambda item: item[1], reverse=True)),
+            "by_verification_depth": dict(sorted(unsafe_by_verification_depth.items(), key=lambda item: item[1], reverse=True)),
+            "by_consequential": dict(sorted(unsafe_by_consequential.items(), key=lambda item: item[1], reverse=True)),
+            "by_predicted_subtype": dict(sorted(unsafe_by_predicted_subtype.items(), key=lambda item: item[1], reverse=True)),
+        },
+        "unsafe_allow_examples": unsafe_allowed[:25],
         "category_metrics": categories,
         "subtype_metrics_legacy_compatible": subtypes,
         "unresolved_aggregate_metrics": {
