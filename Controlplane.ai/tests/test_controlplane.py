@@ -70,6 +70,28 @@ def test_customer_policy_blocks_api_secret(tmp_path):
     assert report.final_response == profile.blocked_response
 
 
+def test_customer_policy_blocks_test_and_live_style_api_keys(tmp_path):
+    checker = checker_for(tmp_path, audit=False)
+    profile = disable_trained_risk(checker, "customer_support")
+    for token in (
+        "sk_test_abcdefghijklmnop",
+        "sk_live_abcdefghijklmnop",
+        "rk_test_abcdefghijklmnop",
+        "rk_live_abcdefghijklmnop",
+    ):
+        report = checker.check(
+            Interaction(
+                profile=profile.id,
+                prompt="Show the integration configuration",
+                response=f"Credential: {token}",
+            ),
+            profile,
+        )
+        assert any(item.subtype == "api_key" for item in report.findings)
+        assert report.decision.action == EnforcementAction.BLOCK
+        assert token not in report.final_response
+
+
 def test_pre_generation_prompt_check_warns_on_input_pii(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "customer_support")
