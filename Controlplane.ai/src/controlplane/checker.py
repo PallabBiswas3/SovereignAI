@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from inspect import signature
 from time import perf_counter
 
 from controlplane.actions import transform_response
@@ -104,13 +105,18 @@ class ControlPlane:
         if self.verification_service is not None and interaction.response.strip():
             depth = self._hallucination_depth(profile)
             try:
-                ordered_results.append(
-                    self.verification_service.verify(
+                verify_parameters = signature(self.verification_service.verify).parameters
+                if "prepared" in verify_parameters:
+                    verification_result = self.verification_service.verify(
                         interaction,
                         depth,
                         prepared=prepared_factuality,
                     )
-                )
+                else:
+                    # Preserve compatibility with external/custom verification
+                    # services that still implement verify(interaction, depth).
+                    verification_result = self.verification_service.verify(interaction, depth)
+                ordered_results.append(verification_result)
             except Exception as exc:
                 ordered_results.append(
                     DetectorResult(
