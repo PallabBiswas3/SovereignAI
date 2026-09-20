@@ -33,8 +33,12 @@ SEVERITY_RANK = {
 class FindingStatus(str, Enum):
     DETECTED = "detected"
     SUSPECTED = "suspected"
+    SUPPORTED = "supported"
     CONTRADICTED = "contradicted"
-    UNKNOWN = "unknown"
+    UNSUPPORTED = "unsupported"
+    UNDECIDABLE = "undecidable"
+    CONFLICTING = "conflicting"
+    UNKNOWN = "unknown"  # legacy compatibility
 
 
 class EnforcementAction(str, Enum):
@@ -68,11 +72,7 @@ class ConversationTurn(BaseModel):
 
 
 class GroundingEvidence(BaseModel):
-    """Structured evidence supplied to ControlPlane by a retrieval system.
-
-    `text` remains the verifier input while the remaining fields preserve
-    provenance for audit, GraphRAG hand-off, and future authority/revision rules.
-    """
+    """Structured evidence supplied to ControlPlane by GraphRAG/retrieval."""
 
     evidence_id: str = Field(default_factory=lambda: f"evidence-{uuid4()}")
     text: str
