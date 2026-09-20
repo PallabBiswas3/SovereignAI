@@ -26,10 +26,15 @@ class IndustrialIntegrationOrchestrator:
         controlplane: ControlPlaneClient | None = None,
     ) -> None:
         self.settings = settings or get_settings()
-        timeout = self.settings.integration_timeout_seconds
-        self.graph = graph or GraphRagClient(self.settings.graphrag_url, timeout=timeout)
-        self.diagnostics = diagnostics or DiagnosticAgentClient(self.settings.diagnostics_url, timeout=timeout)
-        self.controlplane = controlplane or ControlPlaneClient(self.settings.controlplane_url, timeout=timeout)
+        client_options = {
+            "timeout": self.settings.integration_timeout_seconds,
+            "max_retries": self.settings.integration_max_retries,
+            "retry_backoff_seconds": self.settings.integration_retry_backoff_seconds,
+            "retry_backoff_max_seconds": self.settings.integration_retry_backoff_max_seconds,
+        }
+        self.graph = graph or GraphRagClient(self.settings.graphrag_url, **client_options)
+        self.diagnostics = diagnostics or DiagnosticAgentClient(self.settings.diagnostics_url, **client_options)
+        self.controlplane = controlplane or ControlPlaneClient(self.settings.controlplane_url, **client_options)
 
     async def health(self) -> dict[str, dict[str, Any]]:
         clients = {
