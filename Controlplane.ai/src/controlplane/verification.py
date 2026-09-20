@@ -16,6 +16,7 @@ from adaptivefact.verification.evidence import EvidenceRetrieverConfig
 from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
+from controlplane.detectors.privacy import mask_privacy_values
 from controlplane.factuality import PreparedFactuality, build_response_record
 from controlplane.schema import (
     DetectorResult,
@@ -88,7 +89,10 @@ class AdaptiveFactVerificationService:
     ) -> DetectorResult:
         started = perf_counter()
         if prepared is None:
-            record = build_response_record(interaction)
+            record = build_response_record(
+                interaction,
+                factuality_response=mask_privacy_values(interaction.response),
+            )
             _, phase5_runtime = self.phase5.process(record)
             phase5_reused = False
         else:
