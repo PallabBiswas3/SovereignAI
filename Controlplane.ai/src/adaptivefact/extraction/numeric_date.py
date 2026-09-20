@@ -11,8 +11,12 @@ except ImportError:  # optional at runtime; simple formats still work without it
 
 from datetime import datetime
 
+# Do not start a numeric fact immediately after a word character or a hyphen.
+# This prevents identifiers such as ``Pump-102`` / ``Model-X-200`` from being
+# interpreted as the factual values 102 / 200, while preserving ordinary
+# negative values because a standalone ``-5`` match begins at the '-' itself.
 _NUMBER_TOKEN_RE = re.compile(
-    r"(?<!\w)(?:[$€£₹]\s*)?[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*(?:%|percent|bn|billion|mn|million|m|k|thousand|crore|lakh)?(?!\w)",
+    r"(?<![\w-])(?:[$€£₹]\s*)?[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\s*(?:%|percent|bn|billion|mn|million|m|k|thousand|crore|lakh)?(?!\w)",
     re.IGNORECASE,
 )
 _YEAR_RE = re.compile(r"\b(?:18|19|20|21)\d{2}\b")
