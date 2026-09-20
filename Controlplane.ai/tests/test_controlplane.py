@@ -252,6 +252,10 @@ def test_privacy_values_are_masked_before_hallucination_entity_checks(tmp_path):
 def test_sentence_openers_are_not_reported_as_missing_entities(tmp_path):
     checker = checker_for(tmp_path, audit=False)
     profile = disable_trained_risk(checker, "customer_support")
+    # This legacy unit test is specifically about entity parsing behavior. Factuality v2
+    # keeps unsupported-entity findings diagnostic-only by default, so opt in here to
+    # exercise the parser without restoring the noisy policy-visible default.
+    profile.checks["hallucination"].settings["emit_unsupported_entity_findings"] = True
     report = checker.check(
         Interaction(
             profile=profile.id,
