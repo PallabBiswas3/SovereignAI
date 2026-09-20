@@ -4,14 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from adaptivefact.data.schema import GenerationMetadata, ResponseRecord, VerificationStatus
+from adaptivefact.data.schema import ResponseRecord, VerificationStatus
 from adaptivefact.extraction.claim_extractor import ClaimExtractionConfig
 from adaptivefact.risk.features import FeatureExtractionConfig, RiskFeatureExtractor
 from adaptivefact.risk.model import RiskModelBundle
 from adaptivefact.verification.deterministic import DeterministicVerifierConfig
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from controlplane.detectors.base import Detector
-from controlplane.detectors.privacy import mask_privacy_values
+from controlplane.factuality import PreparedFactuality, build_response_record
 from controlplane.schema import (
     DetectorResult,
     Finding,
@@ -23,10 +23,11 @@ from controlplane.schema import (
 
 
 class HallucinationDetector(Detector):
-    """Low-latency adapter around adaptivefact's risk and deterministic layers.
+    """Low-latency factuality risk router plus deterministic verification.
 
-    This intentionally does not download or invoke an NLI model. Deep NLI remains
-    an optional verification backend after policy routing.
+    The trained score is a routing prior, not an authoritative truth judgment.
+    Phase-5 claims prepared here can be reused by deeper AdaptiveFact routes so
+    claim extraction and deterministic verification only execute once.
     """
 
     name = "hallucination"
@@ -35,26 +36,32 @@ class HallucinationDetector(Detector):
         self._risk_cache: tuple[RiskModelBundle, RiskFeatureExtractor] | None = None
         self._risk_cache_key: tuple[str, str] | None = None
 
-    def detect(self, interaction: Interaction, settings: dict[str, Any]) -> DetectorResult:
-        factuality_response = mask_privacy_values(interaction.response)
-        record = ResponseRecord(
-            id=interaction.id,
-            dataset="controlplane_live",
-            query=interaction.prompt,
-            context=interaction.context,
-            generated_response=factuality_response,
-            generation_metadata=GenerationMetadata(model=interaction.metadata.get("model")),
-        )
+    def prepare(self, interaction: Interaction, settings: dict[str, Any]) -> PreparedFactuality:
+        record = build_response_record(interaction)
         phase5 = Phase5Pipeline(
             ClaimExtractionConfig(**settings.get("extraction", {})),
             DeterministicVerifierConfig(**settings.get("verification", {})),
         )
-        phase5.process(record)
+        _, runtime = phase5.process(record)
+        return PreparedFactuality(record=record, phase5_runtime=runtime)
 
+    def detect(self, interaction: Interaction, settings: dict[str, Any]) -> DetectorResult:
+        prepared = self.prepare(interaction, settings)
+        return self.detect_prepared(interaction, settings, prepared)
+
+    def detect_prepared(
+        self,
+        interaction: Interaction,
+        settings: dict[str, Any],
+        prepared: PreparedFactuality,
+    ) -> DetectorResult:
+        record = prepared.record
         findings: list[Finding] = []
         supported = 0
         conflict_candidates = 0
-        context_folded = (interaction.context or "").casefold()
+        unsupported_entity_claims = 0
+        context_folded = (record.context or "").casefold()
+        emit_unsupported_entities = bool(settings.get("emit_unsupported_entity_findings", False))
 
         for claim in record.atomic_claims:
             if claim.status == VerificationStatus.SUPPORTED:
@@ -80,21 +87,31 @@ class HallucinationDetector(Detector):
                 continue
 
             missing_entities = [entity for entity in claim.entities if entity.casefold() not in context_folded]
-            if interaction.context and missing_entities:
-                findings.append(
-                    Finding(
-                        category=RiskCategory.HALLUCINATION,
-                        subtype="unsupported_entity_claim",
-                        severity=Severity.MEDIUM,
-                        confidence=0.58,
-                        status=FindingStatus.UNKNOWN,
-                        message="A factual claim mentions entities not found in the supplied evidence.",
-                        detector=self.name,
-                        span=claim.span,
-                        evidence=claim.evidence,
-                        metadata={"claim_id": claim.id, "claim": claim.text, "missing_entities": missing_entities},
+            if record.context and missing_entities:
+                unsupported_entity_claims += 1
+                # Missing a verbatim entity mention is useful for routing/audit but
+                # is too noisy to be policy-visible by default. The completed-pack
+                # evaluation identified this rule as a major over-intervention source.
+                if emit_unsupported_entities:
+                    findings.append(
+                        Finding(
+                            category=RiskCategory.HALLUCINATION,
+                            subtype="unsupported_entity_claim",
+                            severity=Severity.MEDIUM,
+                            confidence=0.58,
+                            status=FindingStatus.UNKNOWN,
+                            message="A factual claim mentions entities not found verbatim in the supplied evidence.",
+                            detector=self.name,
+                            span=claim.span,
+                            evidence=claim.evidence,
+                            metadata={
+                                "claim_id": claim.id,
+                                "claim": claim.text,
+                                "missing_entities": missing_entities,
+                                "diagnostic_only_by_default": True,
+                            },
+                        )
                     )
-                )
 
         risk = self._trained_risk(record, settings)
         risk_source = "trained_model" if risk is not None else "deterministic_fallback"
@@ -112,13 +129,17 @@ class HallucinationDetector(Detector):
                     severity=severity,
                     confidence=float(risk),
                     status=FindingStatus.SUSPECTED,
-                    message="The response-level hallucination risk exceeds the configured threshold.",
+                    message="The factuality risk prior exceeds the configured verification-routing threshold.",
                     detector=self.name,
-                    metadata={"risk_source": risk_source, "threshold": threshold},
+                    metadata={
+                        "risk_source": risk_source,
+                        "threshold": threshold,
+                        "signal_role": "verification_router",
+                    },
                 )
             )
 
-        if not interaction.context and record.atomic_claims:
+        if not record.context and record.atomic_claims:
             findings.append(
                 Finding(
                     category=RiskCategory.HALLUCINATION,
@@ -126,7 +147,7 @@ class HallucinationDetector(Detector):
                     severity=Severity.MEDIUM if interaction.consequential else Severity.LOW,
                     confidence=0.50,
                     status=FindingStatus.UNKNOWN,
-                    message="No grounding context was supplied, so factual claims could not be verified.",
+                    message="No grounding evidence was supplied, so factual claims could not be verified.",
                     detector=self.name,
                 )
             )
@@ -137,9 +158,14 @@ class HallucinationDetector(Detector):
             metadata={
                 "risk_score": float(risk),
                 "risk_source": risk_source,
+                "risk_role": "verification_router",
                 "claims": len(record.atomic_claims),
                 "deterministically_supported": supported,
                 "conflict_candidates": conflict_candidates,
+                "unsupported_entity_diagnostics": unsupported_entity_claims,
+                "unsupported_entity_findings_enabled": emit_unsupported_entities,
+                "phase5": prepared.phase5_runtime,
+                "factuality_artifact_source": prepared.source,
             },
         )
 
