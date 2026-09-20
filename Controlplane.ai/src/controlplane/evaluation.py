@@ -42,6 +42,12 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
     subtype_fn: dict[str, int] = {}
     latencies = []
 
+    unknown_reason_finding_counts: dict[str, int] = {}
+    unknown_reason_scenario_counts: dict[str, int] = {}
+    unknown_reason_tp_scenarios: dict[str, int] = {}
+    unknown_reason_fp_scenarios: dict[str, int] = {}
+    unknown_reason_over_intervention_scenarios: dict[str, int] = {}
+
     for scenario in scenarios:
         interaction = Interaction.model_validate(scenario["interaction"])
         report = checker.check(interaction)
@@ -72,6 +78,31 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
             else:
                 subtype_fn[subtype] = subtype_fn.get(subtype, 0) + 1
 
+        unknown_findings = [
+            finding for finding in report.findings if finding.subtype == "claim_unknown"
+        ]
+        unknown_reasons = {
+            str(finding.metadata.get("unknown_reason") or "unspecified")
+            for finding in unknown_findings
+        }
+        for finding in unknown_findings:
+            reason = str(finding.metadata.get("unknown_reason") or "unspecified")
+            unknown_reason_finding_counts[reason] = unknown_reason_finding_counts.get(reason, 0) + 1
+        expected_unknown = "claim_unknown" in expected_subtypes
+        for reason in unknown_reasons:
+            unknown_reason_scenario_counts[reason] = unknown_reason_scenario_counts.get(reason, 0) + 1
+            if expected_unknown:
+                unknown_reason_tp_scenarios[reason] = unknown_reason_tp_scenarios.get(reason, 0) + 1
+            else:
+                unknown_reason_fp_scenarios[reason] = unknown_reason_fp_scenarios.get(reason, 0) + 1
+            if (
+                expected_action == EnforcementAction.ALLOW
+                and ACTION_RANK[report.decision.action.value] > ACTION_RANK[EnforcementAction.ALLOW.value]
+            ):
+                unknown_reason_over_intervention_scenarios[reason] = (
+                    unknown_reason_over_intervention_scenarios.get(reason, 0) + 1
+                )
+
         rows.append(
             {
                 "id": scenario.get("id", interaction.id),
@@ -83,6 +114,7 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
                 "predicted_categories": sorted(predicted_categories),
                 "expected_subtypes": sorted(expected_subtypes),
                 "predicted_subtypes": sorted(predicted_subtypes),
+                "unknown_reasons": sorted(unknown_reasons),
                 "latency_ms": report.total_latency_ms,
             }
         )
@@ -112,6 +144,20 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
 
     categories = classification_summary(category_tp, category_fp, category_fn)
     subtypes = classification_summary(subtype_tp, subtype_fp, subtype_fn)
+
+    unknown_reason_metrics: dict[str, dict[str, float | int]] = {}
+    for reason in sorted(unknown_reason_scenario_counts):
+        predicted = unknown_reason_scenario_counts.get(reason, 0)
+        tp = unknown_reason_tp_scenarios.get(reason, 0)
+        fp = unknown_reason_fp_scenarios.get(reason, 0)
+        unknown_reason_metrics[reason] = {
+            "findings": unknown_reason_finding_counts.get(reason, 0),
+            "predicted_scenarios": predicted,
+            "true_positive_scenarios": tp,
+            "false_positive_scenarios": fp,
+            "scenario_precision": tp / max(1, tp + fp),
+            "over_intervention_scenarios": unknown_reason_over_intervention_scenarios.get(reason, 0),
+        }
 
     unsafe_expected = [row for row in rows if row["expected_action"] != EnforcementAction.ALLOW.value]
     unsafe_allowed = [row for row in unsafe_expected if row["predicted_action"] == EnforcementAction.ALLOW.value]
@@ -143,6 +189,7 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         "action_confusion": action_confusion,
         "category_metrics": categories,
         "subtype_metrics": subtypes,
+        "unknown_reason_metrics": unknown_reason_metrics,
         "latency_ms": {
             "p50": float(np.percentile(arr, 50)) if len(arr) else 0.0,
             "p95": float(np.percentile(arr, 95)) if len(arr) else 0.0,
