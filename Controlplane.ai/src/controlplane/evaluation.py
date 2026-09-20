@@ -18,6 +18,8 @@ ACTION_RANK = {
     EnforcementAction.BLOCK.value: 4,
 }
 
+V3_UNRESOLVED_SUBTYPES = {"claim_undecidable", "claim_unsupported", "claim_conflicting"}
+
 
 def load_scenarios(path: str | Path) -> list[dict[str, Any]]:
     scenarios = []
@@ -40,13 +42,11 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
     subtype_tp: dict[str, int] = {}
     subtype_fp: dict[str, int] = {}
     subtype_fn: dict[str, int] = {}
-    latencies = []
-
-    unknown_reason_finding_counts: dict[str, int] = {}
-    unknown_reason_scenario_counts: dict[str, int] = {}
-    unknown_reason_tp_scenarios: dict[str, int] = {}
-    unknown_reason_fp_scenarios: dict[str, int] = {}
-    unknown_reason_over_intervention_scenarios: dict[str, int] = {}
+    latencies: list[float] = []
+    factuality_state_counts: dict[str, int] = {}
+    verification_depth_counts: dict[str, int] = {}
+    over_intervention_by_subtype: dict[str, int] = {}
+    unresolved_tp = unresolved_fp = unresolved_fn = 0
 
     for scenario in scenarios:
         interaction = Interaction.model_validate(scenario["interaction"])
@@ -58,9 +58,31 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         gold_statuses = {claim.get("status") for claim in scenario.get("gold_claims", [])}
         if "contradicted" in gold_statuses:
             expected_subtypes.add("claim_contradicted")
-        if "unknown" in gold_statuses:
+        expected_unresolved = "unknown" in gold_statuses or "claim_unknown" in expected_subtypes
+        if expected_unresolved:
             expected_subtypes.add("claim_unknown")
-        predicted_subtypes = {finding.subtype for finding in report.findings}
+
+        raw_predicted_subtypes = {finding.subtype for finding in report.findings}
+        predicted_subtypes_for_legacy_eval = set(raw_predicted_subtypes)
+        predicted_unresolved = bool(raw_predicted_subtypes & V3_UNRESOLVED_SUBTYPES) or "claim_unknown" in raw_predicted_subtypes
+        if predicted_unresolved:
+            predicted_subtypes_for_legacy_eval.add("claim_unknown")
+
+        if expected_unresolved and predicted_unresolved:
+            unresolved_tp += 1
+        elif predicted_unresolved:
+            unresolved_fp += 1
+        elif expected_unresolved:
+            unresolved_fn += 1
+
+        for result in report.detector_results:
+            if result.detector != "adaptivefact":
+                continue
+            for state, count in (result.metadata.get("status_counts") or {}).items():
+                factuality_state_counts[str(state)] = factuality_state_counts.get(str(state), 0) + int(count)
+
+        depth = report.decision.verification_depth.value
+        verification_depth_counts[depth] = verification_depth_counts.get(depth, 0) + 1
 
         for category in expected_categories | predicted_categories:
             if category in expected_categories and category in predicted_categories:
@@ -70,38 +92,21 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
             else:
                 category_fn[category] = category_fn.get(category, 0) + 1
 
-        for subtype in expected_subtypes | predicted_subtypes:
-            if subtype in expected_subtypes and subtype in predicted_subtypes:
+        for subtype in expected_subtypes | predicted_subtypes_for_legacy_eval:
+            if subtype in expected_subtypes and subtype in predicted_subtypes_for_legacy_eval:
                 subtype_tp[subtype] = subtype_tp.get(subtype, 0) + 1
-            elif subtype in predicted_subtypes:
+            elif subtype in predicted_subtypes_for_legacy_eval:
                 subtype_fp[subtype] = subtype_fp.get(subtype, 0) + 1
             else:
                 subtype_fn[subtype] = subtype_fn.get(subtype, 0) + 1
 
-        unknown_findings = [
-            finding for finding in report.findings if finding.subtype == "claim_unknown"
-        ]
-        unknown_reasons = {
-            str(finding.metadata.get("unknown_reason") or "unspecified")
-            for finding in unknown_findings
-        }
-        for finding in unknown_findings:
-            reason = str(finding.metadata.get("unknown_reason") or "unspecified")
-            unknown_reason_finding_counts[reason] = unknown_reason_finding_counts.get(reason, 0) + 1
-        expected_unknown = "claim_unknown" in expected_subtypes
-        for reason in unknown_reasons:
-            unknown_reason_scenario_counts[reason] = unknown_reason_scenario_counts.get(reason, 0) + 1
-            if expected_unknown:
-                unknown_reason_tp_scenarios[reason] = unknown_reason_tp_scenarios.get(reason, 0) + 1
-            else:
-                unknown_reason_fp_scenarios[reason] = unknown_reason_fp_scenarios.get(reason, 0) + 1
-            if (
-                expected_action == EnforcementAction.ALLOW
-                and ACTION_RANK[report.decision.action.value] > ACTION_RANK[EnforcementAction.ALLOW.value]
-            ):
-                unknown_reason_over_intervention_scenarios[reason] = (
-                    unknown_reason_over_intervention_scenarios.get(reason, 0) + 1
-                )
+        over_intervened = (
+            expected_action == EnforcementAction.ALLOW
+            and ACTION_RANK[report.decision.action.value] > ACTION_RANK[EnforcementAction.ALLOW.value]
+        )
+        if over_intervened:
+            for subtype in raw_predicted_subtypes:
+                over_intervention_by_subtype[subtype] = over_intervention_by_subtype.get(subtype, 0) + 1
 
         rows.append(
             {
@@ -113,18 +118,17 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
                 "expected_categories": sorted(expected_categories),
                 "predicted_categories": sorted(predicted_categories),
                 "expected_subtypes": sorted(expected_subtypes),
-                "predicted_subtypes": sorted(predicted_subtypes),
-                "unknown_reasons": sorted(unknown_reasons),
+                "predicted_subtypes": sorted(raw_predicted_subtypes),
+                "legacy_predicted_subtypes": sorted(predicted_subtypes_for_legacy_eval),
+                "expected_unresolved": expected_unresolved,
+                "predicted_unresolved": predicted_unresolved,
+                "verification_depth": depth,
                 "latency_ms": report.total_latency_ms,
             }
         )
         latencies.append(report.total_latency_ms)
 
-    def classification_summary(
-        true_positive: dict[str, int],
-        false_positive: dict[str, int],
-        false_negative: dict[str, int],
-    ) -> dict[str, dict[str, float | int]]:
+    def classification_summary(true_positive: dict[str, int], false_positive: dict[str, int], false_negative: dict[str, int]) -> dict[str, dict[str, float | int]]:
         summary = {}
         for label in sorted(set(true_positive) | set(false_positive) | set(false_negative)):
             tp = true_positive.get(label, 0)
@@ -144,20 +148,8 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
 
     categories = classification_summary(category_tp, category_fp, category_fn)
     subtypes = classification_summary(subtype_tp, subtype_fp, subtype_fn)
-
-    unknown_reason_metrics: dict[str, dict[str, float | int]] = {}
-    for reason in sorted(unknown_reason_scenario_counts):
-        predicted = unknown_reason_scenario_counts.get(reason, 0)
-        tp = unknown_reason_tp_scenarios.get(reason, 0)
-        fp = unknown_reason_fp_scenarios.get(reason, 0)
-        unknown_reason_metrics[reason] = {
-            "findings": unknown_reason_finding_counts.get(reason, 0),
-            "predicted_scenarios": predicted,
-            "true_positive_scenarios": tp,
-            "false_positive_scenarios": fp,
-            "scenario_precision": tp / max(1, tp + fp),
-            "over_intervention_scenarios": unknown_reason_over_intervention_scenarios.get(reason, 0),
-        }
+    unresolved_precision = unresolved_tp / max(1, unresolved_tp + unresolved_fp)
+    unresolved_recall = unresolved_tp / max(1, unresolved_tp + unresolved_fn)
 
     unsafe_expected = [row for row in rows if row["expected_action"] != EnforcementAction.ALLOW.value]
     unsafe_allowed = [row for row in unsafe_expected if row["predicted_action"] == EnforcementAction.ALLOW.value]
@@ -169,14 +161,10 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         predicted = row["predicted_action"]
         expected_action_counts[expected] = expected_action_counts.get(expected, 0) + 1
         predicted_action_counts[predicted] = predicted_action_counts.get(predicted, 0) + 1
-        action_confusion.setdefault(expected, {})[predicted] = (
-            action_confusion.setdefault(expected, {}).get(predicted, 0) + 1
-        )
+        action_confusion.setdefault(expected, {})[predicted] = action_confusion.setdefault(expected, {}).get(predicted, 0) + 1
+
     expected_allow = [row for row in rows if row["expected_action"] == EnforcementAction.ALLOW.value]
-    over_intervened = [
-        row for row in expected_allow
-        if ACTION_RANK[row["predicted_action"]] > ACTION_RANK[EnforcementAction.ALLOW.value]
-    ]
+    over_intervened = [row for row in expected_allow if ACTION_RANK[row["predicted_action"]] > ACTION_RANK[EnforcementAction.ALLOW.value]]
     arr = np.asarray(latencies, dtype=float)
     return {
         "n": len(rows),
@@ -188,8 +176,24 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         "predicted_action_counts": predicted_action_counts,
         "action_confusion": action_confusion,
         "category_metrics": categories,
-        "subtype_metrics": subtypes,
-        "unknown_reason_metrics": unknown_reason_metrics,
+        "subtype_metrics_legacy_compatible": subtypes,
+        "unresolved_aggregate_metrics": {
+            "precision": unresolved_precision,
+            "recall": unresolved_recall,
+            "f1": 2 * unresolved_precision * unresolved_recall / max(1e-12, unresolved_precision + unresolved_recall),
+            "true_positive": unresolved_tp,
+            "false_positive": unresolved_fp,
+            "false_negative": unresolved_fn,
+        },
+        "factuality_state_counts": factuality_state_counts,
+        "verification_depth_counts": verification_depth_counts,
+        "over_intervention_by_subtype": dict(sorted(over_intervention_by_subtype.items(), key=lambda item: item[1], reverse=True)),
+        "evaluation_note": (
+            "The legacy synthetic corpus labels unresolved claims primarily as 'unknown'. "
+            "It can evaluate unresolved-vs-resolved behavior, but it cannot establish semantic precision "
+            "for the new UNSUPPORTED, UNDECIDABLE, and CONFLICTING states. Those require structured "
+            "evidence and independently adjudicated state labels."
+        ),
         "latency_ms": {
             "p50": float(np.percentile(arr, 50)) if len(arr) else 0.0,
             "p95": float(np.percentile(arr, 95)) if len(arr) else 0.0,
