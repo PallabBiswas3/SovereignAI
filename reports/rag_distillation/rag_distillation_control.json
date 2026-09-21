@@ -1,0 +1,122 @@
+{
+  "metadata": {
+    "generated_at": "2026-09-21T04:48:09.490726+00:00",
+    "label": "control",
+    "base_url": "http://127.0.0.1:8000",
+    "runs": 3,
+    "prompt": "According to the authorized knowledge base, summarize the maintenance guidance for Pump-102. Cite concrete evidence identifiers and abstain from unsupported claims."
+  },
+  "summary": {
+    "runs": 3,
+    "successes": 3,
+    "success_rate": 1.0,
+    "total_p50_s": 142.4211,
+    "total_p95_s": 184.4014,
+    "ttft_p50_s": 0.6936,
+    "ttft_p95_s": 3.7614,
+    "prompt_tokens_mean": 1796.0,
+    "evidence_tokens_estimate_mean": 249.0,
+    "output_tokens_mean": 655.67,
+    "tokens_per_second_mean": 4.501,
+    "truncated_runs": 0,
+    "citation_identifier_count_mean": 11.0,
+    "governance_decisions": [
+      "ALLOW"
+    ]
+  },
+  "measurements": [
+    {
+      "iteration": 1,
+      "success": true,
+      "total_seconds": 116.070562,
+      "ttft_seconds": 4.10229,
+      "prompt_token_count": 1796,
+      "output_token_count": 552,
+      "tokens_per_second": 4.944,
+      "done_reason": "stop",
+      "output_truncated": false,
+      "warm_status": "warm",
+      "selected_source_count": 6,
+      "selected_evidence_tokens_estimate": 249,
+      "response_chars": 1535,
+      "citation_identifier_count": 11,
+      "warning_count": 0,
+      "governance_decision": "ALLOW",
+      "host_before": {
+        "cpu_percent": 29.5,
+        "memory_used_mb": 15471.35,
+        "memory_available_mb": 580.98,
+        "memory_percent": 96.4
+      },
+      "host_after": {
+        "cpu_percent": 66.7,
+        "memory_used_mb": 15579.4,
+        "memory_available_mb": 472.93,
+        "memory_percent": 97.1
+      },
+      "error": null
+    },
+    {
+      "iteration": 2,
+      "success": true,
+      "total_seconds": 189.065883,
+      "ttft_seconds": 0.693623,
+      "prompt_token_count": 1796,
+      "output_token_count": 825,
+      "tokens_per_second": 4.386,
+      "done_reason": "stop",
+      "output_truncated": false,
+      "warm_status": "warm",
+      "selected_source_count": 6,
+      "selected_evidence_tokens_estimate": 249,
+      "response_chars": 1980,
+      "citation_identifier_count": 11,
+      "warning_count": 0,
+      "governance_decision": "ALLOW",
+      "host_before": {
+        "cpu_percent": 0.0,
+        "memory_used_mb": 15579.39,
+        "memory_available_mb": 472.94,
+        "memory_percent": 97.1
+      },
+      "host_after": {
+        "cpu_percent": 67.8,
+        "memory_used_mb": 13472.79,
+        "memory_available_mb": 2579.54,
+        "memory_percent": 83.9
+      },
+      "error": null
+    },
+    {
+      "iteration": 3,
+      "success": true,
+      "total_seconds": 142.421143,
+      "ttft_seconds": 0.691552,
+      "prompt_token_count": 1796,
+      "output_token_count": 590,
+      "tokens_per_second": 4.172,
+      "done_reason": "stop",
+      "output_truncated": false,
+      "warm_status": "warm",
+      "selected_source_count": 6,
+      "selected_evidence_tokens_estimate": 249,
+      "response_chars": 1601,
+      "citation_identifier_count": 11,
+      "warning_count": 0,
+      "governance_decision": "ALLOW",
+      "host_before": {
+        "cpu_percent": 0.0,
+        "memory_used_mb": 13472.79,
+        "memory_available_mb": 2579.54,
+        "memory_percent": 83.9
+      },
+      "host_after": {
+        "cpu_percent": 71.2,
+        "memory_used_mb": 13478.98,
+        "memory_available_mb": 2573.35,
+        "memory_percent": 84.0
+      },
+      "error": null
+    }
+  ]
+}
