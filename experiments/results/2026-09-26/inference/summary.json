@@ -1,0 +1,99 @@
+{
+  "runs": 28,
+  "successful": 14,
+  "groups": {
+    "concurrency|ollama|1024|1": {
+      "ttft_p50_ms": 55701.5207000004,
+      "latency_p50_ms": 65787.30770000038,
+      "throughput_tok_s": 5.750666755107965,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 0.8816290258371473
+    },
+    "concurrency|ollama|1024|2": {
+      "ttft_p50_ms": 4908.978350000325,
+      "latency_p50_ms": 14012.594800000443,
+      "throughput_tok_s": 5.602332352291187,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 5.461675248082654
+    },
+    "concurrency|ollama|1024|4": {
+      "ttft_p50_ms": 14933.972849999918,
+      "latency_p50_ms": 24268.935000000056,
+      "throughput_tok_s": 5.315665771941836,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 5.1800637911650185
+    },
+    "context_length|ollama|256|1": {
+      "ttft_p50_ms": 22567.63780000074,
+      "latency_p50_ms": 29891.122499999256,
+      "throughput_tok_s": 8.056274084932813,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "context_length|ollama|512|1": {
+      "ttft_p50_ms": 23670.28829999981,
+      "latency_p50_ms": 29517.830500000855,
+      "throughput_tok_s": 8.208576929977767,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|ollama|256|1": {
+      "ttft_p50_ms": 17064.77520000044,
+      "latency_p50_ms": 26155.617300000813,
+      "throughput_tok_s": 9.02006646886944,
+      "groundedness_mean": 0.8333333333333334,
+      "citation_recall_mean": 0.75,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|ollama|512|1": {
+      "ttft_p50_ms": 18836.71460000005,
+      "latency_p50_ms": 31710.00920000006,
+      "throughput_tok_s": 7.53497865262867,
+      "groundedness_mean": 0.8333333333333334,
+      "citation_recall_mean": 0.75,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|ollama|1024|1": {
+      "ttft_p50_ms": 45786.233200000424,
+      "latency_p50_ms": 61993.389400000524,
+      "throughput_tok_s": 5.985010498016883,
+      "groundedness_mean": 0.8333333333333334,
+      "citation_recall_mean": 0.75,
+      "aggregate_throughput_tok_s": null
+    },
+    "prefix_cache|ollama|512|1": {
+      "ttft_p50_ms": 289.5830500001466,
+      "latency_p50_ms": 8985.394650000671,
+      "throughput_tok_s": 7.36155644804256,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    }
+  },
+  "prefix_cache": [
+    {
+      "provider": "ollama",
+      "repetition": 1,
+      "ttft_ms": 413.81019999971613
+    },
+    {
+      "provider": "ollama",
+      "repetition": 2,
+      "ttft_ms": 165.3559000005771
+    }
+  ],
+  "pareto_evidence_budgets": {
+    "ollama": [
+      {
+        "evidence_tokens": 256,
+        "ttft_ms": 17064.77520000044,
+        "quality": 0.7916666666666667
+      }
+    ]
+  }
+}

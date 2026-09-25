@@ -7,7 +7,7 @@ from app.agent.executor import AgentExecutor
 from app.agent.planner import AgentPlanner
 from app.agent.state import AgentRunState, RunStatus, StepStatus
 from app.core.config import Settings
-from app.llm.ollama_provider import OllamaProvider
+from app.llm.factory import configured_local_provider
 from app.llm.base import ModelGenerationCancelled
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.agent.executor import EventCallback
@@ -53,16 +53,14 @@ class AgentOrchestrator:
             chat_mode_reason=chat_mode_reason,
         )
         selected = self.registry.get(routing.model_id)
-        provider = OllamaProvider(
-            selected.endpoint,
-            self.settings.allow_deterministic_fallback,
-            role=selected.role,
-            memory_requirement=selected.memory_requirement,
+        runtime = configured_local_provider(
+            self.settings,
+            model_definition=selected,
             execution_mode=selection.selected.value,
             priority=selection.priority,
         )
         executor = AgentExecutor(
-            provider, selected.model_tag, event_callback, cancellation_event,
+            runtime.provider, runtime.model, event_callback, cancellation_event,
             system_prompt=system_prompt_for_mode(chat_mode),
             generation_prompt=generation_prompt,
         )

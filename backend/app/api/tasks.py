@@ -38,7 +38,7 @@ from app.tools.file_tools import SafeWorkspace
 from app.workflows.coding import CodingWorkflow
 from app.workflows.inspection import InspectionWorkflow
 from pathlib import Path
-from app.llm.ollama_provider import OllamaProvider
+from app.llm.factory import configured_local_provider
 from app.llm.base import ModelGenerationCancelled
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.orchestration.chat_mode import (
@@ -636,14 +636,14 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, pr
         raise ValueError(f"Sandbox execution was not authorized: {action.reason}")
     artifact_root = settings.workspace_root / "artifacts"
     selected = registry.get(routing.model_id)
+    runtime = configured_local_provider(
+        settings, model_definition=selected,
+        execution_mode=selection.selected.value, priority=selection.priority,
+    )
     result = await CodingWorkflow(
         DockerSandboxExecutor(settings.workspace_root / "sandbox"),
-        OllamaProvider(
-            selected.endpoint, settings.allow_deterministic_fallback,
-            role=selected.role, memory_requirement=selected.memory_requirement,
-            execution_mode=selection.selected.value, priority=selection.priority,
-        ),
-        selected.model_tag,
+        runtime.provider,
+        runtime.model,
     ).run(csv_path, artifact_root, payload.request, run_id)
     service = ArtifactService(db, artifact_root)
     paths = [result.source_path, result.report_path, *result.result_paths]
@@ -687,6 +687,10 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, prin
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
     selected = registry.get(routing.model_id)
+    runtime = configured_local_provider(
+        settings, model_definition=selected,
+        execution_mode=selection.selected.value, priority=selection.priority,
+    )
     state = AgentRunState(
         id=str(uuid4()), request=payload.request, status=RunStatus.running, routing=routing,
         plan=AgentPlan(goal=payload.request, steps=[]),
@@ -695,12 +699,8 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, prin
         execution_mode_reason=selection.reason,
     )
     completed = await BoundedToolAgent(
-        OllamaProvider(
-            selected.endpoint, settings.allow_deterministic_fallback,
-            role=selected.role, memory_requirement=selected.memory_requirement,
-            execution_mode=selection.selected.value, priority=selection.priority,
-        ),
-        selected.model_tag,
+        runtime.provider,
+        runtime.model,
         create_agent_registry(settings, db, principal, AuthorizationService.owned_scope(principal)),
         ActionGuard(settings.tools_config),
         principal=principal,

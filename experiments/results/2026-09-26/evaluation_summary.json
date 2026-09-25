@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-26",
+  "base_commit": "0aefefe7a1ca6c0bac6dcaea3402a9e56ae225e2",
+  "claims_scope": "local research fixtures; not production performance",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "cpu_physical_cores": 10,
+    "cpu_logical_cores": 12,
+    "ram_gib": 15.68
+  },
+  "graphrag": {
+    "semantic_recall_at_1": 1.0,
+    "semantic_recall_at_3": 1.0,
+    "semantic_mrr": 1.0,
+    "citation_correctness": 1.0,
+    "unanswerable_refusal_accuracy": 0.75,
+    "hash_recall_at_1": 0.812,
+    "hash_recall_at_3": 0.938,
+    "hash_mrr": 0.877,
+    "batch2_hybrid_recall_at_1": 1.0,
+    "batch2_hybrid_mrr": 1.0,
+    "raw_evidence_tokens": 444,
+    "compiled_context_tokens": 116,
+    "compression_ratio": 0.2584,
+    "required_fact_preserved": true,
+    "claim_verification_correct": 2,
+    "claim_verification_cases": 2,
+    "reranker_available": false,
+    "live_supabase_evaluation": "blocked_external_endpoint_unreachable"
+  },
+  "negative_security": {
+    "selected_tests_passed": 22,
+    "pii_precision": 1.0,
+    "pii_recall": 1.0,
+    "prompt_injection_precision": 1.0,
+    "prompt_injection_recall": 1.0
+  },
+  "pump102": {
+    "contract_tests_passed": 7,
+    "networked_e2e": "not_run_required_services_offline"
+  },
+  "inference": {
+    "ollama_successful_observations": 14,
+    "vllm_failed_observations": 14,
+    "vllm_failure": "endpoint_offline",
+    "pareto_evidence_tokens": [256]
+  }
+}

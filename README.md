@@ -143,7 +143,8 @@ knowledge_base/         internal document corpus
 - Node.js 22+
 - Tesseract 5 for OCR
 - Docker Desktop/Engine for code execution (never replaced by host execution)
-- Ollama for general/coder/vision inference
+- Ollama for vision inference and for general/coder inference when selected;
+  alternatively, a local OpenAI-compatible vLLM server for text inference
 - Recommended: 16 GB system RAM; available RAM/VRAM determines whether the 4B multimodal and 7B coder models can remain loaded together
 
 Low-resource model names and all endpoints live in `config/models.yaml`; adding a model is a configuration change, not an application rewrite.

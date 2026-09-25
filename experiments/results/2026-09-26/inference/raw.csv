@@ -1,0 +1,29 @@
+experiment,provider,model,target_tokens,concurrency,repetition,ttft_ms,total_ms,prompt_tokens,completion_tokens,tokens_per_second,citation_precision,citation_recall,groundedness,error
+context_length,vllm,Qwen/Qwen3-0.6B,256,1,1,,0,,,,,,,All connection attempts failed
+context_length,vllm,Qwen/Qwen3-0.6B,512,1,1,,0,,,,,,,All connection attempts failed
+evidence_budget,vllm,Qwen/Qwen3-0.6B,256,1,1,,0,,,,,,,All connection attempts failed
+evidence_budget,vllm,Qwen/Qwen3-0.6B,512,1,1,,0,,,,,,,All connection attempts failed
+evidence_budget,vllm,Qwen/Qwen3-0.6B,1024,1,1,,0,,,,,,,All connection attempts failed
+prefix_cache,vllm,Qwen/Qwen3-0.6B,512,1,1,,0,,,,,,,All connection attempts failed
+prefix_cache,vllm,Qwen/Qwen3-0.6B,512,1,2,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,1,1,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,2,1,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,2,2,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,4,1,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,4,2,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,4,3,,0,,,,,,,All connection attempts failed
+concurrency,vllm,Qwen/Qwen3-0.6B,1024,4,4,,0,,,,,,,All connection attempts failed
+context_length,ollama,qwen3:4b-instruct,256,1,1,22567.63780000074,29891.122499999256,512,59,8.056274084932813,,,,
+context_length,ollama,qwen3:4b-instruct,512,1,1,23670.28829999981,29517.830500000855,1023,48,8.208576929977767,,,,
+evidence_budget,ollama,qwen3:4b-instruct,256,1,1,17064.77520000044,26155.617300000813,453,82,9.02006646886944,1.0,0.75,0.8333333333333334,
+evidence_budget,ollama,qwen3:4b-instruct,512,1,1,18836.71460000005,31710.00920000006,903,97,7.53497865262867,1.0,0.75,0.8333333333333334,
+evidence_budget,ollama,qwen3:4b-instruct,1024,1,1,45786.233200000424,61993.389400000524,1797,97,5.985010498016883,1.0,0.75,0.8333333333333334,
+prefix_cache,ollama,qwen3:4b-instruct,512,1,1,413.81019999971613,8977.812400000403,1023,64,7.473141471168103,,,,
+prefix_cache,ollama,qwen3:4b-instruct,512,1,2,165.3559000005771,8992.97690000094,1023,64,7.249971424917016,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,1,1,55701.5207000004,65787.30770000038,2050,58,5.750666755107965,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,2,1,295.1069999999163,9349.600999999893,2050,51,5.632562128816931,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,2,2,9522.849700000734,18675.588600000992,2050,51,5.572102575765442,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,4,1,10322.170999999798,19419.1737000001,2050,51,5.606242152703582,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,4,2,334.02660000137985,10079.6162000006,2050,51,5.233136433326115,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,4,3,29373.428500000955,39381.75440000123,2050,51,5.095757323409964,,,,
+concurrency,ollama,qwen3:4b-instruct,1024,4,4,19545.774700000038,29118.69630000001,2050,51,5.327527178327685,,,,

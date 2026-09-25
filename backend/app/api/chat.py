@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import Conversation, Message, get_db
-from app.llm.ollama_provider import OllamaProvider
+from app.llm.factory import configured_local_provider
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.router.schemas import RoutingDecision
@@ -49,10 +49,10 @@ async def chat(
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.message, payload.model_override)
     selected = registry.get(routing.model_id)
-    provider = OllamaProvider(selected.endpoint, settings.allow_deterministic_fallback)
-    result = await provider.generate(
+    runtime = configured_local_provider(settings, model_definition=selected)
+    result = await runtime.provider.generate(
         payload.message,
-        selected.model_tag,
+        runtime.model,
         "You are SovereignAI, a local enterprise assistant. Be concise and never invent sources.",
     )
     db.add(Message(id=str(uuid4()), conversation_id=conversation_id, role="assistant", content=result.text))

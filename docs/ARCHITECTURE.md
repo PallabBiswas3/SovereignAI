@@ -29,6 +29,10 @@ The three closed structural gaps are:
 3. Readiness is capability-aware. Installed is not equivalent to ready: VISION
    requires vision capability and CODER requires a coder identity/capability.
 
+`/api/chat`, `AgentOrchestrator`, Pump-102, and the coding/tool entry points all
+resolve their runtime through the same `configured_local_provider` factory.
+Direct provider construction is limited to the factory and health probes.
+
 ControlPlane is the only release gate. A model failure, retrieval abstention,
 contradiction, or policy hold cannot be relabeled as a successful answer.
 

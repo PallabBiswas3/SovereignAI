@@ -16,7 +16,7 @@ from app.tools.file_tools import SafeWorkspace
 from app.workflows.inspection import InspectionWorkflow
 from app.workflows.coding import CodingWorkflow
 from app.sandbox.executor import DockerSandboxExecutor
-from app.llm.ollama_provider import OllamaProvider
+from app.llm.factory import configured_local_provider
 from app.router.model_registry import ModelRegistry
 from app.resources.cache import get_cache_backend
 from app.multimodal.ocr import DocumentTextExtractor, LocalOCRService
@@ -80,10 +80,11 @@ async def run_coding_demo(
             raise ValueError("Coding demo requires a CSV input")
         artifact_root = settings.workspace_root / "artifacts"
         coder = ModelRegistry(settings.models_config).get("coder")
+        runtime = configured_local_provider(settings, model_definition=coder)
         result = await CodingWorkflow(
             DockerSandboxExecutor(settings.workspace_root / "sandbox"),
-            OllamaProvider(coder.endpoint, settings.allow_deterministic_fallback),
-            coder.model_tag,
+            runtime.provider,
+            runtime.model,
         ).run(csv_path, artifact_root, "Analyze anomalies and create a reusable verified Python program")
         service = ArtifactService(db, artifact_root)
         paths = [result.source_path, result.report_path, *result.result_paths]

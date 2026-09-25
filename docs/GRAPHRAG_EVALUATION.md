@@ -19,7 +19,7 @@ Set-Location Graph-RAG\server
 npm run test:retrieval-core
 npm run test:verification-policy
 npm run test:claim-verifier
-npm run eval:retrieval -- --dataset evaluation/benchmark.example.json
+npm run eval:retrieval -- evaluation/benchmark.example.json
 ```
 
 The Supabase server credential bypasses RLS, so the internal API’s full-scope

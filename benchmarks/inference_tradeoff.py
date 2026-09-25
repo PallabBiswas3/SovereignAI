@@ -153,7 +153,11 @@ async def observe(provider: str, endpoint: str, model: str, prompt: str, experim
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    providers = [("vllm", args.vllm_url, args.vllm_model), ("ollama", args.ollama_url, args.ollama_model)]
+    configured = {
+        "vllm": (args.vllm_url, args.vllm_model),
+        "ollama": (args.ollama_url, args.ollama_model),
+    }
+    providers = [(name, *configured[name]) for name in args.providers]
     observations: list[Observation] = []
     for provider, endpoint, model in providers:
         for target in args.context_lengths:
@@ -227,6 +231,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vllm-model", required=True)
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
     parser.add_argument("--ollama-model", required=True)
+    parser.add_argument(
+        "--providers", nargs="+", choices=("vllm", "ollama"),
+        default=["vllm", "ollama"],
+        help="Runtime(s) to measure; use one value to append a missing provider run independently.",
+    )
     parser.add_argument("--context-lengths", type=int, nargs="+", default=[512, 1024, 2048, 4096])
     parser.add_argument("--evidence-budgets", type=int, nargs="+", default=[256, 512, 1024, 2048])
     parser.add_argument("--repetitions", type=int, default=3)
