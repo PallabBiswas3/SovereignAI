@@ -789,7 +789,7 @@ async def _execute_task(
                             policy_profile=payload.use_case, consequential=True,
                             assurance_level=assurance_level,
                         ),
-                        principal_id=principal.user_id, organization_id=principal.organization_id,
+                        principal=principal,
                     )
                     state = integrated_result_state(
                         request=payload.request, routing=routing, selection=selection,
@@ -810,7 +810,7 @@ async def _execute_task(
                             diagnostic=integration_plan.diagnostic, policy_profile=payload.use_case,
                             consequential=True, assurance_level=assurance_level,
                         ),
-                        principal_id=principal.user_id, organization_id=principal.organization_id,
+                        principal=principal,
                     )
                 except IntegrationServiceError as exc:
                     state = integration_unavailable_state(

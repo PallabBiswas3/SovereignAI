@@ -20,6 +20,7 @@ class ModelAvailability(str, Enum):
     model_not_installed = "MODEL_NOT_INSTALLED"
     ollama_unavailable = "OLLAMA_UNAVAILABLE"
     configuration_error = "CONFIGURATION_ERROR"
+    capability_mismatch = "CAPABILITY_MISMATCH"
     unknown = "UNKNOWN"
 
 
@@ -46,10 +47,12 @@ class ModelRuntimeStatus(BaseModel):
     display_name: str
     model_tag: str
     endpoint: str
+    provider: str = "ollama"
     availability: ModelAvailability
     installed: bool
     detail: str
     capabilities: list[str] = Field(default_factory=list)
+    missing_capabilities: list[str] = Field(default_factory=list)
     lifecycle_state: str = "UNKNOWN"
     warm_status: str = "unknown"
     memory_usage_mb: float | None = None

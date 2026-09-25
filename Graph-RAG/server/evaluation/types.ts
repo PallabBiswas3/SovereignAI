@@ -33,9 +33,11 @@ export interface RetrievalCaseMetrics {
   nodeRecallAtK: number;
   nodePrecisionAtK: number;
   nodeMRR: number;
+  nodeNDCGAtK: number;
   chunkRecallAtK: number;
   chunkPrecisionAtK: number;
   chunkMRR: number;
+  chunkNDCGAtK: number;
   anyRelevantHit: boolean;
   falsePositive: boolean;
   latencyMs: number;
@@ -48,9 +50,11 @@ export interface RetrievalAggregateMetrics {
   meanNodeRecallAtK: number;
   meanNodePrecisionAtK: number;
   meanNodeMRR: number;
+  meanNodeNDCGAtK: number;
   meanChunkRecallAtK: number;
   meanChunkPrecisionAtK: number;
   meanChunkMRR: number;
+  meanChunkNDCGAtK: number;
   hitRate: number;
   unanswerableFalsePositiveRate: number;
   meanLatencyMs: number;

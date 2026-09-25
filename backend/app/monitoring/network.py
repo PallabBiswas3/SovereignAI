@@ -34,7 +34,10 @@ def _docker_daemon_available() -> bool:
 
 
 class LocalNetworkPolicy:
-    ALLOWED_SERVICE_NAMES = {"backend", "frontend", "qdrant", "ollama", "sandbox", "ocr"}
+    ALLOWED_SERVICE_NAMES = {
+        "backend", "frontend", "qdrant", "ollama", "vllm", "sandbox", "ocr",
+        "graphrag", "controlplane", "diagnostics",
+    }
 
     @classmethod
     def is_local_url(cls, url: str) -> bool:
@@ -82,7 +85,11 @@ class AirGapVerifier:
         return {"passed": not violations, "checked_endpoints": endpoints, "violations": violations}
 
 
-async def local_service_status(ollama_url: str) -> list[dict[str, object]]:
+async def local_service_status(
+    model_url: str,
+    provider: str = "ollama",
+    api_key: str = "local",
+) -> list[dict[str, object]]:
     services: list[dict[str, object]] = [
         {"name": "Backend", "endpoint": "127.0.0.1:8000", "status": "active"},
         {"name": "Frontend", "endpoint": "127.0.0.1:3000", "status": "configured"},
@@ -90,14 +97,16 @@ async def local_service_status(ollama_url: str) -> list[dict[str, object]]:
         {"name": "OCR", "endpoint": "local Tesseract", "status": "available" if shutil.which("tesseract") else "unavailable"},
     ]
     try:
-        LocalNetworkPolicy.require_local(ollama_url)
+        LocalNetworkPolicy.require_local(model_url)
+        path = "/models" if provider.lower() == "vllm" else "/api/tags"
+        headers = {"Authorization": f"Bearer {api_key}"} if provider.lower() == "vllm" else None
         async with httpx.AsyncClient(timeout=1.5, follow_redirects=False) as client:
-            response = await client.get(f"{ollama_url.rstrip('/')}/api/tags")
+            response = await client.get(f"{model_url.rstrip('/')}{path}", headers=headers)
             response.raise_for_status()
         llm_status = "active"
     except (httpx.HTTPError, ValueError):
         llm_status = "unavailable"
-    services.append({"name": "LLM", "endpoint": ollama_url, "status": llm_status})
+    services.append({"name": f"LLM ({provider})", "endpoint": model_url, "status": llm_status})
     if not shutil.which("docker"):
         docker_status = "unavailable"
     else:

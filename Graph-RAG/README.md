@@ -53,6 +53,13 @@ Sparse BM25 retrieval is the safe default for an existing Gemini-vector corpus. 
 
 `POST /api/integration/retrieve` accepts `verification_mode` as `fast`, `standard`, or `thorough`. The interactive modes verify the highest-ranked material claim without a retry; `thorough` verifies up to four claims and permits one evidence retry. Claim-specific evidence excerpts use bounded Ollama requests, and failures or malformed results become `INSUFFICIENT`. Responses include `timings_ms` for retrieval, verification, and total time.
 
+The integration endpoint also requires a complete `authorization_scope` from the
+trusted SovereignAI backend. Records missing organization/workspace/classification
+metadata are excluded before dense or BM25 scoring. Chunk and graph ingestion now
+require those ACL fields; re-ingest legacy unscoped corpora before using the
+integrated workflow. The server-only Supabase credential is not an authorization
+mechanism and must never be exposed to the browser.
+
 ### Run Development Servers
 
 ```bash

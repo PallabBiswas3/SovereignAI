@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { bm25Rank } from "../retrieval/bm25";
+import { ndcgAtK } from "./metrics";
 import { reciprocalRankFusion } from "../retrieval/rrf";
+import { authorizeRetrievalRecord } from "../retrieval/hybridRetriever";
 
 const docs = [
   { id: "a", text: "graph retrieval knowledge entity", value: { name: "a" } },
@@ -35,5 +37,30 @@ const fused = reciprocalRankFusion(
 assert.equal(fused.length, 2);
 assert.equal(fused.every((item) => item.sources.length === 2), true);
 assert.equal(new Set(fused.map((item) => item.id)).size, 2);
+assert.equal(ndcgAtK(["a", "x", "b"], ["a", "b"], 3) > 0.9, true);
+assert.equal(ndcgAtK(["x", "y"], ["a"], 2), 0);
+
+const maintenanceScope = {
+  organization_id: "apel",
+  department_ids: ["maintenance"],
+  workspace_ids: ["plant-a"],
+  roles: ["ENGINEER"],
+  user_id: "engineer-1",
+  clearance: 2,
+  cross_department: false,
+};
+assert.equal(authorizeRetrievalRecord({
+  organization_id: "apel", workspace_id: "plant-a",
+  department_id: "maintenance", classification: "confidential",
+}, maintenanceScope), true);
+assert.equal(authorizeRetrievalRecord({
+  organization_id: "apel", workspace_id: "plant-a",
+  department_id: "finance", classification: "confidential",
+}, maintenanceScope), false);
+assert.equal(authorizeRetrievalRecord({
+  organization_id: "apel", workspace_id: "plant-a",
+  department_id: "maintenance", classification: "restricted",
+}, maintenanceScope), false);
+assert.equal(authorizeRetrievalRecord({}, maintenanceScope), false);
 
 console.log("Phase 2 retrieval core tests passed");

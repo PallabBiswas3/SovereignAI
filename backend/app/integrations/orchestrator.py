@@ -7,6 +7,10 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.config import Settings, get_settings
+from app.identity.authorization import AuthorizationService
+from app.identity.models import ClearanceLevel, EffectiveAccessScope, Principal
+from app.llm.base import LocalModelProvider
+from app.llm.factory import configured_local_provider
 
 from .clients import ControlPlaneClient, DiagnosticAgentClient, GraphRagClient, IntegrationServiceError
 from .models import IntegratedAnalysisRequest, IntegratedAnalysisResponse
@@ -24,6 +28,9 @@ class IndustrialIntegrationOrchestrator:
         graph: GraphRagClient | None = None,
         diagnostics: DiagnosticAgentClient | None = None,
         controlplane: ControlPlaneClient | None = None,
+        provider: LocalModelProvider | None = None,
+        model: str | None = None,
+        provider_name: str | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         client_options = {
@@ -35,6 +42,15 @@ class IndustrialIntegrationOrchestrator:
         self.graph = graph or GraphRagClient(self.settings.graphrag_url, **client_options)
         self.diagnostics = diagnostics or DiagnosticAgentClient(self.settings.diagnostics_url, **client_options)
         self.controlplane = controlplane or ControlPlaneClient(self.settings.controlplane_url, **client_options)
+        if provider is None:
+            selection = configured_local_provider(self.settings)
+            self.provider = selection.provider
+            self.model = selection.model
+            self.provider_name = selection.provider_name
+        else:
+            self.provider = provider
+            self.model = model or "local-model"
+            self.provider_name = provider_name or "local"
 
     async def health(self) -> dict[str, dict[str, Any]]:
         clients = {
@@ -43,25 +59,44 @@ class IndustrialIntegrationOrchestrator:
             "controlplane": self.controlplane,
         }
         results = await asyncio.gather(*(client.health() for client in clients.values()), return_exceptions=True)
-        return {
+        health = {
             name: ({"status": "unavailable", "detail": str(result)} if isinstance(result, Exception) else result)
             for name, result in zip(clients, results)
         }
+        try:
+            model = await self.provider.health_check()
+            health["local-model"] = {
+                **model,
+                "status": "ok" if model.get("available") else "unavailable",
+                "provider": self.provider_name,
+                "model": self.model,
+            }
+        except Exception as exc:
+            health["local-model"] = {
+                "status": "unavailable", "provider": self.provider_name,
+                "model": self.model, "detail": str(exc),
+            }
+        return health
 
     async def analyze(
         self,
         request: IntegratedAnalysisRequest,
         *,
-        principal_id: str,
-        organization_id: str,
+        principal: Principal | None = None,
+        principal_id: str | None = None,
+        organization_id: str | None = None,
     ) -> IntegratedAnalysisResponse:
         total_started = monotonic()
-        run_id = f"integration-{uuid4()}"
+        # Keep identifiers compatible with the persisted AgentRunRecord String(36)
+        # column while retaining globally unique correlation across services.
+        run_id = str(uuid4())
+        scope = self._authorization_scope(principal, principal_id, organization_id)
         metadata = {
             "run_id": run_id,
             "host": "sovereign-ai",
-            "principal_id": principal_id,
-            "organization_id": organization_id,
+            "principal_id": scope.user_id,
+            "organization_id": scope.organization_id,
+            "authorization_scope_fingerprint": scope.fingerprint,
         }
         precheck_started = monotonic()
         precheck = await self.controlplane.precheck({
@@ -92,7 +127,15 @@ class IndustrialIntegrationOrchestrator:
 
         calls: list[tuple[str, Any]] = []
         if request.include_graph_evidence:
-            calls.append(("graph-rag", self.graph.retrieve(request.query, request.assurance_level.value)))
+            serialized_scope = {
+                **scope.model_dump(mode="json"),
+                "fingerprint": scope.fingerprint,
+            }
+            calls.append(("graph-rag", self.graph.retrieve(
+                request.query,
+                request.assurance_level.value,
+                serialized_scope,
+            )))
         if request.diagnostic is not None:
             diagnostic_payload = request.diagnostic.model_dump(mode="python")
             context = dict(diagnostic_payload.get("run_context") or {})
@@ -109,7 +152,10 @@ class IndustrialIntegrationOrchestrator:
         call_results = await asyncio.gather(*(call for _, call in calls), return_exceptions=True)
         evidence_ms = (monotonic() - evidence_started) * 1000
         evidence: dict[str, dict[str, Any] | None] = {"graph-rag": None, "diagnostics": None}
-        service_status = {"controlplane": "available", "graph-rag": "not_requested", "diagnostics": "not_requested"}
+        service_status = {
+            "controlplane": "available", "graph-rag": "not_requested",
+            "diagnostics": "not_requested", "model": "not_called",
+        }
         failures: list[tuple[str, Exception]] = []
         for (name, _), result in zip(calls, call_results):
             if isinstance(result, Exception):
@@ -134,11 +180,57 @@ class IndustrialIntegrationOrchestrator:
                 retryable=any(isinstance(failure, IntegrationServiceError) and failure.retryable for _, failure in failures),
             )
 
-        candidate = request.candidate_response or self._compose_candidate(
-            request.query,
-            graph=evidence["graph-rag"],
-            diagnostic=evidence["diagnostics"],
-        )
+        model_runtime: dict[str, Any] | None = None
+        if request.candidate_response:
+            candidate = request.candidate_response
+            service_status["model"] = "not_requested"
+        else:
+            try:
+                generated = await self.provider.generate(
+                    self._candidate_prompt(
+                        request.query,
+                        graph=evidence["graph-rag"],
+                        diagnostic=evidence["diagnostics"],
+                    ),
+                    self.model,
+                    (
+                        "You are the local synthesis model in a safety-critical industrial workflow. "
+                        "Use only supplied evidence, state conflicts, cite source/chunk identifiers, "
+                        "and abstain when evidence is insufficient. Never authorize physical action."
+                    ),
+                )
+            except Exception as exc:
+                raise IntegrationServiceError(
+                    "local-model", f"local model integration failed: {exc}", retryable=True
+                ) from exc
+            model_runtime = {
+                "provider": generated.provider,
+                "model": generated.model,
+                "fallback": generated.fallback,
+                **generated.runtime_stats,
+            }
+            if generated.fallback:
+                service_status["model"] = "unavailable"
+                return IntegratedAnalysisResponse(
+                    run_id=run_id,
+                    released=False,
+                    status="model_unavailable",
+                    final_response=generated.text,
+                    precheck=precheck,
+                    graph_evidence=evidence["graph-rag"],
+                    diagnostic=evidence["diagnostics"],
+                    controlplane=None,
+                    model_runtime=model_runtime,
+                    service_status=service_status,
+                    timings_ms={
+                        "precheck": round(precheck_ms, 3),
+                        "evidence": round(evidence_ms, 3),
+                        "release_check": 0.0,
+                        "total": round((monotonic() - total_started) * 1000, 3),
+                    },
+                )
+            candidate = generated.text
+            service_status["model"] = "available"
         context = json.dumps(
             {"graph_evidence": evidence["graph-rag"], "diagnostic": evidence["diagnostics"]},
             ensure_ascii=True,
@@ -173,6 +265,7 @@ class IndustrialIntegrationOrchestrator:
             graph_evidence=evidence["graph-rag"],
             diagnostic=evidence["diagnostics"],
             controlplane=report,
+            model_runtime=model_runtime,
             service_status=service_status,
             timings_ms={
                 "precheck": round(precheck_ms, 3),
@@ -180,6 +273,28 @@ class IndustrialIntegrationOrchestrator:
                 "release_check": round(release_ms, 3),
                 "total": round((monotonic() - total_started) * 1000, 3),
             },
+        )
+
+    @staticmethod
+    def _authorization_scope(
+        principal: Principal | None,
+        principal_id: str | None,
+        organization_id: str | None,
+    ) -> EffectiveAccessScope:
+        if principal is not None:
+            return AuthorizationService().effective_scope(principal)
+        if not principal_id or not organization_id:
+            raise ValueError("A principal or both legacy principal identifiers are required.")
+        # Compatibility callers receive a deliberately narrow scope. Production
+        # API paths always pass the authenticated Principal below.
+        return EffectiveAccessScope(
+            organization_id=organization_id,
+            department_ids=[],
+            workspace_ids=[],
+            roles=[],
+            user_id=principal_id,
+            clearance=ClearanceLevel.public,
+            cross_department=False,
         )
 
     @staticmethod
@@ -239,35 +354,45 @@ class IndustrialIntegrationOrchestrator:
         return str(decision.get("action") or "").lower()
 
     @staticmethod
-    def _compose_candidate(
+    def _candidate_prompt(
         query: str,
         *,
         graph: dict[str, Any] | None,
         diagnostic: dict[str, Any] | None,
     ) -> str:
-        sections = [f"Assessment request: {query}"]
+        sections = [f"ASSESSMENT REQUEST:\n{query}"]
         if diagnostic:
             detection = diagnostic.get("detection") or {}
             hypotheses = diagnostic.get("hypotheses") or []
             actions = diagnostic.get("recommended_actions") or []
             top = hypotheses[0] if hypotheses else {}
             sections.append(
-                "Diagnostic evidence: "
+                "STRUCTURED SENSOR DIAGNOSIS:\n"
                 f"decision={diagnostic.get('decision', 'unknown')}; "
                 f"abnormal={detection.get('abnormal', 'unknown')}; "
                 f"top_hypothesis={top.get('label', 'none')}."
             )
             if actions:
-                sections.append("Recommended actions: " + "; ".join(str(item) for item in actions[:5]))
+                sections.append("Diagnostic suggestions (not authorized actions): " + "; ".join(str(item) for item in actions[:5]))
         if graph:
             claims = graph.get("claims") or []
             chunks = graph.get("chunks") or []
             if claims:
-                sections.append("Verified document claims: " + " ".join(str(item.get("claim_text", "")) for item in claims[:6]))
+                sections.append("AUTHORIZED VERIFIED DOCUMENT CLAIMS:\n" + "\n".join(
+                    f"- [{item.get('id') or item.get('claim_id') or 'claim'}] {item.get('claim_text', '')}"
+                    for item in claims[:6]
+                ))
             elif chunks and graph.get("status") == "grounded":
-                sections.append("Document evidence: " + " ".join(str(item.get("content", "")) for item in chunks[:3]))
+                sections.append("AUTHORIZED DOCUMENT CHUNKS:\n" + "\n".join(
+                    f"- [{item.get('id') or item.get('chunk_id') or 'chunk'}] {item.get('content', '')}"
+                    for item in chunks[:6]
+                ))
             else:
                 sections.append("Document evidence was insufficient; no document claim is asserted.")
         if not graph and not diagnostic:
             sections.append("No evidence service returned usable evidence; abstention is required.")
+        sections.append(
+            "Produce a concise maintenance recommendation with: diagnosis, evidence, uncertainty/conflicts, "
+            "recommended inspection, and whether human approval is required. Cite bracketed identifiers."
+        )
         return "\n\n".join(sections)

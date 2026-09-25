@@ -119,11 +119,14 @@ class EvidenceCapsuleBuilder:
             ])
             self._write_payload(temporary, "execution/model_manifest.json", [{
                 "role": task.routing.model_id.upper(),
-                "provider": "ollama",
-                "model": task.routing.selected_model,
+                "provider": (task.runtime_metrics.get("model_runtime") or {}).get("provider", "unknown-local"),
+                "model": (task.runtime_metrics.get("model_runtime") or {}).get("model", task.routing.selected_model),
                 "digest": None,
                 "digest_verified": False,
-                "runtime_parameters": {"execution_mode": task.execution_mode},
+                "runtime_parameters": {
+                    "execution_mode": task.execution_mode,
+                    **(task.runtime_metrics.get("model_runtime") or {}),
+                },
             }])
             self._write_payload(temporary, "execution/policy_decisions.json", task.governance)
             self._write_payload(temporary, "execution/tool_calls.json", task.tool_records)

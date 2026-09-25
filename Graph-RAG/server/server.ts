@@ -8,6 +8,7 @@ import { generateLocalJson, generateLocalText, localModelConfiguration } from ".
 import evidenceRouter from "./evidence/evidenceRouter";
 import { runAdaptiveAgent } from "./agent/adaptiveAgent";
 import { runVerificationPipeline } from "./verification/verificationPipeline";
+import { RetrievalAuthorizationScope } from "./retrieval/hybridRetriever";
 
 dotenv.config({ path: path.resolve(process.cwd(), "server", ".env") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -98,7 +99,11 @@ async function insertChunk({
   if (error) throw error;
 }
 
-async function insertGraph(graph: GraphData, sourceDocId?: string) {
+async function insertGraph(
+  graph: GraphData,
+  sourceDocId?: string,
+  authorizationMetadata: Record<string, unknown> = {}
+) {
   let successCount = 0;
 
   for (const node of graph.nodes) {
@@ -114,7 +119,7 @@ async function insertGraph(graph: GraphData, sourceDocId?: string) {
         type: node.type,
         description: node.description,
         embedding: `[${embedding.join(",")}]`,
-        properties: node.properties ?? {},
+        properties: { ...(node.properties ?? {}), ...authorizationMetadata },
         source_doc_id: sourceDocId ?? node.source_doc_id ?? null,
         confidence: node.confidence ?? 1.0,
       });
@@ -125,7 +130,7 @@ async function insertGraph(graph: GraphData, sourceDocId?: string) {
         nodeId: formattedId,
         content: node.description,
         chunkIndex: 0,
-        metadata: { label: node.label, type: node.type, auto: true },
+        metadata: { label: node.label, type: node.type, auto: true, ...authorizationMetadata },
         sourceDocId,
       });
     } catch (error) {
@@ -157,8 +162,11 @@ app.get("/api/graph", async (_req, res) => {
 });
 
 app.post("/api/graph/extract", async (req, res) => {
-  const { text, source_doc_id } = req.body;
+  const { text, source_doc_id, authorization_scope } = req.body;
   if (!text) return res.status(400).json({ message: "Text required" });
+  if (!authorization_scope?.organization_id || !authorization_scope?.workspace_id || !authorization_scope?.classification) {
+    return res.status(400).json({ message: "ACCESS_SCOPE_REQUIRED" });
+  }
 
   try {
     const parsedGraph = await generateLocalJson<GraphData>(`
@@ -182,7 +190,7 @@ Return ONLY valid JSON: { "nodes": [], "links": [] }
 TEXT:
 ${text}
 `);
-    await insertGraph(parsedGraph, source_doc_id);
+    await insertGraph(parsedGraph, source_doc_id, authorization_scope);
     res.json(parsedGraph);
   } catch (error) {
     console.error("Extraction error:", error);
@@ -456,11 +464,26 @@ app.post("/api/integration/retrieve", async (req, res) => {
     return res.status(400).json({ message: "verification_mode must be fast, standard, or thorough" });
   }
   const verificationMode = requestedMode as "fast" | "standard" | "thorough";
+  const authorizationScope = req.body?.authorization_scope as RetrievalAuthorizationScope | undefined;
+  if (
+    !authorizationScope
+    || typeof authorizationScope.organization_id !== "string"
+    || typeof authorizationScope.user_id !== "string"
+    || !Array.isArray(authorizationScope.department_ids)
+    || !Array.isArray(authorizationScope.workspace_ids)
+    || !Array.isArray(authorizationScope.roles)
+    || typeof authorizationScope.clearance !== "number"
+    || typeof authorizationScope.cross_department !== "boolean"
+  ) {
+    return res.status(400).json({ message: "A complete authorization_scope is required" });
+  }
   const totalStarted = Date.now();
 
   try {
     const retrievalStarted = Date.now();
-    const agent = await runAdaptiveAgent(query, { maxSteps: 6, maxRequeries: 1 });
+    const agent = await runAdaptiveAgent(query, {
+      maxSteps: 6, maxRequeries: 1, authorizationScope,
+    });
     const retrievalMs = Date.now() - retrievalStarted;
     const state = agent.state;
     if (agent.decision === "abstain" || !state.chunks.length) {
@@ -498,7 +521,18 @@ app.post("/api/integration/retrieve", async (req, res) => {
       status: verification.available && verification.decision === "abstain" ? "abstained" : "grounded",
       verification_mode: verificationMode,
       nodes: verification.nodes,
-      chunks: verification.chunks,
+      chunks: verification.chunks.map((chunk) => ({
+        ...chunk,
+        authorization_scope: authorizationScope.fingerprint,
+        authorization: {
+          decision: "allowed",
+          organization_id: authorizationScope.organization_id,
+          workspace_ids: authorizationScope.workspace_ids,
+          department_ids: authorizationScope.department_ids,
+          clearance: authorizationScope.clearance,
+          scope_fingerprint: authorizationScope.fingerprint,
+        },
+      })),
       claims,
       verification: {
         available: verification.available,
@@ -533,6 +567,9 @@ app.post("/api/chunks/insert", async (req, res) => {
   const { node_id, content, chunk_index, metadata, source_url } = req.body;
   if (!node_id || !content) {
     return res.status(400).json({ message: "node_id and content are required" });
+  }
+  if (!metadata?.organization_id || !metadata?.workspace_id || !metadata?.classification) {
+    return res.status(400).json({ message: "ACCESS_SCOPE_REQUIRED" });
   }
 
   try {

@@ -29,6 +29,19 @@ export const reciprocalRank = (rankedIds: string[], relevantIds: string[]): numb
   return index === -1 ? 0 : 1 / (index + 1);
 };
 
+export const ndcgAtK = (rankedIds: string[], relevantIds: string[], k: number): number => {
+  if (k <= 0 || relevantIds.length === 0) return 0;
+  const relevant = new Set(relevantIds);
+  const dcg = rankedIds.slice(0, k).reduce(
+    (sum, id, index) => sum + (relevant.has(id) ? 1 / Math.log2(index + 2) : 0), 0
+  );
+  const idealHits = Math.min(k, relevant.size);
+  const idcg = Array.from({ length: idealHits }).reduce(
+    (sum: number, _item, index) => sum + 1 / Math.log2(index + 2), 0
+  );
+  return idcg ? dcg / idcg : 0;
+};
+
 export const evaluateRetrievalCase = (
   benchmark: BenchmarkCase,
   snapshot: RetrievalSnapshot,
@@ -51,9 +64,11 @@ export const evaluateRetrievalCase = (
     nodeRecallAtK: recallAtK(nodeIds, benchmark.relevantNodeIds, k),
     nodePrecisionAtK: precisionAtK(nodeIds, benchmark.relevantNodeIds, k),
     nodeMRR: reciprocalRank(nodeIds, benchmark.relevantNodeIds),
+    nodeNDCGAtK: ndcgAtK(nodeIds, benchmark.relevantNodeIds, k),
     chunkRecallAtK: recallAtK(chunkIds, benchmark.relevantChunkIds, k),
     chunkPrecisionAtK: precisionAtK(chunkIds, benchmark.relevantChunkIds, k),
     chunkMRR: reciprocalRank(chunkIds, benchmark.relevantChunkIds),
+    chunkNDCGAtK: ndcgAtK(chunkIds, benchmark.relevantChunkIds, k),
     anyRelevantHit,
     falsePositive,
     latencyMs: snapshot.latencyMs,
@@ -73,9 +88,11 @@ export const aggregateRetrievalMetrics = (
     meanNodeRecallAtK: safeMean(answerable.map((item) => item.nodeRecallAtK)),
     meanNodePrecisionAtK: safeMean(answerable.map((item) => item.nodePrecisionAtK)),
     meanNodeMRR: safeMean(answerable.map((item) => item.nodeMRR)),
+    meanNodeNDCGAtK: safeMean(answerable.map((item) => item.nodeNDCGAtK)),
     meanChunkRecallAtK: safeMean(answerable.map((item) => item.chunkRecallAtK)),
     meanChunkPrecisionAtK: safeMean(answerable.map((item) => item.chunkPrecisionAtK)),
     meanChunkMRR: safeMean(answerable.map((item) => item.chunkMRR)),
+    meanChunkNDCGAtK: safeMean(answerable.map((item) => item.chunkNDCGAtK)),
     hitRate: safeMean(answerable.map((item) => (item.anyRelevantHit ? 1 : 0))),
     unanswerableFalsePositiveRate: safeMean(
       unanswerable.map((item) => (item.falsePositive ? 1 : 0))

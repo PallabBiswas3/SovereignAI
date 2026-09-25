@@ -1,5 +1,19 @@
 # SovereignAI — Industrial Agentic AI Workbench
 
+SovereignAI studies a gap that ordinary local RAG does not solve: keeping a model
+private does not guarantee authorized retrieval, traceable evidence, efficient
+inference, or trustworthy release for consequential industrial decisions.
+
+The canonical Pump-102 workflow combines sensor diagnosis, authorization-before-
+retrieval GraphRAG, local vLLM/Ollama synthesis, ControlPlane verification, human
+approval boundaries, scoped artifacts, and tamper-verifiable Evidence Capsules.
+The integrated path fails closed when a required service is unavailable; an
+installed text model also cannot report ready for VISION or CODER roles.
+
+Start with [architecture](docs/ARCHITECTURE.md), [evaluation](docs/EVALUATION.md),
+and the [flagship demo](docs/FLAGSHIP_DEMO.md). The architecture is frozen after
+the three structural boundary fixes documented there.
+
 SovereignAI is a locally deployable prototype for confidential enterprise knowledge work. It combines configurable local inference, model routing, structured agent execution, file/OCR/vision tools, evidence-preserving retrieval, controlled Python execution, real DOCX/XLSX/PPTX artifacts, governance, auditability, and an air-gap monitor.
 
 The SovereignAI 2.0 Batch 1 runtime upgrade is complete: true token streaming, cancellable
@@ -48,7 +62,7 @@ python scripts\import_organization.py --pack organizations\example-industrial --
 
 The architecture, security controls, test evidence, and production boundaries for this capability are recorded in [docs/SOVEREIGNAI_2_BATCH6.md](docs/SOVEREIGNAI_2_BATCH6.md).
 
-It is deliberately honest about runtime dependencies: model answers require a configured local Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
+It is deliberately honest about runtime dependencies: model answers require the configured local vLLM or Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
 ## Architecture
 
@@ -59,7 +73,7 @@ flowchart LR
   API --> G[Governance Control Plane]
   G --> R[Task Classifier and Model Router]
   R --> A[Plan / Act / Observe / Verify Agent]
-  A --> L[Local Ollama Models]
+  A --> L[LocalModelProvider: vLLM or Ollama]
   A --> T[Permissioned Tools]
   T --> O[Local OCR / Vision]
   T --> S[Networkless Docker Sandbox]
@@ -93,6 +107,8 @@ Controlplane.ai/         privacy, factuality, and response-release policy servic
 Graph-RAG/               evidence ingestion, retrieval, and grounded-claim service
 Time-Series-Diagnostic-Agent/ industrial sensor diagnostics and provenance
 config/                 model, policy, and tool registries
+benchmarks/             reproducible retrieval, inference, and system harnesses
+experiments/            protocols and generated research observations
 backend/app/api/        typed HTTP endpoints
 backend/app/agent/      plan/state/executor/orchestrator
 backend/app/router/     task profiles and scored model routing

@@ -50,5 +50,8 @@ class IntegratedAnalysisResponse(BaseModel):
     graph_evidence: dict[str, Any] | None = None
     diagnostic: dict[str, Any] | None = None
     controlplane: dict[str, Any] | None = None
+    model_runtime: dict[str, Any] | None = None
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    capsule: dict[str, Any] | None = None
     service_status: dict[str, str]
     timings_ms: dict[str, float] = Field(default_factory=dict)

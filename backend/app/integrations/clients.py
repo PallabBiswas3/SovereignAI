@@ -136,10 +136,19 @@ class JsonServiceClient:
 class GraphRagClient(JsonServiceClient):
     service_name = "graph-rag"
 
-    async def retrieve(self, query: str, verification_mode: str = "thorough") -> dict[str, Any]:
+    async def retrieve(
+        self,
+        query: str,
+        verification_mode: str = "thorough",
+        authorization_scope: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return await self.request(
             "POST", "/api/integration/retrieve",
-            payload={"query": query, "verification_mode": verification_mode},
+            payload={
+                "query": query,
+                "verification_mode": verification_mode,
+                "authorization_scope": authorization_scope,
+            },
         )
 
 

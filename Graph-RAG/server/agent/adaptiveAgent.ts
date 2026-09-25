@@ -1,6 +1,8 @@
 import { supabase } from "../supabase";
 import { fetchEvidenceForChunks } from "../evidence/evidenceService";
-import { retrieveHybrid, RetrievedChunk, RetrievedNode } from "../retrieval/hybridRetriever";
+import {
+  retrieveHybrid, RetrievedChunk, RetrievedNode, RetrievalAuthorizationScope,
+} from "../retrieval/hybridRetriever";
 import { chooseNextAction } from "./policy";
 import { AdaptiveAgentResult, AgentState, AgentSubgraphEdge } from "./types";
 
@@ -18,7 +20,11 @@ function summarizeRetrieval(nodes: RetrievedNode[], chunks: RetrievedChunk[]): s
 
 export async function runAdaptiveAgent(
   query: string,
-  options: { maxSteps?: number; maxRequeries?: number } = {}
+  options: {
+    maxSteps?: number;
+    maxRequeries?: number;
+    authorizationScope?: RetrievalAuthorizationScope;
+  } = {}
 ): Promise<AdaptiveAgentResult> {
   const state: AgentState = {
     originalQuery: query,
@@ -46,7 +52,7 @@ export async function runAdaptiveAgent(
     let observation = "";
 
     if (action.tool === "hybrid_retrieve") {
-      const retrieval = await retrieveHybrid(state.activeQuery, 20);
+      const retrieval = await retrieveHybrid(state.activeQuery, 20, options.authorizationScope);
       state.nodes = mergeById(state.nodes, retrieval.nodes);
       state.chunks = mergeById(state.chunks, retrieval.chunks);
       state.retrievalDone = true;
@@ -65,7 +71,11 @@ export async function runAdaptiveAgent(
           max_depth: 2,
         });
         if (error) throw error;
-        state.expandedEdges = (data || []) as AgentSubgraphEdge[];
+        const authorizedIds = new Set(startIds);
+        state.expandedEdges = ((data || []) as AgentSubgraphEdge[]).filter(
+          (edge) => !options.authorizationScope
+            || (authorizedIds.has(edge.source) && authorizedIds.has(edge.target))
+        );
         state.expandedNodeIds = [
           ...new Set(
             state.expandedEdges.flatMap((edge) => [edge.source, edge.target])
@@ -86,7 +96,7 @@ export async function runAdaptiveAgent(
     } else if (action.tool === "requery") {
       state.requeryCount += 1;
       state.activeQuery = action.query || state.originalQuery;
-      const retrieval = await retrieveHybrid(state.activeQuery, 20);
+      const retrieval = await retrieveHybrid(state.activeQuery, 20, options.authorizationScope);
       state.nodes = mergeById(state.nodes, retrieval.nodes);
       state.chunks = mergeById(state.chunks, retrieval.chunks);
       state.retrievalDone = true;

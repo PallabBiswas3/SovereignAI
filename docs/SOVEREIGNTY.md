@@ -4,7 +4,7 @@ SovereignAI distinguishes two different claims that must not be conflated.
 
 ## Application-level controls
 
-All inference adapters validate destinations before connecting. Only loopback addresses and the explicit Compose service names `backend`, `frontend`, `ollama`, `qdrant`, `sandbox`, and `ocr` are accepted. Public hostnames and private-LAN IP addresses are rejected. The monitor API reports configured endpoints and application-controlled blocked attempts.
+All inference adapters validate destinations before connecting. Only loopback addresses and explicit internal service names (including `ollama`, `vllm`, `graphrag`, `controlplane`, and `diagnostics`) are accepted. Public hostnames and private-LAN IP addresses are rejected by model adapters. The monitor API reports configured endpoints and application-controlled blocked attempts.
 
 This proves what the application is configured and coded to do. It does **not** prove that the host OS, an imported library, an administrator, or an unrelated process cannot access the internet.
 

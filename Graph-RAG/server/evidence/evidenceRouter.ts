@@ -14,6 +14,12 @@ router.post("/chunks/insert", async (req, res) => {
   if (!node_id || !content) {
     return res.status(400).json({ message: "node_id and content are required" });
   }
+  if (!metadata?.organization_id || !metadata?.workspace_id || !metadata?.classification) {
+    return res.status(400).json({
+      message: "ACCESS_SCOPE_REQUIRED",
+      detail: "organization_id, workspace_id, and classification are required for ingestion",
+    });
+  }
 
   try {
     const embedding = await generateEmbedding(content);

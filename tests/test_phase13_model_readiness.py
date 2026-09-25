@@ -21,6 +21,32 @@ def test_runtime_status_distinguishes_ready_missing_and_unavailable() -> None:
     missing = runtime_status(model, {"available": True, "models": [{"name": "qwen3-vl:4b-instruct"}]})
     unavailable = runtime_status(model, {"available": False, "error": "connection refused"})
     assert ready.availability.value == "READY"
-    assert ready.capabilities == ["completion", "tools"]
+    assert ready.capabilities == ["coding", "completion", "tools"]
     assert missing.availability.value == "MODEL_NOT_INSTALLED"
     assert unavailable.availability.value == "OLLAMA_UNAVAILABLE"
+
+
+def test_text_model_cannot_masquerade_as_vision_or_coder() -> None:
+    registry = ModelRegistry(ROOT / "config" / "models.yaml")
+    vision = runtime_status(
+        registry.get("vision"),
+        {"available": True, "models": [{"name": "plain-text:latest", "capabilities": ["completion"]}]},
+    )
+    coder = runtime_status(
+        registry.get("coder"),
+        {"available": True, "models": [{"name": "plain-text:latest", "capabilities": ["completion"]}]},
+    )
+    assert vision.availability.value == "MODEL_NOT_INSTALLED"
+    assert coder.availability.value == "MODEL_NOT_INSTALLED"
+
+
+def test_installed_text_only_model_is_rejected_for_vision_role() -> None:
+    model = ModelRegistry(ROOT / "config" / "models.yaml").get("vision").model_copy(
+        update={"model_tag": "plain-text:latest"}
+    )
+    status = runtime_status(
+        model,
+        {"available": True, "models": [{"name": "plain-text:latest", "capabilities": ["completion", "tools"]}]},
+    )
+    assert status.availability.value == "CAPABILITY_MISMATCH"
+    assert status.missing_capabilities == ["vision"]

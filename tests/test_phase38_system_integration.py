@@ -6,6 +6,8 @@ import pytest
 from app.integrations.clients import IntegrationServiceError, validate_internal_service_url
 from app.integrations.models import IntegratedAnalysisRequest
 from app.integrations.orchestrator import IndustrialIntegrationOrchestrator
+from app.llm.base import GenerationResult
+from app.identity.models import ClearanceLevel, Permission, Principal, Role
 
 
 class FakeGraph:
@@ -13,13 +15,15 @@ class FakeGraph:
         self.called = False
         self.fail = fail
         self.verification_mode = None
+        self.authorization_scope = None
 
     async def health(self):
         return {"status": "ok"}
 
-    async def retrieve(self, query, verification_mode="thorough"):
+    async def retrieve(self, query, verification_mode="thorough", authorization_scope=None):
         self.called = True
         self.verification_mode = verification_mode
+        self.authorization_scope = authorization_scope
         if self.fail:
             raise IntegrationServiceError("graph-rag", "offline", status_code=503, retryable=True)
         return {
@@ -78,6 +82,34 @@ class FakeControlPlane:
         }
 
 
+class FakeProvider:
+    async def generate(self, prompt, model, system=None):
+        assert "STRUCTURED SENSOR DIAGNOSIS" in prompt or "AUTHORIZED" in prompt
+        return GenerationResult(
+            text="Pump-102 shows bearing wear. Inspect the bearing [claim-1].",
+            model=model,
+            provider="vllm",
+            runtime_stats={"ttft_ms": 12.0, "tokens_per_second": 25.0, "prompt_tokens": 320},
+        )
+
+
+class UnavailableProvider:
+    async def generate(self, prompt, model, system=None):
+        return GenerationResult(
+            text="Local model generation is deterministically unavailable.",
+            model=model, provider="deterministic-unavailable", fallback=True,
+            runtime_stats={"available": False, "error": "connection refused"},
+        )
+
+
+def engineer() -> Principal:
+    return Principal(
+        user_id="engineer-1", email="engineer@apel.local", display_name="Engineer",
+        organization_id="apel", department_ids=["maintenance"], workspace_ids=["plant-a"],
+        roles=[Role.engineer], clearance=ClearanceLevel.confidential,
+        permissions=[Permission.knowledge_read, Permission.workcell_execute],
+    )
+
 def settings(*, fail_closed=True):
     return SimpleNamespace(
         integration_timeout_seconds=1.0,
@@ -97,6 +129,7 @@ def test_integrated_analysis_releases_only_after_controlplane_check():
     controlplane = FakeControlPlane()
     orchestrator = IndustrialIntegrationOrchestrator(
         settings=settings(), graph=graph, diagnostics=diagnostics, controlplane=controlplane,
+        provider=FakeProvider(), model="test-model", provider_name="vllm",
     )
     request = IntegratedAnalysisRequest(
         query="Assess Pump-102",
@@ -104,7 +137,7 @@ def test_integrated_analysis_releases_only_after_controlplane_check():
     )
 
     result = asyncio.run(
-        orchestrator.analyze(request, principal_id="engineer-1", organization_id="apel")
+        orchestrator.analyze(request, principal=engineer())
     )
 
     assert result.released is True
@@ -113,12 +146,20 @@ def test_integrated_analysis_releases_only_after_controlplane_check():
     assert controlplane.checked["context"]
     assert diagnostics.payload["run_context"]["source"] == "sovereign-ai"
     assert graph.verification_mode == "thorough"
+    assert graph.authorization_scope["organization_id"] == "apel"
+    assert graph.authorization_scope["department_ids"] == ["maintenance"]
+    assert graph.authorization_scope["workspace_ids"] == ["plant-a"]
+    assert graph.authorization_scope["clearance"] == 2
+    assert graph.authorization_scope["fingerprint"]
+    assert result.model_runtime["provider"] == "vllm"
+    assert result.model_runtime["ttft_ms"] == 12.0
 
 
 def test_legacy_synthetic_context_is_normalized_into_metadata():
     diagnostics = FakeDiagnostics()
     orchestrator = IndustrialIntegrationOrchestrator(
         settings=settings(), graph=FakeGraph(), diagnostics=diagnostics, controlplane=FakeControlPlane(),
+        provider=FakeProvider(), model="test-model",
     )
     request = IntegratedAnalysisRequest(
         query="Assess process evidence",
@@ -147,6 +188,7 @@ def test_precheck_hold_prevents_evidence_calls():
     controlplane = FakeControlPlane(precheck_action="block")
     orchestrator = IndustrialIntegrationOrchestrator(
         settings=settings(), graph=graph, diagnostics=FakeDiagnostics(), controlplane=controlplane,
+        provider=FakeProvider(), model="test-model",
     )
 
     result = asyncio.run(
@@ -168,6 +210,7 @@ def test_required_graph_failure_preserves_service_attribution():
         graph=FakeGraph(fail=True),
         diagnostics=FakeDiagnostics(),
         controlplane=FakeControlPlane(),
+        provider=FakeProvider(), model="test-model",
     )
 
     with pytest.raises(IntegrationServiceError) as captured:
@@ -189,6 +232,7 @@ def test_required_diagnostic_failure_preserves_service_attribution():
         graph=FakeGraph(),
         diagnostics=FakeDiagnostics(fail=True),
         controlplane=FakeControlPlane(),
+        provider=FakeProvider(), model="test-model",
     )
 
     with pytest.raises(IntegrationServiceError) as captured:
@@ -214,3 +258,19 @@ def test_public_service_urls_are_rejected():
         validate_internal_service_url("https://example.com")
 
     assert validate_internal_service_url("http://graphrag:3100") == "http://graphrag:3100"
+
+
+def test_local_model_outage_is_explicit_and_never_reaches_release_gate():
+    controlplane = FakeControlPlane()
+    orchestrator = IndustrialIntegrationOrchestrator(
+        settings=settings(), graph=FakeGraph(), diagnostics=FakeDiagnostics(),
+        controlplane=controlplane, provider=UnavailableProvider(), model="offline-model",
+    )
+    result = asyncio.run(orchestrator.analyze(
+        IntegratedAnalysisRequest(query="Assess Pump-102"), principal=engineer(),
+    ))
+    assert result.released is False
+    assert result.status == "model_unavailable"
+    assert result.service_status["model"] == "unavailable"
+    assert result.artifacts == [] and result.capsule is None
+    assert controlplane.checked is None

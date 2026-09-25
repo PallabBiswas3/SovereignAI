@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.config import get_settings
 from app.llm.ollama_provider import OllamaProvider
+from app.llm.factory import configured_local_provider
+from app.llm.vllm_provider import VLLMProvider
 from app.router.model_registry import ModelRegistry
 from app.router.model_router import ModelRouter
 from app.router.schemas import ModelAvailability, ModelDefinition, ModelRuntimeStatus, RoutingDecision
@@ -38,20 +40,25 @@ async def model_status() -> dict[str, object]:
             "models": [],
             "configuration_error": str(exc),
         }
-    endpoint_results: dict[str, dict[str, object]] = {}
-    endpoint_runtime: dict[str, dict[str, object]] = {}
-    for endpoint in sorted({model.endpoint for model in registry.all()}):
+    endpoint_results: dict[tuple[str, str], dict[str, object]] = {}
+    endpoint_runtime: dict[tuple[str, str], dict[str, object]] = {}
+    configured_endpoints = sorted({(model.provider.lower(), model.endpoint) for model in registry.all()})
+    for provider_name, endpoint in configured_endpoints:
+        key = (provider_name, endpoint)
         try:
-            provider = OllamaProvider(endpoint)
-            endpoint_results[endpoint] = await provider.health_check()
-            endpoint_runtime[endpoint] = await provider.model_runtime_stats()
+            provider = (
+                VLLMProvider(endpoint, api_key=get_settings().vllm_api_key)
+                if provider_name == "vllm" else OllamaProvider(endpoint)
+            )
+            endpoint_results[key] = await provider.health_check()
+            endpoint_runtime[key] = await provider.model_runtime_stats()
         except ValueError as exc:
-            endpoint_results[endpoint] = {"available": False, "configuration_error": str(exc)}
+            endpoint_results[key] = {"available": False, "configuration_error": str(exc)}
     statuses = [
         runtime_status(
             model,
-            endpoint_results.get(model.endpoint, {}),
-            endpoint_runtime.get(model.endpoint, {}),
+            endpoint_results.get((model.provider.lower(), model.endpoint), {}),
+            endpoint_runtime.get((model.provider.lower(), model.endpoint), {}),
         )
         for model in registry.all()
     ]
@@ -64,11 +71,26 @@ async def model_status() -> dict[str, object]:
         reranker.status() if isinstance(reranker, LocalCrossEncoderReranker)
         else {"available": False, "disabled": True, "fallback": "RRF fusion ranking"}
     )
+    try:
+        active_selection = configured_local_provider(get_settings())
+        active_health = await active_selection.provider.health_check()
+        active_provider: dict[str, object] = {
+            "provider": active_selection.provider_name,
+            "model": active_selection.model,
+            "endpoint": active_selection.endpoint,
+            **active_health,
+        }
+    except Exception as exc:
+        active_provider = {"available": False, "error": str(exc)}
     return {
         "configured": len(statuses),
         "ready": sum(item.availability == ModelAvailability.ready for item in statuses),
-        "ollama_available": any(bool(result.get("available")) for result in endpoint_results.values()),
+        "ollama_available": any(
+            provider_name == "ollama" and bool(endpoint_results[key].get("available"))
+            for key in endpoint_results for provider_name in [key[0]]
+        ),
         "models": [item.model_dump(mode="json") for item in statuses],
+        "active_text_provider": active_provider,
         "resources": get_resource_scheduler().snapshot().model_dump(mode="json"),
         "cache": cache_stats,
         "reranker": reranker_status,
@@ -87,18 +109,19 @@ def runtime_status(
     provider_runtime: dict[str, object] | None = None,
 ) -> ModelRuntimeStatus:
     provider_runtime = provider_runtime or {}
-    if model.provider.lower() != "ollama" or not model.model_tag.strip():
+    provider_name = model.provider.lower()
+    if provider_name not in {"ollama", "vllm"} or not model.model_tag.strip():
         return ModelRuntimeStatus(
             id=model.id, role=model.role, display_name=model.display_name,
-            model_tag=model.model_tag, endpoint=model.endpoint,
+            model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
             availability=ModelAvailability.configuration_error, installed=False,
-            detail="Only a non-empty local Ollama model tag is supported.",
+            detail="Only a non-empty local Ollama or vLLM model tag is supported.",
             lifecycle_state="ERROR", warm_status="unavailable",
         )
     if provider_status.get("configuration_error"):
         return ModelRuntimeStatus(
             id=model.id, role=model.role, display_name=model.display_name,
-            model_tag=model.model_tag, endpoint=model.endpoint,
+            model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
             availability=ModelAvailability.configuration_error, installed=False,
             detail=str(provider_status["configuration_error"]),
             lifecycle_state="ERROR", warm_status="unavailable",
@@ -106,9 +129,9 @@ def runtime_status(
     if not provider_status.get("available"):
         return ModelRuntimeStatus(
             id=model.id, role=model.role, display_name=model.display_name,
-            model_tag=model.model_tag, endpoint=model.endpoint,
+            model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
             availability=ModelAvailability.ollama_unavailable, installed=False,
-            detail=str(provider_status.get("error", "Ollama did not respond.")),
+            detail=str(provider_status.get("error", f"{model.provider} did not respond.")),
             lifecycle_state="ERROR", warm_status="unknown",
         )
     raw_models = provider_status.get("models", [])
@@ -116,19 +139,48 @@ def runtime_status(
     if isinstance(raw_models, list):
         for item in raw_models:
             if isinstance(item, dict):
-                for key in ("name", "model"):
+                for key in ("name", "model", "id"):
                     if item.get(key):
                         installed[str(item[key])] = item
     matched = installed.get(model.model_tag) or installed.get(f"{model.model_tag}:latest")
     if not matched:
         return ModelRuntimeStatus(
             id=model.id, role=model.role, display_name=model.display_name,
-            model_tag=model.model_tag, endpoint=model.endpoint,
+            model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
             availability=ModelAvailability.model_not_installed, installed=False,
-            detail=f"Ollama is running, but '{model.model_tag}' is not installed.",
+            detail=f"{model.provider} is running, but '{model.model_tag}' is not installed.",
             lifecycle_state="NOT_INSTALLED", warm_status="unavailable",
         )
-    capabilities = matched.get("capabilities", [])
+    raw_capabilities = matched.get("capabilities", [])
+    capabilities = {
+        str(value).strip().lower()
+        for value in raw_capabilities
+        if isinstance(raw_capabilities, list) and str(value).strip()
+    }
+    capabilities.add("completion")
+    identity = " ".join((model.model_tag, str(matched.get("name") or ""), str(matched.get("family") or ""))).lower()
+    if "coder" in identity or "code" in capabilities:
+        capabilities.add("coding")
+    if "vision" in capabilities or any(marker in identity for marker in ("-vl", "vision", "llava")):
+        capabilities.add("vision")
+    required = set()
+    if model.role.upper() == "VISION" or model.supports_images:
+        required.add("vision")
+    if model.role.upper() == "CODER":
+        required.add("coding")
+    missing = sorted(required - capabilities)
+    if missing:
+        return ModelRuntimeStatus(
+            id=model.id, role=model.role, display_name=model.display_name,
+            model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
+            availability=ModelAvailability.capability_mismatch, installed=True,
+            detail=(
+                f"Installed model cannot satisfy the {model.role} role; "
+                f"missing runtime capabilities: {', '.join(missing)}."
+            ),
+            capabilities=sorted(capabilities), missing_capabilities=missing,
+            lifecycle_state="INCOMPATIBLE", warm_status="unavailable",
+        )
     running_models = provider_runtime.get("running_models", [])
     loaded: dict[str, object] | None = None
     if isinstance(running_models, list):
@@ -144,10 +196,10 @@ def runtime_status(
     )
     return ModelRuntimeStatus(
         id=model.id, role=model.role, display_name=model.display_name,
-        model_tag=model.model_tag, endpoint=model.endpoint,
+        model_tag=model.model_tag, endpoint=model.endpoint, provider=model.provider,
         availability=ModelAvailability.ready, installed=True,
-        detail="Model is installed and Ollama is reachable.",
-        capabilities=[str(value) for value in capabilities] if isinstance(capabilities, list) else [],
+        detail=f"Model is installed, capability-compatible, and {model.provider} is reachable.",
+        capabilities=sorted(capabilities),
         lifecycle_state=lifecycle.state.value,
         warm_status=lifecycle.warm_status,
         memory_usage_mb=lifecycle.memory_usage_mb,

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     workspace_root: Path = PROJECT_DIR / "workspace"
     knowledge_root: Path = PROJECT_DIR / "knowledge_base"
     ollama_url: str = "http://127.0.0.1:11434"
+    llm_provider: str = "ollama"
+    vllm_url: str = "http://127.0.0.1:8001/v1"
+    vllm_model: str = "Qwen/Qwen3-0.6B"
+    vllm_api_key: str = "local"
+    vllm_enable_thinking: bool = False
+    vllm_max_tokens: int = 1280
     allow_deterministic_fallback: bool = True
     max_upload_mb: int = 25
     embedding_provider: str = "semantic"
