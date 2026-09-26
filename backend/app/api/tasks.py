@@ -125,27 +125,82 @@ def _integration_assurance_level(
     return AssuranceLevel.standard
 
 
+def _select_query_relevant_evidence(
+    request: str,
+    text: str,
+    max_sentences: int = 1,
+    max_tokens: int = 40,
+) -> str:
+    """Select the most query-relevant sentences with technical values and units, avoiding raw character truncation."""
+    clean_text = text.strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", clean_text) if s.strip()]
+    if len(sentences) <= 1:
+        return clean_text
+
+    stop_words = {
+        "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+        "from", "up", "about", "into", "over", "after", "is", "are", "was", "were", "be", "been",
+        "being", "have", "has", "had", "do", "does", "did", "this", "that", "these", "those",
+        "according", "cite", "concrete", "abstain", "unsupported", "claims", "state", "using",
+        "available", "authorized", "knowledge", "base", "summarize",
+    }
+    request_terms = {
+        t for t in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+|\d+(?:\.\d+)?|[a-z]{3,}", request.lower())
+        if t not in stop_words
+    }
+    unit_pattern = re.compile(
+        r"mm/s|bar|°c|kpa|rpm|hz|m3/h|gpm|psi|kw|mw|rms|[A-Z]{2,}-\d+",
+        re.I,
+    )
+
+    ranked = sorted(
+        enumerate(sentences),
+        key=lambda pair: (
+            -len(request_terms & {t for t in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+|\d+(?:\.\d+)?|[a-z]{3,}", pair[1].lower()) if t not in stop_words}),
+            -int(bool(unit_pattern.search(pair[1]))),
+            -int(bool(re.search(r"\d+", pair[1]))),
+            pair[0],
+        ),
+    )
+
+    chosen_pairs = []
+    used = 0
+    for idx, s in ranked[:max_sentences]:
+        w = len(s.split())
+        if chosen_pairs and used + w > max_tokens:
+            continue
+        chosen_pairs.append((idx, s))
+        used += w
+        if used >= max_tokens:
+            break
+
+    chosen_pairs.sort(key=lambda x: x[0])
+    return " ".join(s for _, s in chosen_pairs)
+
+
 def _authorized_generation_prompt(
     request: str,
     asset_context: dict[str, object] | None,
     evidence: list[dict[str, object]],
 ) -> str:
     provenance_keys = {
-        "file", "page", "section", "revision", "document_hash", "asset_id",
-        "department", "classification",
+        "file", "section", "revision", "page", "department",
     }
     compact_evidence: list[dict[str, object]] = []
     for item in evidence:
         source = item.get("source") if isinstance(item.get("source"), dict) else {}
-        compact_evidence.append({
+        raw_text = str(item.get("text") or "")
+        entry = {
             "chunk_id": item.get("chunk_id"),
-            "document_id": item.get("document_id"),
-            "text": item.get("text"),
+            "text": _select_query_relevant_evidence(request, raw_text, max_sentences=1, max_tokens=40),
             "source": {
                 key: value for key, value in source.items()
                 if key in provenance_keys and value is not None
             },
-        })
+        }
+        if item.get("document_id"):
+            entry["document_id"] = item.get("document_id")
+        compact_evidence.append(entry)
     context = {
         "asset_context": asset_context,
         "authorized_document_evidence": compact_evidence,

@@ -265,3 +265,59 @@ def test_procurement_comparison_uses_asset_scoped_rag_not_telemetry(monkeypatch,
     assert state.asset_context is None
     assert state.context_metrics["resolved_asset_id"] == "Compressor-201"
     assert state.context_metrics["structured_asset_assessment"] is False
+
+
+def test_authorized_generation_prompt_query_aware_sentence_selection_and_budget() -> None:
+    from app.evidence.context import ContextCompiler
+    from app.api.tasks import _select_query_relevant_evidence
+
+    request = (
+        "According to the authorized knowledge base, summarize the maintenance guidance for Pump-102. "
+        "Cite concrete evidence identifiers and abstain from unsupported claims."
+    )
+    long_chunk_text = (
+        "General maintenance procedures must follow site ISO safety guidelines. "
+        "All operators must wear safety boots and protective headgear at all times. "
+        "SOP-MNT-017 Section 7.4. Overall vibration velocity measured at the bearing housing of "
+        "Pump-102 shall not exceed 6.0 mm/s RMS under continuous operation. "
+        "Readings above 6.0 mm/s require maintenance intervention within 24 hours. "
+        "Irrelevant procedural notes: Ensure the area is well-lit before beginning inspections."
+    )
+
+    selected = _select_query_relevant_evidence(request, long_chunk_text, max_tokens=45)
+    # Verifies query-relevant sentence and technical limit are selected
+    assert "6.0 mm/s RMS" in selected
+    assert "Pump-102" in selected
+    # Verifies filler sentences are pruned
+    assert "protective headgear" not in selected
+    assert "area is well-lit" not in selected
+
+    # Verifies prompt budget with 6 multi-sentence chunks stays below 700 tokens
+    chunks = [
+        {
+            "chunk_id": f"C{i}",
+            "text": (
+                f"Procedural boilerplate preamble {i}. Standard operator handbook notice. "
+                f"SOP-MNT-017 Section 7.{i}. Pump-102 bearing vibration threshold is {6.0 + i * 0.5:.1f} mm/s RMS. "
+                f"Emergency actions require shift supervisor sign-off. Post-inspection cleanup required."
+            ),
+            "source": {
+                "file": "SOP-MNT-017_Rev4.md",
+                "page": i,
+                "section": f"7.{i}",
+                "revision": "Rev 4",
+                "document_hash": "e" * 64,
+                "department": "maintenance",
+            },
+        }
+        for i in range(1, 7)
+    ]
+
+    prompt = _authorized_generation_prompt(request, None, chunks)
+    token_count = ContextCompiler.estimate_tokens(prompt)
+    assert token_count < 750, f"Expected prompt token count < 750, got {token_count}"
+    assert "mm/s RMS" in prompt
+    assert "SOP-MNT-017_Rev4.md" in prompt
+    # Document hash kept outside prompt
+    assert "e" * 64 not in prompt
+

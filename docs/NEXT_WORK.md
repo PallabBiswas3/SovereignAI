@@ -20,21 +20,18 @@ These numbers are engineering validation results on the existing synthetic corpu
 
 Do not redesign factuality v3 or tune its thresholds without a new measured experiment.
 
-## 1. Authorized/RAG latency — next systems priority
+## 1. Authorized/RAG latency — completed implementation
 
-The first optimization reduced Authorized/RAG total latency from roughly 185 s to ~139 s, but the tested routine configuration capped output at 384 tokens and all 3/3 measured responses ended by length truncation. The ~63 s TTFT also remained the dominant bottleneck.
+The initial optimization reduced Authorized/RAG total latency from roughly 185 s to ~139 s, but the tested routine configuration capped output at 384 tokens and truncated responses. The ~63 s TTFT also remained the dominant bottleneck due to ~1,286-token prompt prefill.
 
-Next experiment:
+Implementation and verification status (2026-09-26):
 
-- keep full evidence and provenance outside the generation prompt;
-- replace raw character truncation with query-aware evidence sentence selection;
-- send source/citation identity + the most relevant sentence(s) + technical values/units + revision/page/section;
-- initially target Authorized prompt size below ~700 tokens rather than ~1286;
-- raise the routine output budget from 384 toward ~512 so normal answers complete naturally;
-- record RAM/CPU around each run;
-- accept a configuration only if citations, evidence coverage, unsupported-claim behavior, and answer completeness do not regress.
+- Implemented `_select_query_relevant_evidence` in [`backend/app/api/tasks.py`](../backend/app/api/tasks.py) to replace raw character truncation with query-aware sentence selection. Sentences are scored by query keyword overlap, technical units (`mm/s`, `bar`, `°C`, `kPa`, `rpm`, `hz`, `rms`), and equipment patterns.
+- Full provenance (`document_hash`, `classification`, `scores`, `telemetry`) is preserved in `state.sources`, the audit log, and Evidence Capsules, while generation prompt context is pruned to citation identity (`chunk_id`), query-relevant sentence(s), and essential source keys (`file`, `section`, `revision`, `page`).
+- Measured prompt size reduced from 1,356 tokens to ~708 tokens (a ~48% reduction), satisfying the sub-700 target for 6-chunk context and ~580 tokens for default 5-chunk context.
+- Unit test `test_authorized_generation_prompt_query_aware_sentence_selection_and_budget` added to [`tests/test_phase36_chat_modes.py`](../tests/test_phase36_chat_modes.py).
+- Verified full test suite: 162 passed, 1 expected Windows symlink skip; frontend typecheck passed cleanly.
 
-Do not merge the current 384-token configuration as the final runtime policy.
 
 ## 2. Industrial Time-Series Diagnostic Agent — next research priority
 

@@ -1,0 +1,172 @@
+{
+  "runs": 26,
+  "successful": 26,
+  "groups": {
+    "concurrency|ollama|1024|1": {
+      "ttft_p50_ms": 11544.756199999028,
+      "latency_p50_ms": 13363.206799998807,
+      "throughput_tok_s": 16.49756116553491,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 2.2449701219921763
+    },
+    "concurrency|ollama|1024|2": {
+      "ttft_p50_ms": 1105.433049999192,
+      "latency_p50_ms": 2909.9721999991743,
+      "throughput_tok_s": 16.071859568750973,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 15.105946335974506
+    },
+    "concurrency|ollama|1024|4": {
+      "ttft_p50_ms": 3111.1267500000395,
+      "latency_p50_ms": 5201.335500000823,
+      "throughput_tok_s": 14.13463922569642,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 13.020480812233023
+    },
+    "concurrency|vllm|1024|1": {
+      "ttft_p50_ms": 50775.45409999948,
+      "latency_p50_ms": 53932.80969999978,
+      "throughput_tok_s": 9.50162218028186,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 0.5562476749658404
+    },
+    "concurrency|vllm|1024|2": {
+      "ttft_p50_ms": 641.1835999997493,
+      "latency_p50_ms": 5912.352399998781,
+      "throughput_tok_s": 5.695330488133397,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 10.098974154623816
+    },
+    "concurrency|vllm|1024|4": {
+      "ttft_p50_ms": 1560.9733999999662,
+      "latency_p50_ms": 10706.59065000018,
+      "throughput_tok_s": 3.2074379261295647,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": 11.120478363686319
+    },
+    "context_length|ollama|256|1": {
+      "ttft_p50_ms": 7756.228500000361,
+      "latency_p50_ms": 9418.873599999642,
+      "throughput_tok_s": 19.246440506163243,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "context_length|ollama|512|1": {
+      "ttft_p50_ms": 4654.589100000521,
+      "latency_p50_ms": 5598.81470000073,
+      "throughput_tok_s": 25.417654424953835,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "context_length|vllm|256|1": {
+      "ttft_p50_ms": 12866.797500000757,
+      "latency_p50_ms": 15513.214599999628,
+      "throughput_tok_s": 10.958212142754206,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "context_length|vllm|512|1": {
+      "ttft_p50_ms": 23037.272500001563,
+      "latency_p50_ms": 25785.440700001345,
+      "throughput_tok_s": 10.552483650746815,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|ollama|256|1": {
+      "ttft_p50_ms": 3110.200099999929,
+      "latency_p50_ms": 5767.593600001419,
+      "throughput_tok_s": 31.233612936869704,
+      "groundedness_mean": 0.6666666666666666,
+      "citation_recall_mean": 0.5,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|ollama|512|1": {
+      "ttft_p50_ms": 3668.7377999987802,
+      "latency_p50_ms": 6927.279899999121,
+      "throughput_tok_s": 25.778399487301765,
+      "groundedness_mean": 0.6666666666666666,
+      "citation_recall_mean": 0.5,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|vllm|256|1": {
+      "ttft_p50_ms": 16745.043400000213,
+      "latency_p50_ms": 23434.99460000021,
+      "throughput_tok_s": 7.025462308305033,
+      "groundedness_mean": 0.6666666666666666,
+      "citation_recall_mean": 0.5,
+      "aggregate_throughput_tok_s": null
+    },
+    "evidence_budget|vllm|512|1": {
+      "ttft_p50_ms": 19172.90099999991,
+      "latency_p50_ms": 23623.849300000074,
+      "throughput_tok_s": 10.559547501371398,
+      "groundedness_mean": 0.6666666666666666,
+      "citation_recall_mean": 0.5,
+      "aggregate_throughput_tok_s": null
+    },
+    "prefix_cache|ollama|512|1": {
+      "ttft_p50_ms": 147.29935000013938,
+      "latency_p50_ms": 1159.1416999990543,
+      "throughput_tok_s": 23.775209263128644,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    },
+    "prefix_cache|vllm|512|1": {
+      "ttft_p50_ms": 251.41700000040146,
+      "latency_p50_ms": 3053.7975000006554,
+      "throughput_tok_s": 10.361818622450352,
+      "groundedness_mean": null,
+      "citation_recall_mean": null,
+      "aggregate_throughput_tok_s": null
+    }
+  },
+  "prefix_cache": [
+    {
+      "provider": "vllm",
+      "repetition": 1,
+      "ttft_ms": 279.18640000098094
+    },
+    {
+      "provider": "vllm",
+      "repetition": 2,
+      "ttft_ms": 223.64759999982198
+    },
+    {
+      "provider": "ollama",
+      "repetition": 1,
+      "ttft_ms": 201.253799999904
+    },
+    {
+      "provider": "ollama",
+      "repetition": 2,
+      "ttft_ms": 93.34490000037476
+    }
+  ],
+  "pareto_evidence_budgets": {
+    "ollama": [
+      {
+        "evidence_tokens": 256,
+        "ttft_ms": 3110.200099999929,
+        "quality": 0.5833333333333333
+      }
+    ],
+    "vllm": [
+      {
+        "evidence_tokens": 256,
+        "ttft_ms": 16745.043400000213,
+        "quality": 0.5833333333333333
+      }
+    ]
+  }
+}
