@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 from time import monotonic
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.evidence.distiller import EvidenceDistiller
 from app.evidence.models import (
     Calculation,
     EvidenceConflict,
@@ -38,6 +39,11 @@ class ContextCompilationMetrics(BaseModel):
     dropped_chunks: int
     compression_ratio: float
     compilation_duration_ms: float
+    selected_evidence_tokens: int = 0
+    selected_sentence_count: int = 0
+    technical_sentence_count: int = 0
+    conflict_preserved_chunks: int = 0
+    distillation_applied: bool = False
 
 
 class CompiledContext(BaseModel):
@@ -60,7 +66,7 @@ class CompiledContext(BaseModel):
 
 
 class ContextCompiler:
-    """Builds compact, provenance-preserving context; it never stores model reasoning."""
+    """Build compact, provenance-preserving context; never store model reasoning."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -81,7 +87,10 @@ class ContextCompiler:
         left_tokens, right_tokens = self._token_set(left), self._token_set(right)
         if not left_tokens or not right_tokens:
             return False
-        return len(left_tokens & right_tokens) / len(left_tokens | right_tokens) >= self.settings.context_near_duplicate_threshold
+        return (
+            len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
+            >= self.settings.context_near_duplicate_threshold
+        )
 
     @staticmethod
     def _relevance(item: RetrievedChunk) -> float:
@@ -97,10 +106,15 @@ class ContextCompiler:
         return int(match.group()) if match else -1
 
     def _select_text(self, task: str, text: str, token_limit: int) -> str:
+        """Legacy per-chunk compressor retained for A/B comparison."""
         if self.estimate_tokens(text) <= token_limit:
             return text.strip()
         task_terms = self._token_set(task)
-        sentences = [value.strip() for value in re.split(r"(?<=[.!?])\s+|\n+", text) if value.strip()]
+        sentences = [
+            value.strip()
+            for value in re.split(r"(?<=[.!?])\s+|\n+", text)
+            if value.strip()
+        ]
         ranked = sorted(
             enumerate(sentences),
             key=lambda pair: (
@@ -145,8 +159,21 @@ class ContextCompiler:
         available = max(0, max_fraction_tokens - self.settings.context_output_reserve_tokens)
         mode = execution_mode.upper()
         mode_token_cap = 1000 if mode == "FAST" else self.settings.context_max_evidence_tokens
-        mode_chunk_cap = min(3, self.settings.context_max_evidence_chunks) if mode == "FAST" else self.settings.context_max_evidence_chunks
+        mode_chunk_cap = (
+            min(3, self.settings.context_max_evidence_chunks)
+            if mode == "FAST"
+            else self.settings.context_max_evidence_chunks
+        )
         evidence_budget = min(mode_token_cap, available)
+        distillation_enabled = bool(
+            getattr(self.settings, "context_distillation_enabled", False)
+        )
+        distillation_target = max(
+            0, int(getattr(self.settings, "context_distillation_target_tokens", 700))
+        )
+        if distillation_enabled and distillation_target:
+            evidence_budget = min(evidence_budget, distillation_target)
+
         budget = ContextBudget(
             context_window=context_window,
             max_fraction_of_window=self.settings.context_max_fraction_of_window,
@@ -180,56 +207,102 @@ class ContextCompiler:
             exact_seen.add(normalized)
             unique.append(item)
 
-        selected: list[tuple[RetrievedChunk, str]] = []
-        used_tokens = 0
         warnings: list[str] = []
         if evidence_budget <= 0 and unique:
             warnings.append("CONTEXT_BUDGET_EXCEEDED")
-        for item in unique:
-            if len(selected) >= mode_chunk_cap:
-                break
-            remaining = evidence_budget - used_tokens
-            if remaining <= 0:
-                break
-            text = self._select_text(task, item.text, remaining)
-            tokens = self.estimate_tokens(text)
-            if not text or tokens > remaining:
-                continue
-            selected.append((item, text))
-            used_tokens += tokens
+
+        selected_sentence_count = 0
+        technical_sentence_count = 0
+        conflict_preserved_chunks = 0
+        if distillation_enabled:
+            result = EvidenceDistiller(
+                estimate_tokens=self.estimate_tokens,
+                sentence_redundancy_threshold=float(
+                    getattr(
+                        self.settings,
+                        "context_distillation_sentence_redundancy_threshold",
+                        0.82,
+                    )
+                ),
+            ).distill(
+                task=task,
+                chunks=unique,
+                token_budget=evidence_budget,
+                chunk_cap=mode_chunk_cap,
+            )
+            selected = result.selected
+            used_tokens = result.selected_tokens
+            selected_sentence_count = result.sentence_count
+            technical_sentence_count = result.technical_sentence_count
+            conflict_preserved_chunks = result.conflict_preserved_chunks
+        else:
+            selected: list[tuple[RetrievedChunk, str]] = []
+            used_tokens = 0
+            for item in unique:
+                if len(selected) >= mode_chunk_cap:
+                    break
+                remaining = evidence_budget - used_tokens
+                if remaining <= 0:
+                    break
+                text = self._select_text(task, item.text, remaining)
+                tokens = self.estimate_tokens(text)
+                if not text or tokens > remaining:
+                    continue
+                selected.append((item, text))
+                used_tokens += tokens
 
         sources: list[EvidenceSource] = []
         fragments: list[EvidenceFragment] = []
         for index, (item, text) in enumerate(selected, start=1):
             source_id = f"E{index}"
-            sources.append(EvidenceSource(
-                id=source_id,
-                document_id=item.document_id,
-                file=str(item.source.get("file", "unknown")),
-                page=item.source.get("page") if isinstance(item.source.get("page"), int) else None,
-                section=str(item.source["section"]) if item.source.get("section") is not None else None,
-                revision=str(item.source["revision"]) if item.source.get("revision") else None,
-                document_hash=str(item.source["document_hash"]) if item.source.get("document_hash") else None,
-                text=text,
-                retrieval_score=float(item.scores.get("fusion") or item.score),
-                reranker_score=float(item.scores["reranker"]) if isinstance(item.scores.get("reranker"), (int, float)) else None,
-                access_scope=item.access_scope or ["internal"],
-            ))
-            fragments.append(EvidenceFragment(
-                id=f"F{index}",
-                source_id=source_id,
-                text=text,
-                scores=item.scores,
-                retrieval_methods=item.retrieval_methods,
-                technical_identifiers=sorted(set(re.findall(r"\b[A-Z]{1,8}(?:-[A-Z0-9]+)+\b", text))),
-                numerical_values=re.findall(r"\b\d+(?:\.\d+)?\s*(?:MPa|kPa|Pa|bar|mm/s|m/s|°C|K|rpm|Hz|kW|MW|W)?", text, re.I),
-            ))
+            sources.append(
+                EvidenceSource(
+                    id=source_id,
+                    document_id=item.document_id,
+                    file=str(item.source.get("file", "unknown")),
+                    page=item.source.get("page") if isinstance(item.source.get("page"), int) else None,
+                    section=str(item.source["section"]) if item.source.get("section") is not None else None,
+                    revision=str(item.source["revision"]) if item.source.get("revision") else None,
+                    document_hash=str(item.source["document_hash"]) if item.source.get("document_hash") else None,
+                    text=text,
+                    retrieval_score=float(item.scores.get("fusion") or item.score),
+                    reranker_score=(
+                        float(item.scores["reranker"])
+                        if isinstance(item.scores.get("reranker"), (int, float))
+                        else None
+                    ),
+                    access_scope=item.access_scope or ["internal"],
+                )
+            )
+            fragments.append(
+                EvidenceFragment(
+                    id=f"F{index}",
+                    source_id=source_id,
+                    text=text,
+                    scores=item.scores,
+                    retrieval_methods=item.retrieval_methods,
+                    technical_identifiers=sorted(
+                        set(re.findall(r"\b[A-Z]{1,8}(?:-[A-Z0-9]+)+\b", text))
+                    ),
+                    numerical_values=re.findall(
+                        r"\b\d+(?:\.\d+)?\s*(?:MPa|kPa|Pa|bar|mm/s|m/s|°C|K|rpm|Hz|kW|MW|W)?",
+                        text,
+                        re.I,
+                    ),
+                )
+            )
 
         conflicts = self._revision_conflicts(sources)
         structured_asset = (
-            asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else asset_context
+            asset_context.model_dump(mode="json")
+            if isinstance(asset_context, BaseModel)
+            else asset_context
         )
-        asset_tokens = self.estimate_tokens(json.dumps(structured_asset, default=str)) if structured_asset else 0
+        asset_tokens = (
+            self.estimate_tokens(json.dumps(structured_asset, default=str))
+            if structured_asset
+            else 0
+        )
         if asset_tokens > max(0, available - used_tokens):
             warnings.append("CONTEXT_BUDGET_EXCEEDED")
             structured_asset = None
@@ -243,8 +316,15 @@ class ContextCompiler:
             compiled_context_tokens=compiled_tokens,
             deduplicated_chunks=deduplicated,
             dropped_chunks=max(0, len(evidence) - len(sources) - deduplicated),
-            compression_ratio=round(compiled_tokens / max(1, raw_tokens + self.estimate_tokens(task)), 4),
+            compression_ratio=round(
+                compiled_tokens / max(1, raw_tokens + self.estimate_tokens(task)), 4
+            ),
             compilation_duration_ms=round((monotonic() - started) * 1000, 6),
+            selected_evidence_tokens=used_tokens,
+            selected_sentence_count=selected_sentence_count,
+            technical_sentence_count=technical_sentence_count,
+            conflict_preserved_chunks=conflict_preserved_chunks,
+            distillation_applied=distillation_enabled,
         )
         return CompiledContext(
             task={"goal": task, "profile": task_profile or {}, "execution_mode": execution_mode},
@@ -274,12 +354,26 @@ class ContextCompiler:
         conflicts: list[EvidenceConflict] = []
         for group in groups.values():
             revisions = {source.revision for source in group if source.revision}
-            numeric_sets = {tuple(re.findall(r"\d+(?:\.\d+)?", source.text)) for source in group}
+            numeric_sets = {
+                tuple(re.findall(r"\d+(?:\.\d+)?", source.text)) for source in group
+            }
             if len(revisions) > 1 and len(numeric_sets) > 1:
-                conflicts.append(EvidenceConflict(
-                    id=f"CONFLICT-{len(conflicts) + 1}",
-                    sources=[source.id for source in group],
-                    summary="Different document revisions contain conflicting numerical evidence; applicability requires review.",
-                    values=[{"source_id": source.id, "revision": source.revision, "text": source.text} for source in group],
-                ))
+                conflicts.append(
+                    EvidenceConflict(
+                        id=f"CONFLICT-{len(conflicts) + 1}",
+                        sources=[source.id for source in group],
+                        summary=(
+                            "Different document revisions contain conflicting numerical evidence; "
+                            "applicability requires review."
+                        ),
+                        values=[
+                            {
+                                "source_id": source.id,
+                                "revision": source.revision,
+                                "text": source.text,
+                            }
+                            for source in group
+                        ],
+                    )
+                )
         return conflicts
