@@ -1,7 +1,8 @@
 # Experiments
 
-Committed experiment protocols live in `docs/VLLM_BENCHMARKS.md` and
-`docs/GRAPHRAG_EVALUATION.md`. Generated observations go in `results/` and must
+The experiment history and current protocol priorities are consolidated in
+[`docs/PAST_EXPERIMENTS.md`](../docs/PAST_EXPERIMENTS.md) and
+[`docs/NEXT_PLAN.md`](../docs/NEXT_PLAN.md). Generated observations go in `results/` and must
 never be described as production measurements unless they were collected on the
 documented target hardware with all services healthy.
 

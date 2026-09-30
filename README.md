@@ -10,57 +10,19 @@ approval boundaries, scoped artifacts, and tamper-verifiable Evidence Capsules.
 The integrated path fails closed when a required service is unavailable; an
 installed text model also cannot report ready for VISION or CODER roles.
 
-Start with [architecture](docs/ARCHITECTURE.md), [evaluation](docs/EVALUATION.md),
-and the [flagship demo](docs/FLAGSHIP_DEMO.md). The architecture is frozen after
-the three structural boundary fixes documented there.
+The project documentation is intentionally limited to three maintained files:
+
+- [Past experiments and results](docs/PAST_EXPERIMENTS.md)
+- [Current features and boundaries](docs/CURRENT_FEATURES.md)
+- [Next implementation plan](docs/NEXT_PLAN.md)
 
 SovereignAI is a locally deployable prototype for confidential enterprise knowledge work. It combines configurable local inference, model routing, structured agent execution, file/OCR/vision tools, evidence-preserving retrieval, controlled Python execution, real DOCX/XLSX/PPTX artifacts, governance, auditability, and an air-gap monitor.
 
-The SovereignAI 2.0 Batch 1 runtime upgrade is complete: true token streaming, cancellable
-FAST/STANDARD/DEEP execution, resource-aware model admission, observable model lifecycle, and
-versioned local caches are implemented. See [docs/SOVEREIGNAI_2_BATCH1.md](docs/SOVEREIGNAI_2_BATCH1.md)
-for architecture, configuration, verification evidence, and limitations.
-
-Batch 2 evidence intelligence is also implemented: dense + BM25 hybrid retrieval, RRF,
-offline-only CPU reranking with honest fallback, bounded context compilation, typed evidence,
-deterministic verification, Pint unit normalization, revision conflicts, measured retrieval
-evaluation, and “Why this answer?” lineage. See
-[docs/SOVEREIGNAI_2_BATCH2.md](docs/SOVEREIGNAI_2_BATCH2.md). The configured reranker weights
-must be staged locally; until then retrieval correctly uses hybrid RRF without reranking.
-
-Batch 3 turns those capabilities into a local workflow platform: strict versioned declarative
-Workcell Packs resolve only to trusted registered handlers, and completed Workcell tasks can export
-portable Evidence Capsules with SHA-256 content identities, deterministic root hashes, independent
-tamper verification, and optional local Ed25519 signatures. The first official pack is Pump
-Inspection v1.0.0. See [docs/SOVEREIGNAI_2_BATCH3.md](docs/SOVEREIGNAI_2_BATCH3.md),
-[docs/WORKCELL_PACKS.md](docs/WORKCELL_PACKS.md), and
-[docs/EVIDENCE_CAPSULES.md](docs/EVIDENCE_CAPSULES.md). This is a local installed-pack catalog,
-not a public marketplace, and development signing is not enterprise PKI.
-
-Batch 4 adds organization-aware local identity and access control: salted password authentication,
-server-side sessions and CSRF protection, centralized RBAC plus contextual ACL checks, pre-ranking
-retrieval authorization, task/SSE/artifact/capsule security, approval separation of duties, and the
-fictional APEL enterprise demo (20 assets, 55 generated files, seven users, and a 50-question
-benchmark). See [docs/SOVEREIGNAI_2_BATCH4.md](docs/SOVEREIGNAI_2_BATCH4.md),
-[docs/IDENTITY_AND_ACCESS.md](docs/IDENTITY_AND_ACCESS.md), and
-[docs/APEL_DEMO_ORGANIZATION.md](docs/APEL_DEMO_ORGANIZATION.md).
-
-Batch 5 adds asset-aware industrial workflows using structured Asset Passports, authorized simulated
-plant telemetry, historical condition data, deterministic trend analysis, evidence-backed rule
-comparisons, and human-governed maintenance drafts. The connector layer is read-only and no plant
-control is implemented. See [docs/SOVEREIGNAI_2_BATCH5.md](docs/SOVEREIGNAI_2_BATCH5.md),
-[docs/ASSET_INTELLIGENCE.md](docs/ASSET_INTELLIGENCE.md),
-[docs/PLANT_DATA_CONNECTORS.md](docs/PLANT_DATA_CONNECTORS.md), and
-[docs/APEL_ASSET_DEMO.md](docs/APEL_ASSET_DEMO.md).
-
-New companies can be onboarded without Python changes through validated, versioned
-[Organization Packs](docs/ORGANIZATION_PACKS.md). Start with a non-mutating dry-run:
+New companies can be onboarded without Python changes through validated, versioned Organization Packs. Start with a non-mutating dry-run:
 
 ```powershell
 python scripts\import_organization.py --pack organizations\example-industrial --dry-run
 ```
-
-The architecture, security controls, test evidence, and production boundaries for this capability are recorded in [docs/SOVEREIGNAI_2_BATCH6.md](docs/SOVEREIGNAI_2_BATCH6.md).
 
 It is deliberately honest about runtime dependencies: model answers require the configured local vLLM or Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
@@ -185,8 +147,8 @@ $env:SOVEREIGN_AUTH_MODE = "local"
 .\.venv\Scripts\python.exe scripts\seed_apel_demo.py
 ```
 
-All synthetic accounts use the development-only password `ApelDemo!2026`; account names and reset
-commands are documented in `docs/APEL_DEMO_ORGANIZATION.md`. Authentication is never silently
+All synthetic accounts use the development-only password `ApelDemo!2026`; account definitions live
+in [`demo/apel/users.yaml`](demo/apel/users.yaml). Authentication is never silently
 disabled in production configuration.
 
 ## Local models
@@ -260,7 +222,7 @@ docker compose --profile container-ollama up -d ollama backend frontend
 docker exec sovereign-ai-backend-1 python scripts/verify_airgap.py --require-ollama
 ```
 
-The Compose application network is marked `internal`, ports bind only to loopback, Ollama has an optional pinned container profile, Qdrant is optional, and telemetry is disabled. The active verifier confirms that public egress fails while internal Ollama remains reachable. See `docs/SOVEREIGNTY.md` for the exact scope of this proof. The current backend starts sandbox containers through the local Docker CLI, so for full coding capability run the backend directly on the host as shown above; the backend container intentionally does not mount the Docker socket because that would grant broad host control.
+The Compose application network is marked `internal`, ports bind only to loopback, Ollama has an optional pinned container profile, Qdrant is optional, and telemetry is disabled. The active verifier confirms that public egress fails while internal Ollama remains reachable. [Current features and boundaries](docs/CURRENT_FEATURES.md) states the exact limitations. The current backend starts sandbox containers through the local Docker CLI, so for full coding capability run the backend directly on the host as shown above; the backend container intentionally does not mount the Docker socket because that would grant broad host control.
 
 For an air-gapped transfer, pre-download model weights, Python wheels, npm packages/container images, the `sovereign-sandbox:py311` image, and this repository on a controlled staging machine. Verify hashes, transfer them through the organization's approved media process, then disconnect external networking. Runtime calls are limited to loopback/private service names. `/api/monitor/network` validates configured endpoints and reports application-level blocked attempts.
 
@@ -309,7 +271,7 @@ content-disarm/reconstruction, signed audit logs, or hardened container orchestr
 - `POST /api/evaluation/run`, `GET /api/evaluation/metrics`
 - `GET /api/integrations/health`, `POST /api/integrations/analyze`
 
-The integrated analysis endpoint is the authenticated host boundary for the co-located Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The service topology and PowerShell launcher are maintained in this repository; see [the integrated-system architecture](docs/INTEGRATION_ARCHITECTURE.md).
+The integrated analysis endpoint is the authenticated host boundary for the co-located Graph-RAG, Time-Series Diagnostic Agent, and ControlPlane.ai services. It prechecks the prompt, gathers document and sensor evidence, then requires a final ControlPlane release decision. Required-service errors fail closed by default. The main `POST /api/tasks` Workbench flow also selects these services automatically when Automatic chat mode detects internal document-evidence intent or a valid attached diagnostic JSON envelope. Its service plan, evidence, and release result use the normal task state and event stream, so no separate integration screen is required. The maintained boundary is summarized in [Current features](docs/CURRENT_FEATURES.md).
 
 Automatic mode uses a latency-aware assurance policy. General Chat performs the input safety scan and a single local generation without cross-system calls. Authorized document questions use standard Graph-RAG verification. Controlled work, diagnostics, engineering, and finance use thorough verification with a bounded evidence retry. Graph claims use small, claim-specific, bounded verification requests, and phase timings are recorded in task runtime metrics.
 
