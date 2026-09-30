@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     context_max_evidence_chunks: int = 8
     context_max_evidence_tokens: int = 3000
     context_near_duplicate_threshold: float = 0.90
+    # Experimental query-aware evidence distillation. Disabled until the A/B
+    # latency/quality benchmark accepts a concrete budget.
+    context_distillation_enabled: bool = False
+    context_distillation_target_tokens: int = 700
+    context_distillation_sentence_redundancy_threshold: float = 0.82
     max_retrieval_subqueries: int = 4
     telemetry_default_freshness_seconds: int = 300
     telemetry_expired_seconds: int = 86400
