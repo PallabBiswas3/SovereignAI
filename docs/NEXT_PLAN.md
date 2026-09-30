@@ -7,6 +7,11 @@ The architecture is frozen. The next milestone is a reproducible Pump-102 assura
 ## 1. Close the three remaining experiments
 
 1. **Controlled local inference comparison**
+   - Local prerequisite implemented: seeded randomized warm measurements with at
+     least five repetitions, excluded warm-ups, model-format declarations, raw
+     answers/hashes, local-only endpoints, and fail-closed stream handling.
+   - Still incomplete: verified cold-start reset/isolation, process/device memory
+     instrumentation, tokenizer-aware evidence budgets, and adjudicated grounding.
    - Run Ollama and vLLM with comparable Qwen3 0.6B formats.
    - Separate cold and warm runs, randomize condition order, and collect at least five warm repetitions.
    - Report TTFT, total latency, throughput, memory, evidence budget, groundedness, and citation recall.
@@ -18,6 +23,24 @@ The architecture is frozen. The next milestone is a reproducible Pump-102 assura
    - Run SovereignAI, GraphRAG, diagnostics, local inference, and ControlPlane together.
    - Preserve latency, citations, release decision, artifact identity, and capsule root hash.
    - Repeat with no evidence, unauthorized evidence, and required-service outage; each must abstain or fail closed.
+
+Warm-run command once both approved runtimes and weights are staged (replace the
+format placeholders with exact weight identities/precisions; declarations are not
+independently verified):
+
+```bash
+python benchmarks/inference_tradeoff.py --protocol controlled --seed 102 --repetitions 5 \
+  --vllm-model Qwen/Qwen3-0.6B --ollama-model qwen3:0.6b \
+  --vllm-format "REPLACE_WITH_WEIGHT_ID_AND_PRECISION" \
+  --ollama-format "REPLACE_WITH_WEIGHT_ID_AND_QUANTIZATION" \
+  --context-lengths 256 512 --evidence-budgets 256 512 \
+  --output experiments/results/inference_controlled
+```
+
+This produces `raw.json`, `raw.csv`, and `summary.json`. A failed warm-up or measured
+request returns exit code 2. Exit code 0 only means all protocol requests succeeded;
+it does not close the experiment or establish comparable precision. Warm results
+include repeated-prefix effects. Cold-start and memory results remain required.
 
 Exit condition: reproducible commands and machine-readable results for all three experiments.
 

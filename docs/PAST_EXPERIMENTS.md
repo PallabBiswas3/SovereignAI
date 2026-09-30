@@ -58,6 +58,34 @@ Query-aware evidence selection later reduced the authorized-answer prompt from a
 - PII and prompt-injection fixtures each reported precision, recall, and F1 of 1.0 over 20 synthetic cases.
 - A live, fully networked Pump-102 run was not completed because all required local services were not running together.
 
+## 30 September 2026: controlled inference harness prerequisite
+
+Implemented and checked on base revision `8062b29d0a25df5b2e63c59ac6a927cf6d4afd1c`.
+This is harness validation, not a completed model/runtime comparison.
+
+- Focused synthetic protocol/HTTP fixtures plus existing system-benchmark,
+  retrieval-ACL, integration, automatic-routing, and retry regressions: **58 passed**.
+  Command:
+  `python -m pytest tests/test_inference_tradeoff.py tests/test_system_benchmark.py tests/test_phase31_retrieval_acl.py tests/test_phase38_system_integration.py tests/test_phase39_automatic_integration_routing.py tests/test_integration_retry.py`.
+- Fixtures check randomized balanced repetition blocks, warm-up exclusion, failure
+  suppression, invalid configuration before requests, private endpoint restrictions,
+  no proxy/redirect use, truncated/empty stream rejection, raw provenance, unknown
+  citation penalties, and legacy smoke compatibility. Synthetic timings are test
+  inputs, not benchmark results.
+- Actual unavailable-service smoke check on loopback ports 8001 and 11434:
+  **20 attempted warm-ups, 20 failures, 0 measured successes, exit code 2**.
+  Command:
+  `python benchmarks/inference_tradeoff.py --protocol controlled --vllm-model Qwen/Qwen3-0.6B --ollama-model qwen3:0.6b --vllm-format unavailable --ollama-format unavailable --context-lengths 64 --evidence-budgets 128 --repetitions 5 --timeout 0.2 --output /tmp/sovereign-inference-unavailable`.
+  Neither inference runtime was installed/running in this execution environment.
+  No live inference latency, throughput, memory, or quality result is claimed.
+- Full repository regression suite and networked Pump-102 workflow were not run.
+  Verified cold starts, memory instrumentation, exact comparable model formats,
+  tokenizer-aware budgets, and manually adjudicated quality remain outstanding.
+
+The harness now reports end-to-end request throughput, unlike the older
+post-first-token calculation; do not compare those fields directly with the
+September 26 smoke results. Historical observations above remain unchanged.
+
 ## Reproducible evidence
 
 - Runtime results: [`../experiments/results/2026-09-26/`](../experiments/results/2026-09-26/)
