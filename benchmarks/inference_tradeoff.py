@@ -9,6 +9,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import hashlib
+import ipaddress
+import random
 import json
 import re
 import statistics
@@ -16,6 +19,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -37,6 +41,48 @@ class Observation:
     citation_recall: float | None = None
     groundedness: float | None = None
     error: str | None = None
+    phase: str = "smoke"
+    answer: str | None = None
+    prompt_sha256: str | None = None
+
+
+def validate_endpoint(endpoint: str) -> str:
+    """Allow literal loopback/RFC1918/ULA addresses; never resolve arbitrary DNS."""
+    parsed = urlsplit(endpoint)
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.query or parsed.fragment):
+        raise ValueError("Runtime endpoint must be a private HTTP(S) URL without credentials/query/fragment")
+    host = parsed.hostname
+    if host == "localhost":
+        host = "127.0.0.1"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise ValueError("Use a literal private runtime IP or localhost") from exc
+    networks = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
+    if not (address.is_loopback or any(address in ipaddress.ip_network(n) for n in networks)):
+        raise ValueError("Public, link-local, and unspecified runtime addresses are forbidden")
+    netloc = f"[{host}]" if address.version == 6 else host
+    if parsed.port is not None:
+        netloc += f":{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def controlled_schedule(args: argparse.Namespace) -> list[tuple[str, int, str, int]]:
+    """Randomized blocks: each condition occurs once per warm repetition."""
+    conditions = [(provider, target, experiment)
+                  for provider in args.providers
+                  for experiment, targets in (("context_length", args.context_lengths),
+                                              ("evidence_budget", args.evidence_budgets))
+                  for target in targets]
+    rng = random.Random(args.seed)
+    schedule = []
+    for repetition in range(1, args.repetitions + 1):
+        block = conditions.copy()
+        rng.shuffle(block)
+        schedule.extend((*condition, repetition) for condition in block)
+    return schedule
 
 
 def bounded_prompt(target_tokens: int, *, evidence: bool = False) -> str:
@@ -61,7 +107,7 @@ def bounded_prompt(target_tokens: int, *, evidence: bool = False) -> str:
 
 
 def quality(answer: str) -> tuple[float, float, float]:
-    cited = set(re.findall(r"\[E([1-4])\]", answer.upper()))
+    cited = set(re.findall(r"\[E(\d+)\]", answer.upper()))
     valid = {"1", "2", "3", "4"}
     precision = len(cited & valid) / max(1, len(cited))
     recall = len(cited & valid) / len(valid)
@@ -75,6 +121,7 @@ async def stream_vllm(client: httpx.AsyncClient, endpoint: str, model: str, prom
     first: float | None = None
     text: list[str] = []
     usage: dict[str, Any] = {}
+    complete = False
     async with client.stream("POST", f"{endpoint.rstrip('/')}/chat/completions", json={
         "model": model, "messages": [{"role": "user", "content": prompt}],
         "temperature": 0, "max_tokens": 256, "stream": True,
@@ -83,7 +130,10 @@ async def stream_vllm(client: httpx.AsyncClient, endpoint: str, model: str, prom
     }, headers={"Authorization": "Bearer local"}) as response:
         response.raise_for_status()
         async for line in response.aiter_lines():
-            if not line.startswith("data:") or line[5:].strip() in {"", "[DONE]"}:
+            if line.startswith("data:") and line[5:].strip() == "[DONE]":
+                complete = True
+                break
+            if not line.startswith("data:") or not line[5:].strip():
                 continue
             item = json.loads(line[5:])
             usage = item.get("usage") or usage
@@ -93,6 +143,8 @@ async def stream_vllm(client: httpx.AsyncClient, endpoint: str, model: str, prom
                 first = first or time.perf_counter()
                 text.append(token)
     finished = time.perf_counter()
+    if not complete or not text:
+        raise ValueError("Incomplete or empty vLLM stream")
     usage.update({"ttft_ms": ((first or finished) - started) * 1000, "total_ms": (finished - started) * 1000})
     return "".join(text), usage
 
@@ -118,6 +170,8 @@ async def stream_ollama(client: httpx.AsyncClient, endpoint: str, model: str, pr
             if item.get("done"):
                 final = item
     finished = time.perf_counter()
+    if not final.get("done") or not text:
+        raise ValueError("Incomplete or empty Ollama stream")
     final.update({
         "ttft_ms": ((first or finished) - started) * 1000,
         "total_ms": (finished - started) * 1000,
@@ -129,8 +183,12 @@ async def stream_ollama(client: httpx.AsyncClient, endpoint: str, model: str, pr
 
 async def observe(provider: str, endpoint: str, model: str, prompt: str, experiment: str,
                   target: int, concurrency: int, repetition: int, timeout: float) -> Observation:
+    started = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        endpoint = validate_endpoint(endpoint)
+        if provider not in {"vllm", "ollama"}:
+            raise ValueError("Unknown inference provider")
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
             answer, metrics = await (
                 stream_vllm(client, endpoint, model, prompt)
                 if provider == "vllm" else stream_ollama(client, endpoint, model, prompt)
@@ -138,41 +196,77 @@ async def observe(provider: str, endpoint: str, model: str, prompt: str, experim
         completion = metrics.get("completion_tokens")
         total_ms = float(metrics.get("total_ms") or 0)
         ttft_ms = float(metrics.get("ttft_ms")) if metrics.get("ttft_ms") is not None else None
-        generation_s = max(0.000001, (total_ms - (ttft_ms or 0)) / 1000)
+        # End-to-end request throughput; do not inflate it by counting the first
+        # token again over a post-first-token interval.
+        generation_s = total_ms / 1000
         precision = recall = grounding = None
         if experiment == "evidence_budget":
             precision, recall, grounding = quality(answer)
         return Observation(
             experiment, provider, model, target, concurrency, repetition, ttft_ms, total_ms,
             metrics.get("prompt_tokens") or metrics.get("prompt_eval_count"), completion,
-            (float(completion) / generation_s) if completion else None,
-            precision, recall, grounding,
+            (float(completion) / generation_s) if completion is not None and generation_s > 0 else None,
+            precision, recall, grounding, answer=answer,
+            prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
         )
     except Exception as exc:
-        return Observation(experiment, provider, model, target, concurrency, repetition, None, 0, None, None, None, error=str(exc))
+        return Observation(experiment, provider, model, target, concurrency, repetition,
+                           None, (time.perf_counter() - started) * 1000, None, None, None,
+                           error=str(exc), prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest())
 
 
 async def main_async(args: argparse.Namespace) -> int:
+    # Validate all inputs before making even the first request.
+    if args.repetitions < (5 if args.protocol == "controlled" else 1):
+        raise ValueError("Controlled protocol requires at least five warm repetitions")
+    if (not args.context_lengths or not args.evidence_budgets
+            or any(n <= 0 for n in args.context_lengths + args.evidence_budgets)
+            or args.timeout <= 0):
+        raise ValueError("Budgets and timeout must be positive")
+    if len(set(args.providers)) != len(args.providers):
+        raise ValueError("Duplicate providers are not independent conditions")
     configured = {
         "vllm": (args.vllm_url, args.vllm_model),
         "ollama": (args.ollama_url, args.ollama_model),
     }
+    for name in args.providers:
+        endpoint, model = configured[name]
+        configured[name] = (validate_endpoint(endpoint), model)
+        if args.protocol == "controlled" and not getattr(args, f"{name}_format"):
+            raise ValueError(f"Controlled protocol requires --{name}-format for model provenance")
     providers = [(name, *configured[name]) for name in args.providers]
     observations: list[Observation] = []
-    for provider, endpoint, model in providers:
-        for target in args.context_lengths:
-            observations.append(await observe(provider, endpoint, model, bounded_prompt(target), "context_length", target, 1, 1, args.timeout))
-        for target in args.evidence_budgets:
-            observations.append(await observe(provider, endpoint, model, bounded_prompt(target, evidence=True), "evidence_budget", target, 1, 1, args.timeout))
-        cached_prompt = bounded_prompt(max(args.context_lengths))
-        for repetition in range(1, args.repetitions + 1):
-            observations.append(await observe(provider, endpoint, model, cached_prompt, "prefix_cache", max(args.context_lengths), 1, repetition, args.timeout))
-        for concurrency in (1, 2, 4):
-            rows = await asyncio.gather(*[
-                observe(provider, endpoint, model, bounded_prompt(1024), "concurrency", 1024, concurrency, index + 1, args.timeout)
-                for index in range(concurrency)
-            ])
-            observations.extend(rows)
+    if args.protocol == "controlled":
+        # Each measured request follows a successful same-condition warm-up.
+        # This controls loading/prefix order without asserting a verified cold start.
+        for provider, target, experiment, repetition in controlled_schedule(args):
+            endpoint, model = configured[provider]
+            prompt = bounded_prompt(target, evidence=experiment == "evidence_budget")
+            warmup = await observe(provider, endpoint, model, prompt, experiment,
+                                   target, 1, repetition, args.timeout)
+            warmup.phase = "warmup"
+            observations.append(warmup)
+            if warmup.error:
+                continue
+            measured = await observe(provider, endpoint, model, prompt, experiment,
+                                     target, 1, repetition, args.timeout)
+            measured.phase = "warm"
+            observations.append(measured)
+    else:
+        for provider, endpoint, model in providers:
+            for target in args.context_lengths:
+                observations.append(await observe(provider, endpoint, model, bounded_prompt(target), "context_length", target, 1, 1, args.timeout))
+            for target in args.evidence_budgets:
+                observations.append(await observe(provider, endpoint, model, bounded_prompt(target, evidence=True), "evidence_budget", target, 1, 1, args.timeout))
+            cached_prompt = bounded_prompt(max(args.context_lengths))
+            for repetition in range(1, args.repetitions + 1):
+                observations.append(await observe(provider, endpoint, model, cached_prompt, "prefix_cache", max(args.context_lengths), 1, repetition, args.timeout))
+            for concurrency in (1, 2, 4):
+                rows = await asyncio.gather(*[
+                    observe(provider, endpoint, model, bounded_prompt(1024), "concurrency", 1024, concurrency, index + 1, args.timeout)
+                    for index in range(concurrency)
+                ])
+                observations.extend(rows)
 
     args.output.mkdir(parents=True, exist_ok=True)
     raw = [asdict(item) for item in observations]
@@ -180,11 +274,32 @@ async def main_async(args: argparse.Namespace) -> int:
     with (args.output / "raw.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(raw[0]))
         writer.writeheader(); writer.writerows(raw)
-    successful = [item for item in observations if not item.error]
-    summary: dict[str, Any] = {"runs": len(observations), "successful": len(successful), "groups": {}}
+    successful = [item for item in observations if not item.error and item.phase != "warmup"]
+    summary: dict[str, Any] = {
+        "schema_version": 2,
+        "protocol": args.protocol, "seed": args.seed,
+        "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "experiment_complete": False,
+        "failed_requests": sum(bool(item.error) for item in observations),
+        "runs": len(observations), "successful": sum(not item.error for item in observations),
+        "measured_successful": len(successful),
+        "warmup_runs": sum(item.phase == "warmup" for item in observations),
+        "requested_repetitions": args.repetitions,
+        "budget_unit": "whitespace words (legacy target_tokens field), not tokenizer tokens",
+        "throughput_definition": "completion tokens / end-to-end request seconds",
+        "quality_definition": "synthetic lexical/citation proxies, not adjudicated factuality",
+        "cold_start": "not measured; external verified runtime reset required",
+        "memory": None,
+        "memory_status": "not measured; runtime process/device instrumentation required",
+        "model_identity_status": "operator-declared, not independently verified",
+        "models": {name: {"model": model, "format": getattr(args, f"{name}_format"),
+                          "endpoint": endpoint} for name, endpoint, model in providers},
+        "groups": {},
+    }
     for key in sorted({(item.experiment, item.provider, item.target_tokens, item.concurrency) for item in successful}):
         rows = [item for item in successful if (item.experiment, item.provider, item.target_tokens, item.concurrency) == key]
         summary["groups"]["|".join(map(str, key))] = {
+            "samples": len(rows),
             "ttft_p50_ms": statistics.median(item.ttft_ms for item in rows if item.ttft_ms is not None),
             "latency_p50_ms": statistics.median(item.total_ms for item in rows),
             "throughput_tok_s": statistics.fmean(item.tokens_per_second for item in rows if item.tokens_per_second is not None) if any(item.tokens_per_second is not None for item in rows) else None,
@@ -222,7 +337,7 @@ async def main_async(args: argparse.Namespace) -> int:
         ]
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
-    return 0 if len(successful) == len(observations) else 2
+    return 0 if observations and all(not item.error for item in observations) else 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -238,7 +353,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--context-lengths", type=int, nargs="+", default=[512, 1024, 2048, 4096])
     parser.add_argument("--evidence-budgets", type=int, nargs="+", default=[256, 512, 1024, 2048])
-    parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--protocol", choices=("smoke", "controlled"), default="smoke")
+    parser.add_argument("--seed", type=int, default=102)
+    parser.add_argument("--vllm-format", help="Operator-declared weight identity/precision; not auto-verified")
+    parser.add_argument("--ollama-format", help="Operator-declared weight identity/quantization; not auto-verified")
+    parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=600)
     parser.add_argument("--output", type=Path, default=Path("experiments/results/inference_tradeoff"))
     return parser.parse_args()

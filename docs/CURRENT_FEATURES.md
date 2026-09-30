@@ -62,6 +62,23 @@ The Pump-102 path combines authorized manuals/SOP/history, sensor diagnosis, det
 - Loopback/private internal service URLs only; public model/service URLs are rejected.
 - APEL synthetic demo: 20 assets, 55 files, seven users, five scenarios, and a 50-question evaluation set.
 
+## Inference experiment tooling
+
+`benchmarks/inference_tradeoff.py --protocol controlled` provides seeded randomized
+condition blocks, at least five warm repetitions, and a same-condition warm-up
+before each measurement. Warm-up failures prevent that measurement; warm-ups stay
+in raw JSON/CSV but are excluded from measured summaries. Model format declarations,
+harness/prompt hashes, answers, sample counts, and failures are recorded. Only
+literal loopback/RFC1918/ULA runtime IPs (or pinned localhost) are accepted;
+environment proxies and redirects are disabled, and incomplete/empty streams fail.
+The legacy `smoke` protocol remains available.
+
+Budgets are whitespace words despite the historical `target_tokens` field name;
+provider-reported prompt token counts are separate. Throughput is completion tokens
+per end-to-end request second. Quality scores remain synthetic lexical/citation
+proxies. Cold-start isolation, memory instrumentation, verified model identities,
+and adjudicated factuality are not implemented; `experiment_complete` remains false.
+
 ## Important limits
 
 - The project is a prototype, not a production security or safety accreditation.
