@@ -2,7 +2,23 @@
 
 Last consolidated: 30 September 2026
 
-SovereignAI is a local-first industrial AI workbench. Its stable boundary is:
+## Project purpose
+
+SovereignAI is a local-first industrial AI workbench for confidential manufacturing and maintenance work. It is being built to help authorized engineers turn company documents, equipment history, and sensor data into evidence-backed recommendations without sending sensitive data to public AI services.
+
+The project aims to prove that a small local AI system can:
+
+- retrieve only evidence the operator is authorized to see;
+- combine documentary and sensor evidence without letting the language model perform safety-critical calculations;
+- show citations, uncertainty, conflicts, approvals, and a complete audit trail;
+- fail safely when evidence, models, or required services are unavailable; and
+- remain advisory—qualified people retain authority over maintenance and physical equipment.
+
+The target outcome is a reproducible Pump-102 industrial pilot in which every released recommendation can be traced from authorized inputs through diagnosis, verification, approval, artifact generation, and a tamper-verifiable Evidence Capsule.
+
+## System boundary
+
+The stable system boundary is:
 
 ```text
 authenticated operator

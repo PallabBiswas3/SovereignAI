@@ -2,7 +2,7 @@
 
 Updated: 30 September 2026
 
-The architecture is frozen. The next milestone is a reproducible Pump-102 assurance bundle, not another agent or a larger feature surface.
+The architecture is frozen. The next milestone is a reproducible Pump-102 assurance bundle that demonstrates the project goal: private, authorized, evidence-backed industrial recommendations that remain auditable, advisory, and fail-safe. It is not another agent or a larger feature surface.
 
 ## 1. Close the three remaining experiments
 
