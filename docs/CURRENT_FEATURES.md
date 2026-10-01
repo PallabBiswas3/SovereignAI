@@ -1,6 +1,6 @@
 # Current features
 
-Last consolidated: 30 September 2026
+Last consolidated: 1 October 2026
 
 ## Project purpose
 
@@ -64,20 +64,55 @@ The Pump-102 path combines authorized manuals/SOP/history, sensor diagnosis, det
 
 ## Inference experiment tooling
 
-`benchmarks/inference_tradeoff.py --protocol controlled` provides seeded randomized
-condition blocks, at least five warm repetitions, and a same-condition warm-up
-before each measurement. Warm-up failures prevent that measurement; warm-ups stay
-in raw JSON/CSV but are excluded from measured summaries. Model format declarations,
-harness/prompt hashes, answers, sample counts, and failures are recorded. Only
-literal loopback/RFC1918/ULA runtime IPs (or pinned localhost) are accepted;
-environment proxies and redirects are disabled, and incomplete/empty streams fail.
-The legacy `smoke` protocol remains available.
+`benchmarks/inference_tradeoff.py --protocol controlled` now runs the version-3
+host-local protocol implemented in `benchmarks/inference_controls.py`. The old
+warm-only protocol is explicitly `legacy-controlled`; `smoke` remains compatible.
+Neither legacy mode can mark an experiment complete.
 
-Budgets are whitespace words despite the historical `target_tokens` field name;
-provider-reported prompt token counts are separate. Throughput is completion tokens
-per end-to-end request second. Quality scores remain synthetic lexical/citation
-proxies. Cold-start isolation, memory instrumentation, verified model identities,
-and adjudicated factuality are not implemented; `experiment_complete` remains false.
+- Provider API identity plus local listener/process identity: Ollama version,
+  digest, format, quantization, template/system hashes and selected runtime
+  settings; vLLM/PyTorch/Transformers/Python versions, pinned local HF revision,
+  weight/config hashes, explicit dtype and selected runtime settings. vLLM must
+  use the same Python environment as its harness. Drift fails the experiment.
+- Host OS/CPU/RAM and normalized-source harness hash. Per-batch 50 ms host
+  available RAM and provider process-tree RSS samples, including errors and
+  limitations; unavailable measurements never become zero-valued substitutes.
+- Provider-verified **full prompt-token ceilings**, including template overhead.
+  The complete fixture is retained; budgets too small for it fail. Neutral padding
+  fills remaining space. vLLM uses `/tokenize`; Ollama uses untimed one-token
+  calibration. Measured provider usage must agree exactly with calibration.
+  `target_tokens` is retained only as a v3 compatibility alias for
+  `prompt_token_budget`; historical v2 values remain whitespace words.
+- Seeded shuffled repetition blocks cover requested budgets, concurrency 1/2/4,
+  warm fresh/reused prefixes, and unprimed cold batches. Each lane has its own
+  nonce. Warm-ups are excluded from summaries. Batch throughput uses the actual
+  batch wall-clock interval, not a sum across repetitions.
+- Reset after calibration and before every batch: Ollama unload acknowledgement
+  plus `/api/ps` absence; vLLM requires an external restart, disappearance of the
+  previous process tree, a newly created listener, and matching runtime identity.
+  The harness never invokes shell commands, terminates processes, or evicts OS
+  caches. Failed reset means no cold request. Cold concurrency describes an
+  initially cold **batch**, not an independently cold model for each lane.
+- Versioned expected-fact/citation JSON schema and fixture provenance/review
+  metadata. The shipped fixture is explicitly synthetic and unreviewed. Final
+  execution refuses it; `--plan-only` makes no runtime requests. Lexical output
+  scoring remains a proxy, even with reviewed expected labels.
+- `summary.json` records separate completion gates for both providers, identity
+  and its consistency, cold state, warm-ups, memory, complete condition coverage,
+  valid token accounting, reviewed real quality labels and failures. Host-local
+  partials remain incomplete until a strict matching-config merge. Raw JSON/CSV,
+  prompts, answers, samples and source-report hashes are retained. Existing output
+  directories cannot be overwritten by a new run.
+
+No final large live benchmark has been run with this protocol. Windows Ollama
+and WSL BF16 vLLM constitute a **runtime + format + host** comparison. Process RSS
+is not VRAM, may double-count shared pages, and misses between-sample peaks; WSL
+reports guest memory. A process restart is not disk/page-cache cold. vLLM loads
+weights before serving, so its measured cold request excludes server startup;
+Ollama's post-unload request may include loading. Prefix reuse is a controlled
+input condition, not proof of a cache hit. The two budget experiment labels both
+use full prompt ceilings with fixed evidence; they do not measure retrieval or
+evidence-selection quality. See `NEXT_PLAN.md` for commands and remaining gates.
 
 ## Important limits
 

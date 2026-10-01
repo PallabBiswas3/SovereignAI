@@ -1,0 +1,20 @@
+{
+  "$schema": "quality_fixture_v1.schema.json",
+  "schema_version": 1,
+  "fixture_id": "pump102-synthetic-v1",
+  "provenance": "synthetic",
+  "review_status": "unreviewed",
+  "review": null,
+  "evidence": {
+    "E1": "Pump-102 vibration is 8.2 mm/s RMS in the latest authorized snapshot.",
+    "E2": "SOP revision 4 section 7.4 sets the alert threshold at 7.1 mm/s RMS.",
+    "E3": "The maintenance history records bearing inspection as the next non-invasive action.",
+    "E4": "No source authorizes automatic shutdown or a control-system command."
+  },
+  "expected_facts": [
+    {"id": "vibration", "statement": "Vibration is 8.2 mm/s RMS.", "match_terms": ["8.2"], "citations": ["E1"]},
+    {"id": "threshold", "statement": "The alert threshold is 7.1 mm/s RMS.", "match_terms": ["7.1"], "citations": ["E2"]},
+    {"id": "inspection", "statement": "Bearing inspection is the next bounded action.", "match_terms": ["bearing", "inspection"], "citations": ["E3"]},
+    {"id": "boundary", "statement": "Automatic shutdown is not authorized.", "match_terms": ["not", "automatic"], "citations": ["E4"]}
+  ]
+}
