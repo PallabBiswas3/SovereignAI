@@ -1,4 +1,4 @@
-"""Generate synthetic, non-confidential PDF and CSV demo assets locally."""
+"""Generate synthetic, non-confidential demo assets locally."""
 from __future__ import annotations
 
 import csv
@@ -37,6 +37,27 @@ def scanned_inspection_pdf() -> None:
     image.save(UPLOADS / "Pump_Inspection_Report.pdf", "PDF", resolution=150.0)
 
 
+def inspection_markdown() -> None:
+    """Provide the text fixture used by the artifact and approval demos."""
+    (UPLOADS / "Pump_Inspection_Report.md").write_text(
+        "# Pump-102 Inspection Report\n\n"
+        "Inspection date: 2026-08-15\n"
+        "Department: Mechanical Maintenance\n"
+        "Equipment: Pump-102\n\n"
+        "Observed readings:\n\n"
+        "- Overall vibration at drive-end bearing: 8.2 mm/s RMS\n"
+        "- Bearing temperature: 86 C\n"
+        "- Discharge pressure: 4.4 bar\n\n"
+        "Observations: Audible bearing noise was present. No casing crack or "
+        "irreparable casing damage was observed. This is the first abnormal "
+        "vibration finding after the last overhaul.\n\n"
+        "Inspector recommendation: Perform alignment and bearing checks. "
+        "Engineering disposition is pending comparison with the current "
+        "maintenance SOP.\n",
+        encoding="utf-8",
+    )
+
+
 def sop_pdf() -> None:
     pages = [
         ("7.4 Vibration Limits", "Overall vibration shall not exceed 6.0 mm/s RMS. Above 9.0 mm/s requires removal from service."),
@@ -64,7 +85,15 @@ def sensor_csv() -> None:
         writer = csv.writer(handle); writer.writerow(["timestamp", "temperature_c", "vibration_mm_s"]); writer.writerows(rows)
 
 
+def generate_demo_data() -> None:
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    KNOWLEDGE.mkdir(parents=True, exist_ok=True)
+    inspection_markdown()
+    scanned_inspection_pdf()
+    sop_pdf()
+    sensor_csv()
+
+
 if __name__ == "__main__":
-    UPLOADS.mkdir(parents=True, exist_ok=True); KNOWLEDGE.mkdir(parents=True, exist_ok=True)
-    scanned_inspection_pdf(); sop_pdf(); sensor_csv()
-    print("Generated synthetic inspection PDF, SOP PDF, and sensor CSV.")
+    generate_demo_data()
+    print("Generated synthetic inspection Markdown/PDF, SOP PDF, and sensor CSV.")
