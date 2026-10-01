@@ -15,6 +15,7 @@ import random
 import json
 import re
 import statistics
+import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -216,8 +217,14 @@ async def observe(provider: str, endpoint: str, model: str, prompt: str, experim
 
 
 async def main_async(args: argparse.Namespace) -> int:
+    if args.protocol == "controlled":
+        from benchmarks import inference_controls
+        return await inference_controls.run(args, sys.modules[__name__])
+    if args.protocol == "merge":
+        from benchmarks import inference_controls
+        return inference_controls.merge(args.merge_inputs, args.output)
     # Validate all inputs before making even the first request.
-    if args.repetitions < (5 if args.protocol == "controlled" else 1):
+    if args.repetitions < (5 if args.protocol == "legacy-controlled" else 1):
         raise ValueError("Controlled protocol requires at least five warm repetitions")
     if (not args.context_lengths or not args.evidence_budgets
             or any(n <= 0 for n in args.context_lengths + args.evidence_budgets)
@@ -232,11 +239,11 @@ async def main_async(args: argparse.Namespace) -> int:
     for name in args.providers:
         endpoint, model = configured[name]
         configured[name] = (validate_endpoint(endpoint), model)
-        if args.protocol == "controlled" and not getattr(args, f"{name}_format"):
+        if args.protocol == "legacy-controlled" and not getattr(args, f"{name}_format"):
             raise ValueError(f"Controlled protocol requires --{name}-format for model provenance")
     providers = [(name, *configured[name]) for name in args.providers]
     observations: list[Observation] = []
-    if args.protocol == "controlled":
+    if args.protocol == "legacy-controlled":
         # Each measured request follows a successful same-condition warm-up.
         # This controls loading/prefix order without asserting a verified cold start.
         for provider, target, experiment, repetition in controlled_schedule(args):
@@ -343,9 +350,9 @@ async def main_async(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--vllm-url", default="http://127.0.0.1:8001/v1")
-    parser.add_argument("--vllm-model", required=True)
+    parser.add_argument("--vllm-model", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434")
-    parser.add_argument("--ollama-model", required=True)
+    parser.add_argument("--ollama-model", default="qwen3:0.6b")
     parser.add_argument(
         "--providers", nargs="+", choices=("vllm", "ollama"),
         default=["vllm", "ollama"],
@@ -353,15 +360,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--context-lengths", type=int, nargs="+", default=[512, 1024, 2048, 4096])
     parser.add_argument("--evidence-budgets", type=int, nargs="+", default=[256, 512, 1024, 2048])
-    parser.add_argument("--protocol", choices=("smoke", "controlled"), default="smoke")
+    parser.add_argument("--protocol", choices=("smoke", "controlled", "legacy-controlled", "merge"), default="smoke")
     parser.add_argument("--seed", type=int, default=102)
     parser.add_argument("--vllm-format", help="Operator-declared weight identity/precision; not auto-verified")
     parser.add_argument("--ollama-format", help="Operator-declared weight identity/quantization; not auto-verified")
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=600)
     parser.add_argument("--output", type=Path, default=Path("experiments/results/inference_tradeoff"))
+    parser.add_argument("--quality-fixture", type=Path,
+                        default=Path("benchmarks/fixtures/pump102_quality_v1.json"))
+    parser.add_argument("--model-snapshot", type=Path,
+                        help="Pinned local HF snapshot, required for vLLM; must match server command")
+    parser.add_argument("--reset-timeout", type=float, default=600,
+                        help="Seconds to wait for verified unload/external restart; no shell hooks")
+    parser.add_argument("--plan-only", action="store_true", help="Write schedule/gates without runtime requests")
+    parser.add_argument("--merge-inputs", type=Path, nargs="+", default=[])
     return parser.parse_args()
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     raise SystemExit(asyncio.run(main_async(parse_args())))

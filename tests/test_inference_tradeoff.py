@@ -18,7 +18,7 @@ spec.loader.exec_module(bench)
 
 
 def arguments(tmp_path, **overrides):
-    values = dict(protocol="controlled", seed=102, repetitions=5,
+    values = dict(protocol="legacy-controlled", seed=102, repetitions=5,
                   providers=["vllm", "ollama"], context_lengths=[64], evidence_budgets=[128],
                   timeout=1, output=tmp_path,
                   vllm_url="http://127.0.0.1:8001/v1", ollama_url="http://127.0.0.1:11434",
