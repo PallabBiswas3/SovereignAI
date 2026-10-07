@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
-pythonpath = ["backend"]
-testpaths = ["tests"]
+pythonpath = ["backend", "local_testing"]
+testpaths = ["local_testing/tests"]
 addopts = "-q"
 
 [tool.ruff]

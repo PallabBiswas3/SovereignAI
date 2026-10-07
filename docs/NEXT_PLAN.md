@@ -1,8 +1,10 @@
 # Next implementation plan
 
-Updated: 1 October 2026
+Updated: 4 October 2026
 
 The architecture is frozen. The next milestone is a reproducible Pump-102 assurance bundle that demonstrates the project goal: private, authorized, evidence-backed industrial recommendations that remain auditable, advisory, and fail-safe. It is not another agent or a larger feature surface.
+
+The 4 October live smoke reached all services; an approved segregated synthetic Supabase seed then provided scoped chunks. A follow-up fixed the diagnostic policy reference and achieved a live `diagnose` result. The strict release test still held the generated answer for 34 non-supported claims and a consequential latency-budget breach. Isolated local-auth downloads allowed maintenance resources and denied restricted finance resources. Detailed local-only reports and results are in the Git-ignored `local_testing/` folder, not on GitHub. Next prove a genuinely supported live release without weakening that gate, then repeat download checks against its registered artifact and capsule. Do not treat held runs or synthetic fixture downloads as production recommendations.
 
 ## 1. Close the three remaining experiments
 
@@ -18,11 +20,11 @@ The architecture is frozen. The next milestone is a reproducible Pump-102 assura
    - Preserve the original live-check as preliminary evidence. No v3 live result
      exists. GGUF Q4_K_M versus BF16 is explicitly a runtime/format/host comparison.
 2. **Live authorized GraphRAG**
-   - Move the evaluation corpus to approved local/self-hosted storage.
+   - The approved segregated synthetic Supabase namespace is seeded; preserve its ACL metadata and do not reclassify legacy rows. For production-like or sensitive evidence, use approved local/self-hosted storage.
    - Cover direct, numeric, multi-document, conflicting revision, unanswerable, and unauthorized-perfect-match cases.
-   - Prove forbidden evidence is absent before scoring and from context/citations.
+   - Authenticate the test principal and prove forbidden evidence is absent before scoring and from context, citations, and actual exported/downloaded artifacts.
 3. **Networked Pump-102 end to end**
-   - Run SovereignAI, GraphRAG, diagnostics, local inference, and ControlPlane together.
+   - The all-service synthetic smoke, scoped Graph-RAG retrieval and a live non-abstaining diagnostic are complete. A policy-released, cited answer with registered artifact and Evidence Capsule is **not** complete. Use `local_testing/scripts/capture_live_pump102.py --require-released-path` on a fresh local-only output directory; held answers fail that structural gate.
    - Preserve latency, citations, release decision, artifact identity, and capsule root hash.
    - Repeat with no evidence, unauthorized evidence, and required-service outage; each must abstain or fail closed.
 
@@ -37,8 +39,8 @@ Keep both instances dedicated and otherwise idle. Run the providers sequentially
 on a shared physical computer to avoid mutual resource interference.
 
 Prepare a **real, independently reviewed** fixture using
-`benchmarks/fixtures/quality_fixture_v1.schema.json`, saved at
-`benchmarks/fixtures/pump102_quality_reviewed_v1.json`. Populate actual evidence,
+`local_testing/benchmarks/fixtures/quality_fixture_v1.schema.json`, saved at
+`local_testing/benchmarks/fixtures/pump102_quality_reviewed_v1.json`. Populate actual evidence,
 expected facts/citations and real reviewer/date/method metadata. The supplied
 `pump102_quality_v1.json` is only a synthetic, unreviewed schema example. Do not
 invent labels or reviewer metadata. Output scoring is still an automated lexical
@@ -49,9 +51,9 @@ From the repository root in PowerShell, first inspect a request-free plan:
 ```powershell
 git switch pump102-inference-completion
 git pull --ff-only
-python benchmarks/inference_tradeoff.py --protocol controlled --plan-only `
+python local_testing/benchmarks/inference_tradeoff.py --protocol controlled --plan-only `
   --context-lengths 256 512 --evidence-budgets 256 512 --repetitions 5 --seed 102 `
-  --output experiments/results/inference_v3_plan
+  --output local_testing/experiments/results/inference_v3_plan
 ```
 
 Expected exit 3 means incomplete; no model request is made. Never reuse a nonempty
@@ -62,12 +64,12 @@ After the reviewed fixture and test prerequisites are ready, run Ollama first fr
 PowerShell with its dedicated local service already listening on port 11434:
 
 ```powershell
-python benchmarks/inference_tradeoff.py --protocol controlled --providers ollama `
+python local_testing/benchmarks/inference_tradeoff.py --protocol controlled --providers ollama `
   --ollama-model qwen3:0.6b --ollama-url http://127.0.0.1:11434 `
   --context-lengths 256 512 --evidence-budgets 256 512 --repetitions 5 --seed 102 `
-  --quality-fixture benchmarks/fixtures/pump102_quality_reviewed_v1.json `
+  --quality-fixture local_testing/benchmarks/fixtures/pump102_quality_reviewed_v1.json `
   --timeout 600 --reset-timeout 600 `
-  --output experiments/results/inference_v3_ollama
+  --output local_testing/experiments/results/inference_v3_ollama
 ```
 
 After the Ollama run, unload its model before measuring vLLM:
@@ -107,13 +109,13 @@ vLLM environment as terminal A. Resolve the same snapshot and run:
 ```bash
 export HF_HUB_OFFLINE=1
 export MODEL_SNAPSHOT="$(python -c 'from huggingface_hub import snapshot_download; print(snapshot_download("Qwen/Qwen3-0.6B", local_files_only=True))')"
-python benchmarks/inference_tradeoff.py --protocol controlled --providers vllm \
+python local_testing/benchmarks/inference_tradeoff.py --protocol controlled --providers vllm \
   --vllm-model Qwen/Qwen3-0.6B --vllm-url http://127.0.0.1:8001/v1 \
   --model-snapshot "$MODEL_SNAPSHOT" \
   --context-lengths 256 512 --evidence-budgets 256 512 --repetitions 5 --seed 102 \
-  --quality-fixture benchmarks/fixtures/pump102_quality_reviewed_v1.json \
+  --quality-fixture local_testing/benchmarks/fixtures/pump102_quality_reviewed_v1.json \
   --timeout 600 --reset-timeout 600 \
-  --output experiments/results/inference_v3_vllm
+  --output local_testing/experiments/results/inference_v3_vllm
 ```
 
 A successful single-provider collection returns **3**, because the comparison
@@ -130,10 +132,10 @@ With both output directories visible in the same checkout (copy the whole vLLM
 output directory from WSL if you used a separate clone), merge in PowerShell:
 
 ```powershell
-python benchmarks/inference_tradeoff.py --protocol merge `
-  --merge-inputs experiments/results/inference_v3_ollama experiments/results/inference_v3_vllm `
-  --output experiments/results/inference_v3_final
-Get-Content experiments/results/inference_v3_final/summary.json
+python local_testing/benchmarks/inference_tradeoff.py --protocol merge `
+  --merge-inputs local_testing/experiments/results/inference_v3_ollama local_testing/experiments/results/inference_v3_vllm `
+  --output local_testing/experiments/results/inference_v3_final
+Get-Content local_testing/experiments/results/inference_v3_final/summary.json
 ```
 
 Only exit **0** and every completion gate true close this collection protocol.

@@ -69,8 +69,7 @@ Controlplane.ai/         privacy, factuality, and response-release policy servic
 Graph-RAG/               evidence ingestion, retrieval, and grounded-claim service
 Time-Series-Diagnostic-Agent/ industrial sensor diagnostics and provenance
 config/                 model, policy, and tool registries
-benchmarks/             reproducible retrieval, inference, and system harnesses
-experiments/            protocols and generated research observations
+local_testing/          ignored local tests, benchmark harnesses, and results (not on GitHub)
 backend/app/api/        typed HTTP endpoints
 backend/app/agent/      plan/state/executor/orchestrator
 backend/app/router/     task profiles and scored model routing
@@ -210,7 +209,7 @@ npm run build
 npm audit --audit-level=high
 ```
 
-The test suite is organized by build phase and includes a real synthetic scanned-PDF-to-DOCX end-to-end test.
+The test suite is organized by build phase and includes a synthetic scanned-PDF-to-DOCX end-to-end test. It lives under the Git-ignored `local_testing/` directory, which must be backed up separately and is not part of a GitHub clone. See its local README for service-specific commands. Runtime services do not require that directory.
 
 ## Docker and offline preparation
 

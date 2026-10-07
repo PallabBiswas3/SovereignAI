@@ -168,27 +168,27 @@ outputs are blocked, while internal and regulated outputs require review.
 Run the controlled cross-risk evaluation:
 
 ```bash
-python scripts/evaluate_controlplane.py
+python ../local_testing/Controlplane.ai/scripts/evaluate_controlplane.py --scenarios ../local_testing/Controlplane.ai/data/controlplane/scenarios.jsonl
 ```
 
 Build the larger reviewer-candidate benchmark and compare enabled verification
 models:
 
 ```bash
-python scripts/build_benchmark_splits.py
-python scripts/compare_verification_models.py
+python ../local_testing/Controlplane.ai/scripts/build_benchmark_splits.py --source ../local_testing/Controlplane.ai/data/controlplane/evaluation_v1.jsonl --output-dir ../local_testing/Controlplane.ai/data/controlplane/benchmark_v1
+python ../local_testing/Controlplane.ai/scripts/compare_verification_models.py --config ../local_testing/Controlplane.ai/configs/model_comparison.yaml
 ```
 
 The generated 200-development, 100-validation, and 400-blinded-test items are
 synthetic reviewer candidates, not gold labels. Independent review and
 adjudication are required before reporting final benchmark accuracy. API judges
-are disabled in `configs/model_comparison.yaml` by default and require the
+are disabled in the local-only `local_testing/Controlplane.ai/configs/model_comparison.yaml` by default and require the
 optional `judge` dependency, credentials, and `--include-api-models`.
 
-Run all tests:
+Run local-only tests from the repository's `Controlplane.ai` directory (not included in a GitHub clone):
 
 ```bash
-pytest -q
+python -m pytest -q ../local_testing/Controlplane.ai/tests
 ```
 
 ## Deploy to a Hugging Face Docker Space
@@ -266,8 +266,7 @@ Do not force-add ignored datasets, audit logs, `.env` files, Streamlit secrets, 
 
 - Application and research source code under `src/`
 - Policy profiles under `configs/policies/`
-- Controlled synthetic scenarios under `data/controlplane/`
-- Tests, scripts, documentation, and dependency definitions
+- Runtime demo entry points, documentation, and dependency definitions
 - Lightweight JSON model metadata and selected threshold descriptions
 
 ### Files intentionally excluded
@@ -276,15 +275,16 @@ Do not force-add ignored datasets, audit logs, `.env` files, Streamlit secrets, 
 - `results/`: generated experiments, local audit events, and feedback
 - Binary model files such as `.joblib`, `.pt`, `.safetensors`, and `.onnx`
 - Virtual environments, Python caches, IDE settings, credentials, and local secrets
+- Local tests, benchmark datasets, research scripts, and results under `../local_testing/`
 
 Users can recreate the research datasets locally:
 
 ```bash
-python scripts/download_ragtruth.py
-python scripts/download_halueval.py
+python ../local_testing/Controlplane.ai/scripts/download_ragtruth.py
+python ../local_testing/Controlplane.ai/scripts/download_halueval.py
 ```
 
-They can regenerate model artifacts with the relevant `scripts/run_phase*.py` commands. ControlPlane.ai runs with its deterministic prototype controls without committed model binaries; trained hallucination risk is disabled in the default policies until compatible Phase 2 artifacts are regenerated.
+They can regenerate model artifacts with the relevant local-only `../local_testing/Controlplane.ai/scripts/run_phase*.py` commands. ControlPlane.ai runs with its deterministic prototype controls without committed model binaries; trained hallucination risk is disabled in the default policies until compatible Phase 2 artifacts are regenerated.
 
 ## Policy profiles
 
@@ -304,13 +304,12 @@ OVERALL_ARCHITECTURE_AND_REVIEW.md     complete problem, design, and review
 docs/                                  detailed architecture, evaluation, research, training
 src/controlplane/                      product-level gateway and policy enforcement
 src/adaptivefact/                      factuality research and verification subsystem
-configs/                               policy and experiment configuration
-data/controlplane/                     benchmarks, generated packs, and NLI datasets
+configs/policies/                      runtime policy configuration
 models/                                lightweight metadata and local trained-model location
-scripts/                               evaluation, training, and research entry points
+scripts/                               runtime demo entry points
 results/                               generated logs and reports, separated by subsystem/phase
 demo/                                  Streamlit interface
-tests/                                 component and end-to-end tests
+../local_testing/Controlplane.ai/      ignored local tests, research configs/scripts/data
 ```
 
 Use [`docs/README.md`](docs/README.md) as the documentation index. Generated
@@ -323,19 +322,19 @@ The `adaptivefact` package implements RAGTruth/HaluEval loading, always-on basel
 
 The trained risk estimator is disabled in the new product policies by default because persisted scikit-learn estimators must be retrained or loaded with the same library version that created them. Enable `use_trained_risk` after regenerating Phase 2 artifacts in the active environment.
 
-Research commands remain available under `scripts/run_phase*.py` and are
+Research commands remain available only under `../local_testing/Controlplane.ai/scripts/run_phase*.py` and are
 described in [`docs/research/PHASES.md`](docs/research/PHASES.md).
 
 Run the integrated Phase 7/8 research pipeline after generating compatible model artifacts:
 
 ```bash
-python scripts/run_phase7_adaptive.py --config configs/phase7_adaptive.yaml
+python ../local_testing/Controlplane.ai/scripts/run_phase7_adaptive.py --config ../local_testing/Controlplane.ai/configs/phase7_adaptive.yaml
 ```
 
 Start with a small real-model smoke run:
 
 ```bash
-python scripts/run_phase7_adaptive.py --max-records 5
+python ../local_testing/Controlplane.ai/scripts/run_phase7_adaptive.py --config ../local_testing/Controlplane.ai/configs/phase7_adaptive.yaml --max-records 5
 ```
 
 The configured experiment draws a deterministic, label-stratified sample instead of taking the first ordered dataset rows. Its report separates confirmed factuality decisions from abstentions:
@@ -357,13 +356,13 @@ The latest source-safe validation rerun improved predicted-contradiction span al
 Run the controlled agent example against the included synthetic enterprise corpus:
 
 ```bash
-python scripts/run_phase8_agent_demo.py
+python ../local_testing/Controlplane.ai/scripts/run_phase8_agent_demo.py
 ```
 
 Run the controlled automatic-remediation examples:
 
 ```bash
-python scripts/run_phase9_remediation_demo.py
+python ../local_testing/Controlplane.ai/scripts/run_phase9_remediation_demo.py
 ```
 
 ## Safety boundary

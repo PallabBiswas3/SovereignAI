@@ -83,7 +83,7 @@ adding a network server or weakening the request contract.
 Combine serialized `DiagnosticResult` files into versioned JSON and Markdown:
 
 ```bash
-python scripts/generate_cross_domain_report.py result1.json result2.json --output-dir outputs/cross_domain
+python ../local_testing/Time-Series-Diagnostic-Agent/scripts/generate_cross_domain_report.py result1.json result2.json --output-dir ../local_testing/Time-Series-Diagnostic-Agent/outputs/cross_domain
 ```
 
 The report records pipeline, workflow, policy and model versions together with
@@ -94,12 +94,12 @@ dataset/protocol identifiers, input hashes, artifact checksums and Git SHAs.
 Build the code-only Kaggle bundle locally:
 
 ```bash
-python scripts/build_kaggle_care_bundle.py
+python ../local_testing/Time-Series-Diagnostic-Agent/scripts/build_kaggle_care_bundle.py
 ```
 
-Upload `dist/tsdiag-care-kaggle.zip` and the complete official
+Upload `../local_testing/Time-Series-Diagnostic-Agent/dist/tsdiag-care-kaggle.zip` and the complete official
 `CARE_To_Compare.zip` as separate private Kaggle Datasets. The bundle includes
-`kaggle/care_benchmark.ipynb`, an auto-discovering runner, optional checksum
+`../local_testing/Time-Series-Diagnostic-Agent/kaggle/care_benchmark.ipynb`, an auto-discovering runner, optional checksum
 validation, a three-event smoke mode, and the full canonical benchmark mode.
 The runner accepts both the original ZIP and the directory tree produced when
 Kaggle automatically expands uploaded archives.
@@ -123,7 +123,7 @@ missing or shared; temporal mode additionally proves development intervals
 precede evaluation intervals on shared assets. No calibrated configuration is
 shipped yet: the existing CARE run used all 95 events, so an independent
 healthy development pool is required before the configuration can be frozen.
-Run `python scripts/calibrate_wind_scada.py --help` once that pool is available.
+Run `python ../local_testing/Time-Series-Diagnostic-Agent/scripts/calibrate_wind_scada.py --help` once that pool is available. These benchmark and calibration tools are local-only and are not included in GitHub clones.
 
 New Wind reports call the historical `event_end - first_detection` quantity
 `time_to_event_end`. Genuine signed `early_warning_lead_time` is reported

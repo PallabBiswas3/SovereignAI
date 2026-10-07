@@ -8,6 +8,12 @@ benchmark protocol, or priority changes. The README remains the user-facing
 entry point; generated benchmark reports belong in `outputs/` and are not
 source documentation.
 
+Benchmark and evaluation modules mentioned below now live under
+`../local_testing/Time-Series-Diagnostic-Agent/src/tsdiag/`; the historical
+paths and commands in this log describe experiments, not published runtime
+entrypoints. Use the local-only scripts under
+`../local_testing/Time-Series-Diagnostic-Agent/scripts/` to rerun them.
+
 ## Direction
 
 The project is moving from a collection of specialist experiments to one

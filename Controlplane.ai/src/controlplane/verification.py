@@ -17,6 +17,7 @@ from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
 from controlplane.detectors.privacy import mask_privacy_values
+from controlplane.evidence_authority import apply_evidence_authority_checks
 from controlplane.evidence_quality import EvidenceAssessment, EvidenceQualityConfig, EvidenceQualityGate
 from controlplane.factuality import PreparedFactuality, build_response_record
 from controlplane.schema import DetectorResult, Finding, FindingStatus, Interaction, RiskCategory, Severity, VerificationDepth
@@ -82,7 +83,14 @@ class AdaptiveFactVerificationService:
         self.phase6 = Phase6Pipeline(nli, retrieval_config=retrieval_config, nli_config=nli_config) if nli is not None else None
         self.evidence_gate = EvidenceQualityGate(evidence_quality_config)
 
-    def verify(self, interaction: Interaction, depth: VerificationDepth, prepared: PreparedFactuality | None = None) -> DetectorResult:
+    def verify(
+        self,
+        interaction: Interaction,
+        depth: VerificationDepth,
+        prepared: PreparedFactuality | None = None,
+        *,
+        evidence_authority_enabled: bool = True,
+    ) -> DetectorResult:
         started = perf_counter()
         if prepared is None or self._phase5_customized:
             record = build_response_record(interaction, factuality_response=mask_privacy_values(interaction.response))
@@ -139,6 +147,10 @@ class AdaptiveFactVerificationService:
         assessments = {claim.id: self.evidence_gate.assess(interaction, claim) for claim in record.atomic_claims}
         support_runtime = self._finalize_claim_states(record.atomic_claims, assessments, depth=depth)
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
+        authority_runtime = (
+            apply_evidence_authority_checks(interaction, record.atomic_claims)
+            if evidence_authority_enabled else {"disabled_for_ablation": True}
+        )
 
         aggregation = aggregate_claims(record.atomic_claims, important_unknown_threshold=self.config.important_unknown_threshold)
         findings = self._normalize_findings(record, aggregation.label, interaction=interaction, depth=depth, assessments=assessments)
@@ -156,6 +168,8 @@ class AdaptiveFactVerificationService:
                 "phase6": phase6_runtime,
                 "agent": agent_runtime,
                 "support": support_runtime,
+                "evidence_authority": authority_runtime,
+                "evidence_authority_enabled": evidence_authority_enabled,
                 "claim_results": [
                     {
                         "claim_id": claim.id,
@@ -178,6 +192,7 @@ class AdaptiveFactVerificationService:
                         "evidence_ids": claim.evidence_ids,
                         "evidence_quality": assessments[claim.id].quality,
                         "evidence_complete_enough": assessments[claim.id].complete_enough_for_unsupported,
+                        "authority_reason": claim.verification_metadata.get("authority_reason"),
                     }
                     for claim in record.atomic_claims
                 ],
@@ -276,9 +291,13 @@ class AdaptiveFactVerificationService:
                 "evidence_complete_enough": assessment.complete_enough_for_unsupported,
                 "evidence_reason": assessment.reason,
                 "evidence_ids": claim.evidence_ids or assessment.selected_ids,
+                "authority_reason": claim.verification_metadata.get("authority_reason"),
             }
             if claim.status == VerificationStatus.CONTRADICTED:
-                findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_contradicted", severity=Severity.HIGH, confidence=float(claim.confidence or 0.5), status=FindingStatus.CONTRADICTED, message="A factual claim is contradicted by retrieved evidence.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
+                if metadata["authority_reason"] == "untrusted_instruction_promotion":
+                    findings.append(Finding(category=RiskCategory.POLICY, subtype="untrusted_instruction_promotion", severity=Severity.CRITICAL, confidence=1.0, status=FindingStatus.CONTRADICTED, message="Lower-trust document text was promoted to an instruction or system policy.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
+                else:
+                    findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_contradicted", severity=Severity.HIGH, confidence=float(claim.confidence or 0.5), status=FindingStatus.CONTRADICTED, message="A factual claim is contradicted by retrieved evidence.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
             elif claim.status == VerificationStatus.UNSUPPORTED:
                 findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_unsupported", severity=Severity.HIGH if interaction.consequential else Severity.MEDIUM, confidence=float(claim.confidence or 0.5), status=FindingStatus.UNSUPPORTED, message="A checkable factual claim is not supported by a sufficiently complete evidence set.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
             elif claim.status == VerificationStatus.CONFLICTING:

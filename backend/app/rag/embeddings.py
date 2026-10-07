@@ -8,6 +8,10 @@ from functools import lru_cache
 from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace, get_cache_backend
 
 
+DEFAULT_SEMANTIC_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_SEMANTIC_REVISION = "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
+
+
 class EmbeddingProvider(ABC):
     """Model-independent interface for local document and query embeddings."""
 
@@ -75,7 +79,7 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
 
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        model_name: str = DEFAULT_SEMANTIC_MODEL,
         *,
         local_files_only: bool = True,
         device: str = "cpu",
@@ -85,10 +89,15 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
         from transformers import AutoModel, AutoTokenizer
 
         self.model_name = model_name
+        self.revision = DEFAULT_SEMANTIC_REVISION if model_name == DEFAULT_SEMANTIC_MODEL else None
         self.batch_size = batch_size
         self._torch = torch
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=local_files_only)
-        self._model = AutoModel.from_pretrained(model_name, local_files_only=local_files_only)
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            model_name, revision=self.revision, local_files_only=local_files_only
+        )
+        self._model = AutoModel.from_pretrained(
+            model_name, revision=self.revision, local_files_only=local_files_only
+        )
         self._model.to(device)
         self._model.eval()
         self._device = device
@@ -100,7 +109,8 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
 
     @property
     def provider_name(self) -> str:
-        return f"sentence-transformer:{self.model_name}"
+        suffix = f"@{self.revision}" if self.revision else ""
+        return f"sentence-transformer:{self.model_name}{suffix}"
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:

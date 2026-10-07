@@ -64,8 +64,8 @@ The Pump-102 path combines authorized manuals/SOP/history, sensor diagnosis, det
 
 ## Inference experiment tooling
 
-`benchmarks/inference_tradeoff.py --protocol controlled` now runs the version-3
-host-local protocol implemented in `benchmarks/inference_controls.py`. The old
+The local-only `local_testing/benchmarks/inference_tradeoff.py --protocol controlled` now runs the version-3
+host-local protocol implemented in `local_testing/benchmarks/inference_controls.py`. These harnesses are ignored by Git and must be backed up separately. The old
 warm-only protocol is explicitly `legacy-controlled`; `smoke` remains compatible.
 Neither legacy mode can mark an experiment complete.
 

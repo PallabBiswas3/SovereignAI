@@ -1,5 +1,5 @@
 id: internal_assistant
-version: "1.1"
+version: "1.2"
 name: Internal Knowledge Assistant
 description: Balanced internal policy emphasizing source grounding, auditability, and selective escalation.
 geography: global
@@ -74,6 +74,12 @@ rules:
       category: hallucination
       status: contradicted
     action: human_review
+  - id: internal-untrusted-instruction-block
+    description: A retrieved document cannot confer system or developer authority.
+    when:
+      category: policy
+      subtype: untrusted_instruction_promotion
+    action: block
   - id: internal-unsupported-warning
     description: Warn when a sufficiently complete evidence set does not support a factual claim.
     when:
