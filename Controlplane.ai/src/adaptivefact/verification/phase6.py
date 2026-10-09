@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import re
 from time import perf_counter
 
 import numpy as np
@@ -9,6 +10,14 @@ import numpy as np
 from adaptivefact.data.schema import Claim, ResponseRecord, VerificationStatus
 from adaptivefact.verification.evidence import ContextTfidfIndex, EvidenceRetrieverConfig, merge_seed_evidence
 from adaptivefact.verification.nli import NLIScorer, NLIScores
+
+
+_EVIDENCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
+_RETRIEVAL_STOPWORDS = frozenset({
+    "and", "are", "as", "at", "been", "for", "from", "has", "have", "into",
+    "its", "per", "that", "the", "their", "these", "this", "those", "was",
+    "were", "with",
+})
 
 
 @dataclass
@@ -97,9 +106,10 @@ class Phase6Pipeline:
                     continue
 
                 pair_start = len(premises)
+                hypothesis = _EVIDENCE_CITATION.sub("", query).strip()
                 for text in evidence_texts:
                     premises.append(text)
-                    hypotheses.append(query)
+                    hypotheses.append(hypothesis)
                 pair_end = len(premises)
                 pending.append(PendingClaim(record_index, claim_index, pair_start, pair_end, evidence_texts, evidence_scores, retrieval_ms))
 
@@ -152,28 +162,32 @@ class Phase6Pipeline:
         return [item for item in raw if isinstance(item, dict) and str(item.get("text") or "").strip()]
 
     def _retrieve_structured(self, items: list[dict], query: str) -> tuple[list[str], list[float]]:
-        query_tokens = self._tokens(query)
-        ranked: list[tuple[float, str]] = []
+        cited_ids = set(_EVIDENCE_CITATION.findall(query))
+        query_tokens = self._tokens(_EVIDENCE_CITATION.sub(" ", query))
+        ranked: list[tuple[bool, float, float, str]] = []
         for item in items:
             text = str(item.get("text") or "").strip()
             supplied = item.get("retrieval_score")
             supplied_score = float(supplied) if isinstance(supplied, (int, float)) else 0.0
-            lexical = self._overlap(query_tokens, self._tokens(text))
-            score = max(supplied_score, lexical)
-            if score < self.retrieval_config.min_score:
+            shared_terms = query_tokens & self._tokens(text)
+            lexical = len(shared_terms) / max(1, len(query_tokens))
+            cited = bool(cited_ids.intersection(
+                str(item.get(key) or "") for key in ("evidence_id", "chunk_id", "document_id")
+            ))
+            # The supplied score ranks the original user query, not this atomic
+            # claim. It may break ties but cannot make an unrelated chunk relevant.
+            min_shared_terms = 1 if len(query_tokens) <= 2 else 2
+            if not cited and (len(shared_terms) < min_shared_terms or lexical < self.retrieval_config.min_score):
                 continue
-            ranked.append((score, text))
-        ranked.sort(key=lambda pair: pair[0], reverse=True)
+            ranked.append((cited, lexical, supplied_score, text))
+        ranked.sort(key=lambda pair: (pair[0], pair[1], pair[2]), reverse=True)
         selected = ranked[: max(1, self.retrieval_config.top_k)]
-        return [text for _, text in selected], [float(score) for score, _ in selected]
+        return [text for _, _, _, text in selected], [1.0 if cited else float(lexical) for cited, lexical, _, _ in selected]
 
     @staticmethod
     def _tokens(text: str) -> set[str]:
-        return {token.casefold().strip(".,:;()[]{}\"'") for token in (text or "").split() if len(token.strip()) >= 3}
-
-    @staticmethod
-    def _overlap(a: set[str], b: set[str]) -> float:
-        return len(a & b) / max(1, len(a))
+        tokens = {token.casefold().strip(".,:;()[]{}\"'") for token in (text or "").split()}
+        return {token for token in tokens if len(token) >= 3 and token not in _RETRIEVAL_STOPWORDS}
 
     @staticmethod
     def _seed_evidence(claim: Claim) -> list[str]:

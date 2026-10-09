@@ -29,6 +29,7 @@ class TransformersNLIScorer(NLIScorer):
         device: str | None = None,
         batch_size: int = 16,
         max_length: int = 512,
+        local_files_only: bool = False,
         fallback_label_order: tuple[str, str, str] = ("contradiction", "entailment", "neutral"),
     ) -> None:
         try:
@@ -41,8 +42,8 @@ class TransformersNLIScorer(NLIScorer):
             ) from exc
 
         self.torch = torch
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=local_files_only)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, local_files_only=local_files_only)
         self.model.eval()
         self.batch_size = batch_size
         self.max_length = max_length

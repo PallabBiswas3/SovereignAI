@@ -3,6 +3,8 @@ from __future__ import annotations
 import abc
 from dataclasses import dataclass
 
+from adaptivefact.verification.nli import NLIScorer
+
 
 class SupportScorer(abc.ABC):
     """Return P(claim is supported by evidence) for each document/claim pair.
@@ -16,6 +18,24 @@ class SupportScorer(abc.ABC):
     @abc.abstractmethod
     def score(self, documents: list[str], claims: list[str]) -> list[float]:
         raise NotImplementedError
+
+
+@dataclass
+class NLIEntailmentSupportScorer(SupportScorer):
+    """Opt-in support proxy using the already configured local NLI model.
+
+    It reports entailment only; a low value is inconclusive, not proof of
+    unsupportedness. The normal NLI contradiction and authority checks remain
+    separate and retain their release-gate precedence.
+    """
+
+    nli: NLIScorer
+    name: str = "nli_entailment"
+
+    def score(self, documents: list[str], claims: list[str]) -> list[float]:
+        if len(documents) != len(claims):
+            raise ValueError("documents and claims must have the same length")
+        return [float(item.entailment) for item in self.nli.score(documents, claims)]
 
 
 @dataclass

@@ -1,10 +1,19 @@
 # Next implementation plan
 
-Updated: 4 October 2026
+Updated: 8 October 2026
 
 The architecture is frozen. The next milestone is a reproducible Pump-102 assurance bundle that demonstrates the project goal: private, authorized, evidence-backed industrial recommendations that remain auditable, advisory, and fail-safe. It is not another agent or a larger feature surface.
 
 The 4 October live smoke reached all services; an approved segregated synthetic Supabase seed then provided scoped chunks. A follow-up fixed the diagnostic policy reference and achieved a live `diagnose` result. The strict release test still held the generated answer for 34 non-supported claims and a consequential latency-budget breach. Isolated local-auth downloads allowed maintenance resources and denied restricted finance resources. Detailed local-only reports and results are in the Git-ignored `local_testing/` folder, not on GitHub. Next prove a genuinely supported live release without weakening that gate, then repeat download checks against its registered artifact and capsule. Do not treat held runs or synthetic fixture downloads as production recommendations.
+
+8 October follow-up: the diagnostic service's runtime wind modules were restored
+to its package after the test-only file separation exposed a missing import. A
+local-only authenticated probe now uses an isolated backend and can inspect the
+*actual* released artifact/capsule IDs; an authenticated required-service outage
+returned 503 with no outputs. The segregated synthetic Supabase seed passed a
+read-only integrity check. A new grounded release was **not** captured: automatic
+approval review could not authorize launching Graph-RAG with external storage
+because its usage limit was reached. The existing held result is unchanged.
 
 ## 1. Close the three remaining experiments
 

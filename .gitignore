@@ -34,6 +34,7 @@ Time-Series-Diagnostic-Agent/tests/
 benchmarks/
 experiments/
 evaluation/
+!Time-Series-Diagnostic-Agent/src/tsdiag/evaluation/
 Graph-RAG/server/**/*.test.ts
 Graph-RAG/server/evaluation/runRetrievalBenchmark.ts
 Graph-RAG/server/evaluation/benchmark.example.json
@@ -52,7 +53,6 @@ Controlplane.ai/docs/evaluation/
 Controlplane.ai/configs/*.yaml
 Time-Series-Diagnostic-Agent/kaggle/
 Time-Series-Diagnostic-Agent/src/tsdiag/benchmarks/
-Time-Series-Diagnostic-Agent/src/tsdiag/evaluation/
 Time-Series-Diagnostic-Agent/scripts/*benchmark*.py
 Time-Series-Diagnostic-Agent/scripts/*ablation*.py
 reports/PUMP102_*.md

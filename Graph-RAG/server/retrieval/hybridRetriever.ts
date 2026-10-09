@@ -2,6 +2,7 @@ import { supabase } from "../supabase";
 import { generateEmbedding } from "../embedding";
 import { bm25Rank } from "./bm25";
 import { reciprocalRankFusion } from "./rrf";
+import { includeCurrentRevisionCompanions } from "./revisionSelection";
 
 export interface RetrievedNode {
   id: string;
@@ -232,6 +233,17 @@ export async function retrieveHybrid(
 
   const normalizedNodes = normalizeFusionScores(fusedNodes);
   const normalizedChunks = normalizeFusionScores(fusedChunks);
+  const rankedChunks = rerankByQueryOverlap(normalizedChunks, query, (chunk) => chunk.content);
+  // The companion pool is authorization-filtered before ranking. Never fetch a
+  // newer revision from the unfiltered service-credential result set.
+  const authorizedCompanions: RetrievedChunk[] = authorizedChunks.map((chunk: any) => ({
+    id: chunk.id,
+    node_id: chunk.node_id,
+    content: chunk.content,
+    metadata: chunk.metadata || {},
+    similarity: 0,
+    retrievalSources: ["revision_companion"],
+  }));
 
   return {
     nodes: rerankByQueryOverlap(
@@ -239,6 +251,10 @@ export async function retrieveHybrid(
       query,
       (node) => `${node.label} ${node.description}`
     ).slice(0, 5),
-    chunks: rerankByQueryOverlap(normalizedChunks, query, (chunk) => chunk.content).slice(0, 6),
+    chunks: includeCurrentRevisionCompanions(
+      rankedChunks,
+      [...rankedChunks, ...authorizedCompanions],
+      6
+    ),
   };
 }

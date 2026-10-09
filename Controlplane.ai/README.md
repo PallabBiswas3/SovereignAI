@@ -122,6 +122,12 @@ $env:CONTROLPLANE_NLI_MODEL = "cross-encoder/nli-deberta-v3-small"
 uvicorn controlplane.api:app --reload
 ```
 
+The ControlPlane NLI loader uses local cached model files by default
+(`CONTROLPLANE_NLI_LOCAL_ONLY=1`). Provision the model before serving; if it is
+absent, consequential checks fail closed instead of downloading during a request.
+Set `CONTROLPLANE_NLI_LOCAL_ONLY=0` only during an explicitly approved provisioning
+step with network access, then restore the local-only setting for runtime.
+
 Verification depth now controls execution: `quick` runs deterministic checks,
 `standard` adds retrieval/NLI, and `deep` adds the bounded evidence agent.
 AdaptiveFact results are normalized before the final policy decision. A

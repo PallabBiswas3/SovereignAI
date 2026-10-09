@@ -13,6 +13,12 @@ _ATOMIC_CONJUNCTION_RE = re.compile(
     r"\s+(?:and|but|while|whereas)\s+(?=(?:[A-Z][\w.-]*|the\s+\w+|it\s+|they\s+|this\s+|that\s+))",
     re.IGNORECASE,
 )
+_FINITE_PREDICATE_RE = re.compile(
+    r"\b(?:is|are|was|were|has|have|had|does|do|did|can|could|must|should|"
+    r"may|might|will|would|recorded|reported|reached|exceeded|requires?|"
+    r"recommends?|approved|requested|occurred|shows?|indicates?|lacks?)\b",
+    re.IGNORECASE,
+)
 _BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 _CITATION_RE = re.compile(r"https?://|\bdoi\s*:|\bet\s+al\.\b|\[[0-9]+\]", re.IGNORECASE)
 _PRONOUN_START_RE = re.compile(r"^(it|they|this|that|these|those)\b", re.IGNORECASE)
@@ -20,6 +26,10 @@ _SIMPLE_RELATION_RE = re.compile(
     r"^(?P<subject>.+?)\s+(?P<predicate>is|are|was|were|has|have|had|contains?|includes?|reported|recorded|reached|exceeded|requires?|recommends?|approved|joined|founded)\s+(?P<object>.+)$",
     re.IGNORECASE,
 )
+_STRUCTURAL_HEADINGS = frozenset({
+    "diagnosis:", "evidence:", "uncertainty/conflicts:",
+    "recommended inspection:", "human approval required:", "conclusion:",
+})
 
 
 @dataclass
@@ -58,6 +68,11 @@ class ClaimExtractor:
                 start += prefix.end()
                 raw = raw[prefix.end():]
             clean = " ".join(raw.split()).strip(" -•\t\n")
+            # Section labels are presentation scaffolding, not factual claims.
+            # A narrow allowlist avoids hiding arbitrary instruction-like text.
+            heading = re.sub(r"\s*/\s*", "/", clean.casefold())
+            if heading in _STRUCTURAL_HEADINGS:
+                continue
             if len(clean) < self.config.min_claim_chars:
                 continue
 
@@ -112,6 +127,11 @@ class ClaimExtractor:
                 continue
             local = 0
             for match in _ATOMIC_CONJUNCTION_RE.finditer(raw):
+                # A coordinated noun phrase is not two factual assertions.
+                # Split only when both sides have their own finite predicate.
+                if not (_FINITE_PREDICATE_RE.search(raw[local:match.start()])
+                        and _FINITE_PREDICATE_RE.search(raw[match.end():])):
+                    continue
                 if match.start() > local:
                     output.append((raw[local:match.start()], start + local, start + match.start(), parent))
                 local = match.end()

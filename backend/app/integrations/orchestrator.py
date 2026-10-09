@@ -181,6 +181,23 @@ class IndustrialIntegrationOrchestrator:
             )
 
         model_runtime: dict[str, Any] | None = None
+        diagnostic_context = (
+            (request.diagnostic.run_context or {}).get("metadata", {})
+            if request.diagnostic is not None else {}
+        )
+        diagnostic_linked = self._diagnostic_linked(
+            evidence["graph-rag"], evidence["diagnostics"], diagnostic_context,
+        ) if request.include_graph_evidence else False
+        diagnostic_usable = not request.include_graph_evidence or diagnostic_linked
+        diagnostic_result = evidence["diagnostics"]
+        if isinstance(diagnostic_result, dict):
+            diagnostic_result = {
+                **diagnostic_result,
+                "document_linkage": (
+                    "not_applicable" if not request.include_graph_evidence
+                    else "linked" if diagnostic_linked else "unlinked"
+                ),
+            }
         if request.candidate_response:
             candidate = request.candidate_response
             service_status["model"] = "not_requested"
@@ -191,6 +208,7 @@ class IndustrialIntegrationOrchestrator:
                         request.query,
                         graph=evidence["graph-rag"],
                         diagnostic=evidence["diagnostics"],
+                        diagnostic_linked=diagnostic_usable,
                     ),
                     self.model,
                     (
@@ -218,7 +236,7 @@ class IndustrialIntegrationOrchestrator:
                     final_response=generated.text,
                     precheck=precheck,
                     graph_evidence=evidence["graph-rag"],
-                    diagnostic=evidence["diagnostics"],
+                    diagnostic=diagnostic_result,
                     controlplane=None,
                     model_runtime=model_runtime,
                     service_status=service_status,
@@ -232,12 +250,13 @@ class IndustrialIntegrationOrchestrator:
             candidate = generated.text
             service_status["model"] = "available"
         context = json.dumps(
-            {"graph_evidence": evidence["graph-rag"], "diagnostic": evidence["diagnostics"]},
+            {"graph_evidence": evidence["graph-rag"],
+             "diagnostic": diagnostic_result if diagnostic_usable else {"document_linkage": "unlinked"}},
             ensure_ascii=True,
             default=str,
         )[:50000]
         graph_grounding = self._graph_grounding_evidence(evidence["graph-rag"])
-        diagnostic_grounding = self._diagnostic_grounding_evidence(evidence["diagnostics"])
+        diagnostic_grounding = self._diagnostic_grounding_evidence(evidence["diagnostics"], linked=diagnostic_usable)
         grounding_evidence = [*graph_grounding, *diagnostic_grounding]
         grounding_sources = [
             name for name, items in (("graph-rag", graph_grounding), ("diagnostics", diagnostic_grounding))
@@ -269,7 +288,7 @@ class IndustrialIntegrationOrchestrator:
             final_response=str(report.get("final_response") or ""),
             precheck=precheck,
             graph_evidence=evidence["graph-rag"],
-            diagnostic=evidence["diagnostics"],
+            diagnostic=diagnostic_result,
             controlplane=report,
             model_runtime=model_runtime,
             service_status=service_status,
@@ -343,10 +362,11 @@ class IndustrialIntegrationOrchestrator:
             document_id = item.get("document_id") or item.get("doc_id") or source_metadata.get("document_id")
             if document_id is not None:
                 mapped["document_id"] = str(document_id)
-            chunk_id = item.get("chunk_id")
+            chunk_id = item.get("chunk_id") or (item.get("id") if kind == "chunk" else None)
             if chunk_id is not None:
                 mapped["chunk_id"] = str(chunk_id)
-            source_name = item.get("source_name") or item.get("source") or item.get("title")
+            source_name = (item.get("source_name") or item.get("source") or item.get("title")
+                           or source_metadata.get("source_document_id"))
             if source_name is not None:
                 mapped["source_name"] = str(source_name)
             if item.get("page") is not None:
@@ -355,6 +375,8 @@ class IndustrialIntegrationOrchestrator:
             if revision is not None:
                 mapped["revision"] = str(revision)
             score = item.get("retrieval_score") if item.get("retrieval_score") is not None else item.get("score")
+            if score is None and kind == "chunk":
+                score = item.get("similarity")
             if isinstance(score, (int, float)) and score >= 0:
                 mapped["retrieval_score"] = float(score)
             scope = (item.get("authorization_scope") or item.get("access_scope")
@@ -367,13 +389,54 @@ class IndustrialIntegrationOrchestrator:
         return output
 
     @staticmethod
-    def _diagnostic_grounding_evidence(diagnostic: dict[str, Any] | None) -> list[dict[str, Any]]:
+    def _diagnostic_linked(
+        graph: dict[str, Any] | None,
+        diagnostic: dict[str, Any] | None,
+        declared_context: dict[str, Any] | None,
+    ) -> bool:
+        """Check declared/echoed asset, record and time consistency before joining streams.
+
+        This is a linkage guard, not attestation that the sensor values originated
+        from the document; that stronger provenance must be established upstream.
+        """
+        if not isinstance(graph, dict) or not isinstance(diagnostic, dict) or not isinstance(declared_context, dict):
+            return False
+        keys = ("asset_id", "source_document_id", "observation_timestamp_utc")
+        if not all(isinstance(declared_context.get(key), str) and declared_context[key].strip() for key in keys):
+            return False
+        diagnostic_metadata = diagnostic.get("metadata")
+        if not isinstance(diagnostic_metadata, dict):
+            return False
+        returned = diagnostic_metadata.get("run_context")
+        if not isinstance(returned, dict):
+            return False
+        echoed = returned.get("metadata")
+        if not isinstance(echoed, dict) or any(echoed.get(key) != declared_context[key] for key in keys):
+            return False
+        for item in graph.get("chunks") or []:
+            if not isinstance(item, dict):
+                continue
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            document_id = item.get("document_id") or item.get("doc_id") or metadata.get("source_document_id") or metadata.get("document_id")
+            content = item.get("content") or item.get("text") or ""
+            if (isinstance(content, str)
+                    and document_id == declared_context["source_document_id"]
+                    and metadata.get("document_status") == "current"
+                    and declared_context["asset_id"].casefold() in content.casefold()
+                    and declared_context["observation_timestamp_utc"] in content):
+                return True
+        return False
+
+    @staticmethod
+    def _diagnostic_grounding_evidence(
+        diagnostic: dict[str, Any] | None, *, linked: bool = False,
+    ) -> list[dict[str, Any]]:
         """Pass measured diagnostic statements to the verifier as evidence, not instructions.
 
         An abstaining diagnostic cannot support a generated diagnosis. We only
         forward identified statements from a completed diagnosis/monitor result.
         """
-        if not isinstance(diagnostic, dict) or diagnostic.get("abstained") is True:
+        if not linked or not isinstance(diagnostic, dict) or diagnostic.get("abstained") is True:
             return []
         decision = diagnostic.get("decision")
         if decision not in {"diagnose", "monitor"}:
@@ -411,9 +474,17 @@ class IndustrialIntegrationOrchestrator:
         *,
         graph: dict[str, Any] | None,
         diagnostic: dict[str, Any] | None,
+        diagnostic_linked: bool = False,
     ) -> str:
         sections = [f"ASSESSMENT REQUEST:\n{query}"]
-        if diagnostic:
+        if diagnostic and not diagnostic_linked:
+            sections.append(
+                "STRUCTURED SENSOR DIAGNOSIS (UNLINKED):\n"
+                "No verified asset-and-time link connects this sensor run to the authorized document records. "
+                "Do not attribute its hypothesis or fault diagnosis to the requested asset, and do not cite it "
+                "as support for a document-grounded claim."
+            )
+        elif diagnostic:
             detection = diagnostic.get("detection") or {}
             hypotheses = diagnostic.get("hypotheses") or []
             actions = diagnostic.get("recommended_actions") or []
@@ -458,7 +529,11 @@ class IndustrialIntegrationOrchestrator:
             "never use superseded limits as current. State unresolved source conflicts."
         )
         sections.append(
-            "Produce a concise maintenance recommendation with: diagnosis, evidence, uncertainty/conflicts, "
-            "recommended inspection, and whether human approval is required. Cite bracketed identifiers."
+            "Answer only the requested issue in at most six short, single-claim sentences. "
+            "Cite the specific bracketed source identifier for each checkable fact; never cite an unrelated source. "
+            "Separate measurements from diagnosis. State material uncertainty or missing evidence explicitly. "
+            "Do not infer that all faults are absent from one normal measurement. "
+            "Include an advisory inspection only when supported by a source, and state that physical work "
+            "requires human approval when applicable. Do not repeat the conclusion or add unrelated findings."
         )
         return "\n\n".join(sections)

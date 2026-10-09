@@ -1,5 +1,5 @@
 import { fetchEvidenceForChunks } from "../evidence/evidenceService";
-import { retrieveHybrid, RetrievedChunk, RetrievedNode } from "../retrieval/hybridRetriever";
+import { retrieveHybrid, RetrievedChunk, RetrievedNode, RetrievalAuthorizationScope } from "../retrieval/hybridRetriever";
 import { verifyClaimsAgainstChunks } from "./claimVerifier";
 import {
   buildVerificationRetryQuery,
@@ -38,6 +38,7 @@ export interface VerificationPipelineInput {
   claims: VerifiableClaim[];
   maxRetries?: number;
   verificationMode?: VerificationMode;
+  authorizationScope?: RetrievalAuthorizationScope;
 }
 
 export interface VerificationPipelineResult extends VerificationOutcome {
@@ -95,7 +96,7 @@ export async function runVerificationPipeline(
   if (shouldRetryVerification(summary, retryCount, maxRetries)) {
     retryCount += 1;
     const retryQuery = buildVerificationRetryQuery(input.originalQuery, results);
-    const retrieval = await retrieveHybrid(retryQuery, 20);
+    const retrieval = await retrieveHybrid(retryQuery, 20, input.authorizationScope);
     nodes = mergeById(nodes, retrieval.nodes);
     chunks = mergeById(chunks, retrieval.chunks);
 
