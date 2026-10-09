@@ -46,6 +46,9 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
     subtype_tp: dict[str, int] = {}
     subtype_fp: dict[str, int] = {}
     subtype_fn: dict[str, int] = {}
+    raw_subtype_tp: dict[str, int] = {}
+    raw_subtype_fp: dict[str, int] = {}
+    raw_subtype_fn: dict[str, int] = {}
     latencies: list[float] = []
     factuality_state_counts: dict[str, int] = {}
     verification_depth_counts: dict[str, int] = {}
@@ -67,6 +70,13 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
             expected_subtypes.add("claim_unknown")
 
         raw_predicted_subtypes = {finding.subtype for finding in report.findings}
+        for subtype in expected_subtypes | raw_predicted_subtypes:
+            if subtype in expected_subtypes and subtype in raw_predicted_subtypes:
+                _increment(raw_subtype_tp, subtype)
+            elif subtype in raw_predicted_subtypes:
+                _increment(raw_subtype_fp, subtype)
+            else:
+                _increment(raw_subtype_fn, subtype)
         predicted_subtypes_for_legacy_eval = set(raw_predicted_subtypes)
         predicted_unresolved = bool(raw_predicted_subtypes & V3_UNRESOLVED_SUBTYPES) or "claim_unknown" in raw_predicted_subtypes
         if predicted_unresolved:
@@ -216,6 +226,7 @@ def evaluate_scenarios(checker: ControlPlane, scenarios: list[dict[str, Any]]) -
         },
         "unsafe_allow_examples": unsafe_allowed[:25],
         "category_metrics": categories,
+        "subtype_metrics": classification_summary(raw_subtype_tp, raw_subtype_fp, raw_subtype_fn),
         "subtype_metrics_legacy_compatible": subtypes,
         "unresolved_aggregate_metrics": {
             "precision": unresolved_precision,

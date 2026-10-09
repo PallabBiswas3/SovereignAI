@@ -531,9 +531,15 @@ class IndustrialIntegrationOrchestrator:
         sections.append(
             "Answer only the requested issue in at most six short, single-claim sentences. "
             "Cite the specific bracketed source identifier for each checkable fact; never cite an unrelated source. "
-            "Separate measurements from diagnosis. State material uncertainty or missing evidence explicitly. "
+            "For a claim that a recorded value falls within a current range, cite both the observation record "
+            "and the current range document in that same sentence; otherwise do not assert the comparison. "
+            "Separate measurements from diagnosis. State material uncertainty explicitly. "
+            "Before saying a measurement or observation is missing, check every authorized log and inspection record; "
+            "distinguish a missing calibration certificate from a recorded measurement. "
             "Do not infer that all faults are absent from one normal measurement. "
-            "Include an advisory inspection only when supported by a source, and state that physical work "
-            "requires human approval when applicable. Do not repeat the conclusion or add unrelated findings."
+            "Do not recommend opening equipment, bearing inspection, or other physical work unless a current "
+            "authorized procedure explicitly supports that step; otherwise recommend only qualified human review. "
+            "Describe approval or isolation requirements as constraints, not permission to act. "
+            "Do not repeat the conclusion or add unrelated findings."
         )
         return "\n\n".join(sections)

@@ -10,16 +10,16 @@ from adaptivefact.extraction.numeric_date import extract_dates, extract_numbers
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])|\n+")
 _CLAUSE_BOUNDARY_RE = re.compile(r"\s*;\s*|\s+—\s+|\s+–\s+")
 _ATOMIC_CONJUNCTION_RE = re.compile(
-    r"\s+(?:and|but|while|whereas)\s+(?=(?:[A-Z][\w.-]*|the\s+\w+|it\s+|they\s+|this\s+|that\s+))",
-    re.IGNORECASE,
+    r"\s+(?i:and|but|while|whereas)\s+",
 )
 _FINITE_PREDICATE_RE = re.compile(
     r"\b(?:is|are|was|were|has|have|had|does|do|did|can|could|must|should|"
     r"may|might|will|would|recorded|reported|reached|exceeded|requires?|"
-    r"recommends?|approved|requested|occurred|shows?|indicates?|lacks?)\b",
+    r"recommends?|approved|requested|occurred|shows?|indicates?|lacks?|supports?|exceeds?|constitutes?)\b",
     re.IGNORECASE,
 )
 _BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+_DISCOURSE_PREFIX_RE = re.compile(r"^\s*(?:however|nevertheless),\s+", re.IGNORECASE)
 _CITATION_RE = re.compile(r"https?://|\bdoi\s*:|\bet\s+al\.\b|\[[0-9]+\]", re.IGNORECASE)
 _PRONOUN_START_RE = re.compile(r"^(it|they|this|that|these|those)\b", re.IGNORECASE)
 _SIMPLE_RELATION_RE = re.compile(
@@ -67,6 +67,10 @@ class ClaimExtractor:
             if prefix:
                 start += prefix.end()
                 raw = raw[prefix.end():]
+            discourse = _DISCOURSE_PREFIX_RE.match(raw)
+            if discourse:
+                start += discourse.end()
+                raw = raw[discourse.end():]
             clean = " ".join(raw.split()).strip(" -•\t\n")
             # Section labels are presentation scaffolding, not factual claims.
             # A narrow allowlist avoids hiding arbitrary instruction-like text.
@@ -128,7 +132,11 @@ class ClaimExtractor:
             local = 0
             for match in _ATOMIC_CONJUNCTION_RE.finditer(raw):
                 # A coordinated noun phrase is not two factual assertions.
-                # Split only when both sides have their own finite predicate.
+                # Split only when both sides have their own finite predicate and
+                # the right side starts with an explicit subject, not "but is".
+                right_first_word = re.match(r"[A-Za-z][\w.-]*", raw[match.end():])
+                if right_first_word is None or _FINITE_PREDICATE_RE.fullmatch(right_first_word.group()):
+                    continue
                 if not (_FINITE_PREDICATE_RE.search(raw[local:match.start()])
                         and _FINITE_PREDICATE_RE.search(raw[match.end():])):
                     continue

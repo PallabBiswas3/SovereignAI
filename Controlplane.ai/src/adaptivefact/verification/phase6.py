@@ -10,6 +10,7 @@ import numpy as np
 from adaptivefact.data.schema import Claim, ResponseRecord, VerificationStatus
 from adaptivefact.verification.evidence import ContextTfidfIndex, EvidenceRetrieverConfig, merge_seed_evidence
 from adaptivefact.verification.nli import NLIScorer, NLIScores
+from adaptivefact.verification.text import split_sentences
 
 
 _EVIDENCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
@@ -124,7 +125,9 @@ class Phase6Pipeline:
             prior_evidence = list(claim.evidence)
             prior_method = claim.verifier_used
             local_scores = scores[item.pair_start:item.pair_end]
-            status, confidence, best_evidence, method, verification_scores = self._decide(local_scores, item.evidence_texts, item.evidence_scores)
+            status, confidence, best_evidence, method, verification_scores = self._decide(
+                local_scores, item.evidence_texts, item.evidence_scores, claim.subject,
+            )
 
             # Preserve a deterministic exact support only when semantic checking is
             # genuinely inconclusive. Explicit contradiction and CONFLICTING states
@@ -182,7 +185,9 @@ class Phase6Pipeline:
             ranked.append((cited, lexical, supplied_score, text))
         ranked.sort(key=lambda pair: (pair[0], pair[1], pair[2]), reverse=True)
         selected = ranked[: max(1, self.retrieval_config.top_k)]
-        return [text for _, _, _, text in selected], [1.0 if cited else float(lexical) for cited, lexical, _, _ in selected]
+        # 1.0 means a deliberate citation. Exact lexical overlap across a whole
+        # chunk must not grant an uncited source the same contradiction authority.
+        return [text for _, _, _, text in selected], [1.0 if cited else min(0.99, float(lexical)) for cited, lexical, _, _ in selected]
 
     @staticmethod
     def _tokens(text: str) -> set[str]:
@@ -195,14 +200,31 @@ class Phase6Pipeline:
             return list(claim.evidence)
         return []
 
-    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float]):
-        status, confidence, evidence_index, method = decide_nli_evidence(scores, evidence_scores, self.nli_config)
+    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None):
+        # NLI over a long chunk can combine an entity in one sentence with a
+        # generic opposing rule in another. A contradiction needs a sentence
+        # that actually names the claim subject; support remains NLI-scored.
+        contradiction_scores = [
+            score if self._subject_local_to_sentence(subject, text) else 0.0
+            for score, text in zip(evidence_scores, evidence_texts)
+        ]
+        status, confidence, evidence_index, method = decide_nli_evidence(scores, contradiction_scores, self.nli_config)
         best_evidence = [] if evidence_index is None else [evidence_texts[evidence_index]]
         verification_scores = {}
         if evidence_index is not None:
             selected = scores[evidence_index]
             verification_scores = {"entailment": float(selected.entailment), "contradiction": float(selected.contradiction), "neutral": float(selected.neutral)}
         return status, confidence, best_evidence, method, verification_scores
+
+    @classmethod
+    def _subject_local_to_sentence(cls, subject: str | None, evidence: str) -> bool:
+        if not subject:
+            return True
+        anchors = cls._tokens(subject)
+        if not anchors:
+            return True
+        required = min(2, len(anchors))
+        return any(len(anchors & cls._tokens(sentence)) >= required for sentence in split_sentences(evidence))
 
 
 def decide_nli_evidence(scores: list[NLIScores], evidence_scores: list[float], config: Phase6NLIConfig):
@@ -232,9 +254,15 @@ def decide_nli_evidence(scores: list[NLIScores], evidence_scores: list[float], c
 def summarize_phase6(records: list[ResponseRecord], *, phase5_status_counts: dict[str, int], runtime: dict) -> dict:
     claims = [claim for record in records for claim in record.atomic_claims]
     final_status_counts = Counter(claim.status.value for claim in claims)
+    # Resolution means a positive or negative factual verdict, not an abstention
+    # or conflicting evidence. Counts expose the denominator, including empty runs.
+    resolved = sum(claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED,
+                                  VerificationStatus.UNSUPPORTED} for claim in claims)
     return {
         "n_records": len(records),
         "n_claims": len(claims),
+        "resolved_claim_count": resolved,
+        "overall_claim_resolution_rate": resolved / len(claims) if claims else 0.0,
         "phase5_status_counts": phase5_status_counts,
         "final_status_counts": dict(final_status_counts),
         "claims_sent_to_nli": int(runtime.get("nli_claims", 0)),

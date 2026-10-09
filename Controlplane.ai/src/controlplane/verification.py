@@ -19,6 +19,7 @@ from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
 from controlplane.detectors.privacy import mask_privacy_values
+from controlplane.compound_support import apply_compound_support
 from controlplane.evidence_authority import apply_evidence_authority_checks
 from controlplane.evidence_quality import EvidenceAssessment, EvidenceQualityConfig, EvidenceQualityGate
 from controlplane.factuality import PreparedFactuality, build_response_record
@@ -34,16 +35,25 @@ class VerificationService(Protocol):
 
 
 class LazyTransformersNLIScorer(NLIScorer):
-    def __init__(self, model_name: str, *, device: str | None = None, local_files_only: bool = True) -> None:
+    def __init__(self, model_name: str, *, device: str | None = None, local_files_only: bool = True, batch_size: int = 16) -> None:
         self.model_name = model_name
         self.device = device
         self.local_files_only = local_files_only
+        if not 1 <= batch_size <= 64:
+            raise ValueError("CONTROLPLANE_NLI_BATCH_SIZE must be between 1 and 64")
+        self.batch_size = batch_size
         self._delegate: TransformersNLIScorer | None = None
+
+    def preload(self) -> None:
+        # Exercise one forward pass before the API advertises readiness. Model
+        # files can exist in the cache while the runtime still cannot use them.
+        self.score(["The pump is operating."], ["The pump is operating."])
 
     def score(self, premises: list[str], hypotheses: list[str]):
         if self._delegate is None:
             self._delegate = TransformersNLIScorer(
                 self.model_name, device=self.device, local_files_only=self.local_files_only,
+                batch_size=self.batch_size,
             )
         return self._delegate.score(premises, hypotheses)
 
@@ -151,6 +161,11 @@ class AdaptiveFactVerificationService:
                 "latency_ms": sum(item.latency_ms for item in results),
             }
 
+        # A narrow two-source numeric comparison can be checked exactly after
+        # NLI has had a chance to find a contradiction. Unknown comparisons
+        # remain unknown unless both authorized citations establish the fact.
+        compound_supported = apply_compound_support(interaction, record.atomic_claims)
+
         # Reuse the entailment already computed by phase 6 for auditability.
         # This is a signal, not a calibrated support probability or release
         # decision: source authority and evidence quality are checked below.
@@ -166,6 +181,7 @@ class AdaptiveFactVerificationService:
             record.atomic_claims, assessments, depth=depth, interaction=interaction,
         )
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
+        support_runtime["deterministic_compound_supported"] = compound_supported
         authority_runtime = (
             apply_evidence_authority_checks(interaction, record.atomic_claims)
             if evidence_authority_enabled else {"disabled_for_ablation": True}
@@ -233,6 +249,9 @@ class AdaptiveFactVerificationService:
 
         for claim in claims:
             assessment = assessments[claim.id]
+            if claim.verification_metadata.get("support_guard_reason"):
+                self._mark_undecidable(claim, assessment, claim.verifier_used or "support_guard")
+                continue
             if claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED}:
                 continue
             method = claim.verifier_used or ""
@@ -388,7 +407,8 @@ def build_adaptive_verification_from_env() -> AdaptiveFactVerificationService | 
     model_name = os.getenv("CONTROLPLANE_NLI_MODEL", "cross-encoder/nli-deberta-v3-small")
     device = os.getenv("CONTROLPLANE_NLI_DEVICE") or None
     local_files_only = os.getenv("CONTROLPLANE_NLI_LOCAL_ONLY", "1").strip().lower() not in {"0", "false", "no", "off"}
-    nli = LazyTransformersNLIScorer(model_name, device=device, local_files_only=local_files_only)
+    batch_size = int(os.getenv("CONTROLPLANE_NLI_BATCH_SIZE", "16"))
+    nli = LazyTransformersNLIScorer(model_name, device=device, local_files_only=local_files_only, batch_size=batch_size)
     retrieval = EvidenceRetrieverConfig(min_score=float(os.getenv("CONTROLPLANE_RETRIEVAL_MIN_SCORE", "0.05")))
     agent = BoundedVerificationAgent(nli, [ContextSearchTool(retrieval_config=retrieval)], AgentVerificationConfig())
     support = build_support_scorer_from_env(nli)
