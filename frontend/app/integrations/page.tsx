@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import DiagnosticForm, { Catalogue, Diagnostic } from "./DiagnosticForm";
+import "./integrations.css";
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -92,22 +93,26 @@ export default function IntegrationsPage() {
   }
 
   return <main className="integrationPage">
-    <header className="monitorHeader"><div><small>SOVEREIGNAI FLAGSHIP · CANONICAL DEMO</small><h1>Pump-102 evidence-to-maintenance workflow</h1><p>Sensor history → diagnostic agent → authorized GraphRAG → local model → ControlPlane → artifact → Evidence Capsule</p></div><Link href="/">Back to workbench</Link></header>
-    <section className="integrationStatus">
-      <div><label>ORCHESTRATOR</label><strong>{health?.status ?? "checking"}</strong></div>
-      {Object.entries(health?.services ?? {}).map(([name, service]) => <div key={name}><label>{name}</label><strong className={service.status === "ok" ? "serviceReady" : "serviceUnavailable"}>{service.status}</strong><small>{service.detail}</small></div>)}
+    <header className="monitorHeader integrationHeader"><div><small>SOVEREIGNAI / DIAGNOSTIC WORKBENCH</small><h1>Evidence-backed diagnostics</h1><p>From equipment data to a traceable assessment. Every answer passes through the release gate.</p><div className="pipelineSteps" aria-label="Analysis pipeline"><span>Measurements</span><span>Authorized evidence</span><span>Verification</span><span>Traceable outputs</span></div></div><Link href="/">← Back to workbench</Link></header>
+    <section className="integrationStatus" aria-label="Live service status">
+      <div><span className="serviceName">Orchestrator</span><strong className={health?.status === "ok" ? "serviceReady" : "serviceUnavailable"}>{health?.status ?? "checking"}</strong></div>
+      {Object.entries(health?.services ?? {}).map(([name, service]) => <div key={name}><span className="serviceName">{name}</span><strong className={service.status === "ok" ? "serviceReady" : "serviceUnavailable"}>{service.status}</strong>{service.detail && <small>{service.detail}</small>}</div>)}
     </section>
     <div className="integrationLayout">
-      <form className="integrationForm" onSubmit={submit}>
-        <label>ANALYSIS REQUEST<textarea value={query} onChange={(event) => setQuery(event.target.value)} required minLength={3}/></label>
+      <form className="integrationForm" onSubmit={submit} aria-busy={busy}>
+        <div className="requestHeading"><span className="sectionEyebrow">START AN ASSESSMENT</span><h2>What needs investigating?</h2><p>State the asset, observation and question you want answered.</p></div>
+        <label className="queryLabel">Analysis request<textarea value={query} onChange={(event) => setQuery(event.target.value)} required minLength={3}/></label>
+        <div className="evidenceSources">
         <label className="integrationToggle"><input type="checkbox" checked={useDiagnostics} onChange={(event) => setUseDiagnostics(event.target.checked)}/> Include time-series diagnosis</label>
         <label className="integrationToggle"><input type="checkbox" checked={useGraph} onChange={(event) => setUseGraph(event.target.checked)}/> Include authorized document evidence</label>
+        </div>
         {useDiagnostics && (catalogue ? <DiagnosticForm catalogue={catalogue} onChange={setDiagnostic}/> : <p>Diagnostic contracts unavailable. Sign in and check backend connectivity.</p>)}
         <button disabled={busy || !query.trim() || (!useDiagnostics && !useGraph) || (useDiagnostics && !diagnostic)}>{busy ? "Running controlled workflow..." : "Validate data and run analysis"}</button>
-        {error && <p className="error">{error}</p>}
+        {busy && <p role="status" className="runNotice">Gathering evidence and checking claims. Local models may take a few minutes; keep this page open.</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </form>
       <section className="integrationResult">
-        {!analysis && <div className="integrationEmpty"><h2>Evidence before release</h2><p>Graph evidence and sensor diagnostics are gathered independently. ControlPlane.ai decides whether the assembled response can be released.</p></div>}
+        {!analysis && <div className="integrationEmpty"><span className="sectionEyebrow">ASSESSMENT OUTPUT</span><h2>A decision you can trace.</h2><p>Your evidence, diagnostic findings and release decision will appear here.</p><ol className="assessmentPreview"><li><span>01</span><div><b>Gather the evidence</b><p>Authorized documents and equipment measurements.</p></div></li><li><span>02</span><div><b>Verify the assessment</b><p>ControlPlane checks claims before release.</p></div></li><li><span>03</span><div><b>Keep the audit trail</b><p>Released answers include artifacts and an Evidence Capsule.</p></div></li></ol><small>Incomplete or unsafe assessments stay held for review.</small></div>}
         {analysis && <>
           <div className="releaseHeader"><div><label>{analysis.run_id}</label><h2>{analysis.released ? "Released by ControlPlane" : "Not released"}</h2></div><span className={analysis.released ? "released" : "held"}>{analysis.controlplane?.decision?.action ?? analysis.status}</span></div>
           <div className="flagshipGrid">

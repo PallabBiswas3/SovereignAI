@@ -1,0 +1,96 @@
+/* Scoped workbench styles: do not inherit the chat header's fixed height. */
+.integrationPage { --form-muted: #a6b6c6; max-width: 1480px; padding: 40px 32px 64px; }
+.integrationPage .integrationHeader { height: auto; min-height: 0; padding: 0 0 28px; gap: 28px; align-items: flex-start; }
+.integrationHeader > div { min-width: 0; max-width: 790px; }
+.integrationHeader small, .sectionEyebrow { color: #96b6d0; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.integrationHeader h1 { font-size: clamp(26px, 3vw, 38px); line-height: 1.18; letter-spacing: -.035em; margin: 14px 0 10px; }
+.integrationPage .integrationHeader p { font-size: 14px; line-height: 1.7; color: var(--form-muted); }
+.integrationHeader > a { flex-shrink: 0; font-size: 13px; padding: 12px 0; min-height: 44px; }
+.pipelineSteps { display: flex; gap: 8px 18px; flex-wrap: wrap; margin-top: 20px; }
+.pipelineSteps span { font-size: 11px; color: #bdd0df; }
+.pipelineSteps span:not(:last-child)::after { content: " /"; color: #586f81; margin-left: 18px; }
+.integrationPage .integrationStatus { grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 24px 0 30px; border-radius: 10px; overflow: hidden; background: #10171e; }
+.integrationPage .integrationStatus > div { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.serviceName { font-size: 12px; color: var(--form-muted); overflow-wrap: anywhere; }
+.integrationStatus strong { display: flex; align-items: center; gap: 7px; }
+.integrationStatus strong::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.integrationPage .integrationLayout { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.integrationPage .integrationForm { border-radius: 12px; padding: 28px; min-width: 0; gap: 22px; }
+.requestHeading h2 { font-size: 23px; letter-spacing: -.025em; margin: 10px 0 8px; }
+.requestHeading p, .runNotice { font-size: 13px; color: var(--form-muted); line-height: 1.6; margin: 0; }
+.integrationForm label { color: #d0deea; letter-spacing: 0; font-size: 13px; font-weight: 500; }
+.integrationForm .queryLabel textarea { min-height: 130px; font-size: 14px; line-height: 1.6; }
+.evidenceSources { display: grid; gap: 10px; padding: 16px 0; border-block: 1px solid var(--line); }
+.integrationForm .integrationToggle { gap: 10px; min-height: 32px; line-height: 1.5; cursor: pointer; }
+.integrationToggle input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--blue); }
+.integrationPage .diagnosticInputs { padding: 0; border: 0; gap: 16px; margin: 0; }
+.diagnosticInputs legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.contractHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.contractHeading code { font-size: 10px; color: var(--form-muted); padding: 5px 8px; background: #1c2630; border-radius: 4px; overflow-wrap: anywhere; }
+.integrationForm input:not([type=checkbox]), .integrationForm select, .integrationForm textarea { font-family: inherit; font-size: 14px; min-width: 0; max-width: 100%; min-height: 44px; }
+.integrationForm select { cursor: pointer; }
+.integrationForm .workflowSelect select { font-weight: 600; min-height: 48px; }
+.integrationPage .diagnosticInputs .contractNote { font-size: 12px; color: var(--form-muted); margin: 0; line-height: 1.6; }
+.inputProgress { display: grid; gap: 8px; font-size: 12px; color: var(--form-muted); }
+.inputProgress progress { width: 100%; height: 5px; appearance: none; border: 0; border-radius: 4px; overflow: hidden; background: #25313b; }
+.inputProgress progress::-webkit-progress-bar { background: #25313b; }
+.inputProgress progress::-webkit-progress-value { background: var(--blue); }
+.inputProgress progress::-moz-progress-bar { background: var(--blue); }
+.diagnosticSection { border-top: 1px solid var(--line); padding-top: 24px; min-width: 0; }
+.diagnosticSectionHeading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
+.diagnosticSectionHeading > span { color: var(--blue); font: 12px ui-monospace, monospace; padding-top: 5px; }
+.integrationPage .diagnosticSectionHeading h3 { font-size: 16px; margin: 0 0 5px; }
+.integrationPage .diagnosticSectionHeading p { color: var(--form-muted); margin: 0; font-size: 12px; }
+.diagnosticFieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
+.diagnosticField { display: grid; gap: 7px; align-content: start; min-width: 0; }
+.diagnosticFieldWide { grid-column: 1 / -1; }
+.integrationForm .diagnosticField > label { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; text-transform: capitalize; }
+.diagnosticField label > span:first-child { overflow-wrap: anywhere; }
+.fieldRequirement { font-size: 10px; font-weight: 400; color: var(--form-muted); flex-shrink: 0; }
+.integrationPage .diagnosticInputs .fieldKey { color: #90abc0; font: 10px ui-monospace, monospace; overflow-wrap: anywhere; }
+.fieldHelp { display: grid; gap: 5px; }
+.integrationPage .diagnosticInputs .fieldHelp small { color: var(--form-muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.diagnosticField textarea { font-family: ui-monospace, SFMono-Regular, monospace; line-height: 1.6; min-height: 130px; }
+.diagnosticField input[readonly] { color: #a3b3c1; background: #18212a; }
+.dataImport { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.integrationPage .dataImport input[type=file] { width: 100%; background: transparent; border: 1px dashed #415568; padding: 8px; font-size: 11px; }
+.dataImport input::file-selector-button { background: #233548; color: #dceaf5; border: 0; border-radius: 4px; padding: 7px 10px; margin-right: 10px; cursor: pointer; }
+.dataImport > span { font-size: 11px; color: #9bbad2; }
+.modelReference { min-width: 0; overflow-wrap: anywhere; }
+.modelReference small { font: 10px ui-monospace, monospace; }
+.integrationPage .diagnosticInputs .diagnosticReadiness { padding: 12px 14px; margin: 0; border-left: 2px solid #9fbad1; background: #192530; color: #c1d5e6; font-size: 12px; }
+.integrationPage .diagnosticInputs .diagnosticReadiness.complete { border-color: var(--green); background: #142820; color: #a5e4c6; }
+.integrationForm > button { min-height: 48px; font-size: 14px; cursor: pointer; }
+.integrationForm > button:disabled { cursor: not-allowed; }
+.integrationForm .error { padding: 12px; border: 1px solid #653f47; border-radius: 6px; background: #2c1b22; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; margin: 0; }
+.integrationPage :is(input, textarea, select, button, a, summary):focus-visible { outline: 2px solid #87c7ff; outline-offset: 3px; }
+.integrationPage .integrationResult { border-radius: 12px; min-width: 0; min-height: 480px; padding: 28px; }
+.integrationPage .integrationEmpty { margin: 26px auto; text-align: left; }
+.integrationEmpty h2 { font-size: 28px; letter-spacing: -.035em; margin: 14px 0; }
+.integrationEmpty > p { line-height: 1.7; font-size: 14px; color: var(--form-muted); }
+.assessmentPreview { list-style: none; padding: 0; margin: 28px 0; }
+.assessmentPreview li { display: flex; gap: 16px; padding: 20px 0; border-top: 1px solid var(--line); }
+.assessmentPreview li > span { font: 12px ui-monospace, monospace; color: var(--blue); padding-top: 3px; }
+.assessmentPreview b { font-size: 14px; color: var(--ink); font-weight: 500; }
+.assessmentPreview p { font-size: 13px; line-height: 1.6; color: var(--form-muted); margin: 7px 0 0; }
+.integrationEmpty > small { font-size: 12px; line-height: 1.7; color: #cbbf98; }
+.integrationResult :is(label, p, summary, b, code, a) { overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .integrationPage .integrationLayout { grid-template-columns: minmax(0, 1fr); }
+  .integrationPage .integrationStatus { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .integrationPage { padding: 22px 16px 40px; }
+  .integrationPage .integrationHeader { flex-direction: column; gap: 10px; padding-bottom: 20px; }
+  .integrationHeader h1 { font-size: 29px; }
+  .integrationHeader > a { padding: 10px 0; }
+  .pipelineSteps { gap: 10px 12px; }
+  .pipelineSteps span:not(:last-child)::after { margin-left: 12px; }
+  .integrationPage .integrationStatus { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 20px 0; }
+  .integrationPage .integrationStatus > div { padding: 12px; }
+  .integrationPage .integrationForm, .integrationPage .integrationResult { padding: 20px 16px; }
+  .diagnosticFieldGrid { grid-template-columns: minmax(0, 1fr); }
+  .integrationForm input:not([type=checkbox]):not([type=file]), .integrationForm select, .integrationForm textarea { font-size: 16px; }
+  .integrationPage .integrationResult { min-height: 0; }
+  .integrationPage .integrationEmpty { margin: 12px 0; }
+}

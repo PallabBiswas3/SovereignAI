@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type Schema = {
   type?: string; title?: string; description?: string; const?: unknown;
@@ -52,27 +52,49 @@ function decode(schema: Schema, root: Schema, values: Record<string, string>, pr
   return result;
 }
 
+function fieldTitle(name: string) {
+  return name.replace(/_/g, " ").replace(/\b(utc|id|hz|rpm|rul|ah)\b/g, (word) => word.toUpperCase());
+}
+
+function arraySummary(value: string): string {
+  if (!value.trim()) return "No data added";
+  try {
+    const data = JSON.parse(value);
+    if (!Array.isArray(data)) return "Expected a JSON array";
+    return Array.isArray(data[0]) ? `${data.length} rows · ${data[0].length} columns` : `${data.length} values`;
+  } catch { return "Invalid JSON"; }
+}
+
 function Fields({ schema, values, prefix, change, upload }: {
   schema: Schema; values: Record<string, string>; prefix: string;
   change: (key: string, value: string) => void;
   upload: (key: string, file: File, spec: Schema) => Promise<void>;
 }) {
+  const fieldId = useId();
   return <>{Object.entries(schema.properties ?? {}).map(([name, field]) => {
     const spec = resolve(field, schema);
     const key = `${prefix}.${name}`;
     const required = schema.required?.includes(name) ?? false;
     const structured = spec.type === "array" || spec.type === "object";
-    return <label key={key}>{name}{required ? " *" : " (optional)"}
-      {spec.description && <small>{spec.description}</small>}
-      {spec.const !== undefined ? <input value={String(spec.const)} readOnly aria-label={name}/>
-        : spec.enum ? <select required={required} value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)}><option value="">Select {name}</option>{spec.enum.map((item) => <option key={item}>{item}</option>)}</select>
-        : structured ? <><textarea required={required} value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)} spellCheck={false} placeholder={spec.type === "array" ? (spec.items?.type === "array" ? "[[1, 2], [3, 4], ...]" : "[value, value, ...]") : "JSON object using the fields listed below"}/>
-          {spec.type === "array" && <><small>Import JSON array; numeric arrays also accept headerless CSV. Rows = observations, columns = channels. No automatic unit conversion.</small><input aria-label={`Import ${name}`} type="file" accept=".json,.csv" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(key, file, spec); event.target.value = ""; }}/></>}
-          {spec.properties && <small>Required keys: {(spec.required ?? []).join(", ")}. All values numeric.</small>}
-          {spec.minItems && <small>Minimum {spec.minItems} rows/samples. This is a validation floor, not a guarantee of diagnostic adequacy.</small>}</>
-        : <input required={required} type={spec.type === "number" || spec.type === "integer" ? "number" : "text"} step="any" value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)} aria-label={name}/>
+    const id = `${fieldId}-${name}`;
+    const numericArray = spec.type === "array" && ["number", "integer"].includes((spec.items?.type === "array" ? spec.items.items : spec.items)?.type ?? "");
+    return <div key={key} className={`diagnosticField ${structured ? "diagnosticFieldWide" : ""}`}>
+      <label htmlFor={id}><span>{fieldTitle(name)}</span><span className="fieldRequirement">{spec.const !== undefined ? "Fixed" : required ? "Required" : "Optional"}</span></label>
+      <small className="fieldKey">{name}</small>
+      {spec.const !== undefined ? <input id={id} value={String(spec.const)} readOnly aria-label={name} aria-describedby={`${id}-help`}/>
+        : spec.enum ? <select id={id} aria-label={name} aria-describedby={`${id}-help`} required={required} value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)}><option value="">Select {fieldTitle(name)}</option>{spec.enum.map((item) => <option key={item}>{item}</option>)}</select>
+        : structured ? <><textarea id={id} aria-label={name} aria-describedby={`${id}-help`} required={required} value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)} spellCheck={false} placeholder={spec.type === "array" ? (spec.items?.type === "array" ? "[[1, 2], [3, 4], ...]" : "[value, value, ...]") : "JSON object using the fields listed below"}/>
+          {spec.type === "array" && <div className="dataImport"><input aria-label={`Import ${name}`} type="file" accept={numericArray ? ".json,.csv" : ".json"} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(key, file, spec); event.target.value = ""; }}/><span>{arraySummary(values[key] ?? "")}</span></div>}
+        </>
+        : <input id={id} required={required} type={spec.type === "number" || spec.type === "integer" ? "number" : "text"} step={spec.type === "integer" ? "1" : "any"} value={values[key] ?? ""} onChange={(event) => change(key, event.target.value)} aria-label={name} aria-describedby={`${id}-help`}/>
       }
-    </label>;
+      <div id={`${id}-help`} className="fieldHelp">
+        {spec.description && <small>{spec.description}</small>}
+        {spec.type === "array" && <small>{numericArray ? "JSON or headerless numeric CSV. " : "JSON array. "}{spec.items?.type === "array" ? "Rows = observations; columns = channels. " : "One value per entry. "}No automatic unit conversion.</small>}
+        {spec.properties && <small>Required keys: {(spec.required ?? []).join(", ")}. All values numeric.</small>}
+        {spec.minItems && <small>Minimum {spec.minItems} rows/samples; not a guarantee of diagnostic adequacy.</small>}
+      </div>
+    </div>;
   })}</>;
 }
 
@@ -80,6 +102,7 @@ export default function DiagnosticForm({ catalogue, onChange }: { catalogue: Cat
   const [workflowId, setWorkflowId] = useState(catalogue.workflows[0]?.id ?? "");
   const [values, setValues] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState("");
+  const importGeneration = useRef(0);
   const workflow = catalogue.workflows.find((item) => item.id === workflowId);
   let diagnostic: Diagnostic | null = null;
   let error = "";
@@ -104,9 +127,11 @@ export default function DiagnosticForm({ catalogue, onChange }: { catalogue: Cat
 
   function change(key: string, value: string) { setValues((previous) => ({ ...previous, [key]: value })); }
   async function upload(key: string, file: File, spec: Schema) {
+    const generation = importGeneration.current;
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error("Input file exceeds the 10 MiB limit");
       const text = await file.text();
+      if (generation !== importGeneration.current) return;
       let value: unknown;
       if (file.name.toLowerCase().endsWith(".csv")) {
         const matrix = spec.items?.type === "array";
@@ -121,19 +146,30 @@ export default function DiagnosticForm({ catalogue, onChange }: { catalogue: Cat
       } else value = JSON.parse(text);
       if (!Array.isArray(value)) throw new Error("File must contain an array, not a full diagnostic request");
       change(key, JSON.stringify(value)); setFileError("");
-    } catch (caught) { change(key, ""); setFileError(caught instanceof Error ? caught.message : "File import failed"); }
+    } catch (caught) { if (generation !== importGeneration.current) return; change(key, ""); setFileError(caught instanceof Error ? caught.message : "File import failed"); }
   }
 
-  return <fieldset className="diagnosticInputs"><legend>Versioned diagnostic data — {catalogue.contract_version}</legend>
-    <label>WORKFLOW<select value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setValues({}); setFileError(""); onChange(null); }}>{catalogue.workflows.map((item) => <option key={item.id} value={item.id}>{item.domain} / {item.task}</option>)}</select></label>
+  // Completion is input presence only; the backend still validates semantics.
+  const requiredFields = workflow ? [
+    ...(catalogue.metadata_schema.required ?? []).filter((key) => resolve(catalogue.metadata_schema.properties![key], catalogue.metadata_schema).const === undefined).map((key) => `metadata.${key}`),
+    ...(workflow.input_schema.required ?? []).filter((key) => resolve(workflow.input_schema.properties![key], workflow.input_schema).const === undefined).map((key) => `inputs.${key}`),
+    ...workflow.required_model_slots.map((key) => `model.${key}`),
+  ] : [];
+  const completed = requiredFields.filter((key) => values[key]?.trim()).length;
+
+  return <fieldset className="diagnosticInputs"><legend>Diagnostic input</legend>
+    <div className="contractHeading"><span className="sectionEyebrow">01 / SELECT WORKFLOW</span><code>{catalogue.contract_version}</code></div>
+    <label className="workflowSelect">Diagnostic workflow<select value={workflowId} onChange={(event) => { importGeneration.current += 1; setWorkflowId(event.target.value); setValues({}); setFileError(""); onChange(null); }}>{catalogue.workflows.map((item) => <option key={item.id} value={item.id}>{item.domain} / {item.task}</option>)}</select></label>
     {workflow && <>
-      <p>Policy: <code>{workflow.policy_ref}</code>. Required fields are marked *. Switching workflows clears previous inputs.</p>
-      <h3>Asset and collection metadata</h3><Fields schema={catalogue.metadata_schema} values={values} prefix="metadata" change={change} upload={upload}/>
-      <h3>Measurements</h3><Fields schema={workflow.input_schema} values={values} prefix="inputs" change={change} upload={upload}/>
-      {workflow.model_slots.length > 0 && <h3>Registered model references</h3>}
-      {workflow.model_slots.map((slot) => <label key={slot}>{slot}{workflow.required_model_slots.includes(slot) ? " *" : " (optional)"}<input required={workflow.required_model_slots.includes(slot)} value={values[`model.${slot}`] ?? ""} onChange={(event) => change(`model.${slot}`, event.target.value)}/></label>)}
-      <p>Model IDs refer to server-registered artifacts, not filenames. Input validation does not establish model availability or factual correctness.</p>
+      <p className="contractNote">Policy: <code>{workflow.policy_ref}</code>. Switching workflows clears previous inputs.</p>
+      <div className="inputProgress"><span>{completed} of {requiredFields.length} required fields entered</span><progress aria-label="Required fields entered" value={completed} max={requiredFields.length || 1}/></div>
+      <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>02</span><div><h3>Asset &amp; collection</h3><p>Identify the equipment and when the data was recorded.</p></div></div><div className="diagnosticFieldGrid"><Fields schema={catalogue.metadata_schema} values={values} prefix="metadata" change={change} upload={upload}/></div></section>
+      <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>03</span><div><h3>Measurements</h3><p>Paste data or import individual arrays. Keep the original units.</p></div></div><div className="diagnosticFieldGrid"><Fields schema={workflow.input_schema} values={values} prefix="inputs" change={change} upload={upload}/></div></section>
+      {workflow.model_slots.length > 0 && <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>04</span><div><h3>Registered models</h3><p>Use server-registered IDs, not filenames.</p></div></div><div className="diagnosticFieldGrid">
+        {workflow.model_slots.map((slot) => <label className="modelReference" key={slot}>{fieldTitle(slot)}<small>{slot} · {workflow.required_model_slots.includes(slot) ? "Required" : "Optional"}</small><input aria-label={slot} required={workflow.required_model_slots.includes(slot)} value={values[`model.${slot}`] ?? ""} onChange={(event) => change(`model.${slot}`, event.target.value)}/></label>)}
+      </div></section>}
+      <p className="contractNote">Input completion does not establish model availability or factual correctness. Server validation runs before analysis.</p>
     </>}
-    {error && <p role="status">{error}</p>}{fileError && <p className="error" role="alert">{fileError}</p>}
+    <p className={`diagnosticReadiness ${diagnostic ? "complete" : ""}`} role="status">{error ? `Next: ${error}` : "Inputs complete — ready for server validation."}</p>{fileError && <p className="error" role="alert">{fileError}</p>}
   </fieldset>;
 }
