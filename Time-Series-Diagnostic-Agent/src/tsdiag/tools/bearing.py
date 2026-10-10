@@ -4,6 +4,7 @@ import math
 from typing import Any
 
 import numpy as np
+from scipy.signal import find_peaks
 
 
 def _as_spectrum(frequency_hz, envelope_power) -> tuple[np.ndarray, np.ndarray]:
@@ -15,23 +16,39 @@ def _as_spectrum(frequency_hz, envelope_power) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError("envelope spectrum is too short")
     if not np.all(np.isfinite(freq)):
         raise ValueError("frequency_hz contains non-finite values")
-    power = np.where(np.isfinite(power) & (power >= 0.0), power, 0.0)
+    if np.any(freq < 0) or np.any(np.diff(freq) <= 0):
+        raise ValueError("frequency_hz must be nonnegative and strictly increasing")
+    if not np.all(np.isfinite(power)) or np.any(power < 0):
+        raise ValueError("envelope_power must be finite and nonnegative")
     return freq, power
 
 
-def _peak_near(freq: np.ndarray, power: np.ndarray, target_hz: float, tolerance_hz: float, floor: float) -> dict[str, float] | None:
+def _peak_near(freq: np.ndarray, power: np.ndarray, target_hz: float, tolerance_hz: float, floor: float,
+               peaks: np.ndarray, prominences: np.ndarray, minimum_prominence_ratio: float) -> dict[str, float] | None:
     if target_hz <= 0.0 or target_hz > float(freq[-1]):
         return None
-    idx = np.flatnonzero(np.abs(freq - float(target_hz)) <= float(tolerance_hz))
+    # A bin near the target is not automatically a harmonic: require a genuine
+    # local maximum rising above both the global and nearby background.
+    nearby = np.abs(freq - float(target_hz)) <= 2 * float(tolerance_hz)
+    local_floor = max(floor, float(np.median(power[nearby])) if np.any(nearby) else floor)
+    eligible = (np.abs(freq[peaks] - float(target_hz)) <= float(tolerance_hz)) & (
+        prominences >= minimum_prominence_ratio * local_floor
+    )
+    idx = peaks[eligible]
     if idx.size == 0:
         return None
     best = int(idx[np.argmax(power[idx])])
-    prominence = float(power[best] / max(floor, 1e-12))
+    # Envelope energy is band-limited. Its whole-spectrum median can be almost
+    # zero outside that band, inflating ordinary in-band noise by many orders of
+    # magnitude. Use the same conservative local background for scoring.
+    prominence = float(power[best] / local_floor)
     return {
         "target_hz": float(target_hz),
         "peak_hz": float(freq[best]),
         "power": float(power[best]),
         "prominence_ratio": prominence,
+        "local_prominence_ratio": float(prominences[peaks == best][0] / local_floor),
+        "background_power": local_floor,
         "frequency_error_hz": float(abs(freq[best] - target_hz)),
     }
 
@@ -45,12 +62,16 @@ def bearing_frequency_match(
     harmonics: int = 4,
     relative_tolerance: float = 0.03,
     minimum_tolerance_hz: float = 1.0,
+    minimum_prominence_ratio: float = 3.0,
 ) -> dict[str, Any]:
     """Rank bearing-fault hypotheses using harmonics and shaft-rate sidebands.
 
     Scores are evidence strengths, not calibrated probabilities. Harmonic support
     is weighted more strongly than sidebands, and higher harmonics are mildly
-    down-weighted to reduce overconfidence from broadband leakage.
+    down-weighted to reduce overconfidence from broadband leakage. Only actual
+    spectral peaks with prominence above the background count as support. The
+    default prominence/background ratio of 3 is a conservative engineering
+    guard, not a calibrated significance test or a bearing-fault probability.
     """
     freq, power = _as_spectrum(frequency_hz, envelope_power)
     if not fault_frequencies:
@@ -59,6 +80,14 @@ def bearing_frequency_match(
     non_dc = power[freq > 0.0]
     floor = float(np.median(non_dc)) if non_dc.size else float(np.median(power))
     floor = max(floor, 1e-12)
+    if not np.isfinite(minimum_prominence_ratio) or minimum_prominence_ratio <= 0:
+        raise ValueError("minimum_prominence_ratio must be positive and finite")
+    if not np.isfinite(relative_tolerance) or relative_tolerance < 0:
+        raise ValueError("relative_tolerance must be nonnegative and finite")
+    if not np.isfinite(minimum_tolerance_hz) or minimum_tolerance_hz <= 0:
+        raise ValueError("minimum_tolerance_hz must be positive and finite")
+    peaks, properties = find_peaks(power, prominence=(None, None))
+    prominences = properties["prominences"]
     max_harmonics = max(1, int(harmonics))
 
     ranking = []
@@ -79,7 +108,7 @@ def bearing_frequency_match(
         for harmonic in range(1, max_harmonics + 1):
             target = base * harmonic
             tolerance = max(float(minimum_tolerance_hz), float(relative_tolerance) * target)
-            match = _peak_near(freq, power, target, tolerance, floor)
+            match = _peak_near(freq, power, target, tolerance, floor, peaks, prominences, minimum_prominence_ratio)
             if match is None:
                 continue
             match = dict(match)
@@ -90,7 +119,7 @@ def bearing_frequency_match(
             if shaft_rate_hz is not None and np.isfinite(shaft_rate_hz) and shaft_rate_hz > 0.0:
                 for direction in (-1, 1):
                     side_target = target + direction * float(shaft_rate_hz)
-                    side = _peak_near(freq, power, side_target, tolerance, floor)
+                    side = _peak_near(freq, power, side_target, tolerance, floor, peaks, prominences, minimum_prominence_ratio)
                     if side is None:
                         continue
                     side = dict(side)
@@ -105,8 +134,11 @@ def bearing_frequency_match(
         if not harmonic_terms:
             continue
 
-        harmonic_score = float(np.mean(harmonic_terms))
-        sideband_score = float(np.mean(sideband_terms)) if sideband_terms else 0.0
+        # Normalize by the requested family, not only successful matches. Otherwise
+        # one shared high peak can outrank a genuinely supported multi-harmonic
+        # family merely because its missing harmonics vanished from the mean.
+        harmonic_score = float(np.sum(harmonic_terms) / max_harmonics)
+        sideband_score = float(np.sum(sideband_terms) / (2 * max_harmonics)) if sideband_terms else 0.0
         total_score = harmonic_score + sideband_score
         ranking.append({
             "fault": name,
@@ -125,6 +157,7 @@ def bearing_frequency_match(
         "harmonic_matches": all_harmonics,
         "sideband_matches": all_sidebands,
         "noise_floor": floor,
+        "minimum_prominence_ratio": float(minimum_prominence_ratio),
     }
 
 
@@ -156,7 +189,11 @@ def bearing_evidence_fusion(
     second_score = float(fault_ranking[1]["score"]) if len(fault_ranking) > 1 else 0.0
     best_score = float(best["score"])
     separation = max(0.0, (best_score - second_score) / max(best_score, 1e-12))
-    frequency_strength = float(1.0 - math.exp(-best_score / 2.5))
+    # Sidebands help rank alternatives but must not make a weak characteristic
+    # carrier family sufficient for diagnosis. Legacy callers with score-only
+    # rankings retain their contract; the matcher always provides harmonic_score.
+    carrier_score = float(best.get("harmonic_score", best_score))
+    frequency_strength = float(1.0 - math.exp(-carrier_score / 2.5))
 
     kurtosis = max(0.0, float(time_features.get("kurtosis", 3.0)) - 3.0)
     crest = max(0.0, float(time_features.get("crest_factor", 0.0)) - 3.0)

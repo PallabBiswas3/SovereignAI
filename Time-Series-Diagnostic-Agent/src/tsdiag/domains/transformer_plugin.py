@@ -17,7 +17,7 @@ from ..models import (
     VerificationResult,
 )
 from ..result_contract import standardize_result
-from ..tools.transformer_rules import arbitrate_transformer_hybrid, transformer_rule_diagnosis
+from ..tools.transformer_rules import arbitrate_transformer_hybrid, transformer_rule_diagnosis, verify_grid_fault_subtype
 from .domain_steps import default_domain_tool_registry
 from .verification import transformer_physics_verification
 
@@ -93,6 +93,18 @@ class TransformerDecisionPolicy:
             method = "wavelet_multisensor_classifier_fusion"
 
         weights = dict(zip(state["sensor_positions"], np.asarray(state["sensor_weights"]).tolist()))
+        subtype_check = verify_grid_fault_subtype(
+            signal_matrix, state["sampling_rate_hz"], state["sensor_positions"],
+            state.get("predicted_class"), fundamental_hz=context.get("fundamental_hz", 50.0),
+            zero_sequence_observable=context.get("zero_sequence_observable", False),
+        )
+        subtype_required = context.get("require_verified_grid_subtype", False) and state.get("predicted_class") in {
+            "single_phase_ground_fault", "inter_phase_short_circuit_fault"}
+        if subtype_check["status"] == "CONTRADICTED" or (subtype_required and subtype_check["status"] != "SUPPORTED"):
+            decision = "abstain"
+            reason = ("Classifier grid-fault subtype conflicts with named phase-current evidence."
+                      if subtype_check["status"] == "CONTRADICTED" else "Grid-fault subtype lacks required phase-current verification.")
+            abnormal = None
         top = max(weights, key=weights.get)
         evidence_payload = {
             "sensor_weights": weights,
@@ -102,6 +114,7 @@ class TransformerDecisionPolicy:
             "arbitration": arbitration,
             "predicted_class": state.get("predicted_class"),
             "model_family": state.get("classifier_model_family"),
+            "grid_subtype_check": subtype_check,
         }
         if rule_result is not None:
             evidence_payload["electrical_rules"] = rule_result
@@ -119,6 +132,9 @@ class TransformerDecisionPolicy:
         trace.require("spectral_correlation_representation").evidence_ids.append(evidence.evidence_id)
 
         verification = [transformer_physics_verification(state, evidence.evidence_id)]
+        if state.get("predicted_class") in {"single_phase_ground_fault", "inter_phase_short_circuit_fault"}:
+            verification.append(VerificationResult(str(state["predicted_class"]), subtype_check["status"],
+                                                  subtype_check["reason"], [evidence.evidence_id], subtype_check["method"]))
         if hybrid_enabled:
             verification.append(VerificationResult(
                 "main_transformer_fault", arbitration["verification"],
@@ -163,6 +179,7 @@ class TransformerDecisionPolicy:
                 "model_family": state.get("classifier_model_family"),
                 "electrical_rule_result": rule_result,
                 "arbitration": arbitration,
+                "grid_subtype_check": subtype_check,
                 "workflow_version": TransformerPlugin.workflow_version,
                 "policy_version": self.version,
                 "allow_confidence_complement_uncertainty": False,
@@ -172,7 +189,7 @@ class TransformerDecisionPolicy:
 
 class TransformerPlugin:
     name = "transformer"
-    workflow_version = "2.0"
+    workflow_version = "2.1"
 
     def validate(self, request: DiagnosticRequest) -> Mapping[str, Any]:
         values = dict(request.inputs)

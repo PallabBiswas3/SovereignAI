@@ -2,6 +2,45 @@
 
 Last reviewed: 2026-09-17
 
+Three-domain follow-up reviewed 2026-10-10: Transformer workflow 2.1 adds named
+phase-sequence subtype consistency conditioned on verified zero-sequence
+observability; contradictory subtypes hold without being relabeled. This is not
+SGAH checkpoint retraining. Battery prognosis 1.1 rejects invalid/stale histories,
+brackets observed EOL and uses unsmoothed measurement residuals for uncalibrated
+intervals. Turbofan workflow 2.1 supports engine-disjoint split-conformal residual
+calibration, provenance checks, wide-interval holds and optional strict calibration.
+The synthetic pilot matched 9/9 Transformer consistency states, 30/30 Battery
+handling cases and covered 40/40 separate Turbofan test-engine RULs. Historical
+SGAH/NASA/C-MAPSS accuracy and uncertainty results have not been replaced. Protocol
+and remaining work: local-only
+`../local_testing/experiments/results/three_domain_repairs_20261010.md`.
+
+Follow-up reviewed 2026-10-10: bearing workflow 2.2 enables optional energy-weighted
+band selection to suppress low-energy high-kurtosis noise. The previous remaining
+clean synthetic fault now diagnoses BPFO at heuristic confidence 0.699, with its
+carrier inside the selected band; 48/48 scored waveform probes pass per path.
+No decision thresholds changed; other domains retain unweighted selection.
+The earlier checkpoint below is historical. Wider bearing calibration and
+physics/CNN/fusion comparisons remain open. Cross-domain priority review retains
+Wind false alarms and Transformer inter-phase class confusion as the largest
+documented concerns. Protocol/results remain local-only in
+`../local_testing/experiments/results/bearing_resonance_completion_20261010.md`.
+
+Bearing engineering checkpoint (2026-10-09): a paired, local-only synthetic
+audit identified false harmonic counting, clipped-signal diagnoses and inflated
+band-limited noise scores. Shared matching now uses real prominent peaks and
+local backgrounds; missing harmonics cannot improve a family score and sidebands
+cannot rescue weak carrier evidence. Both runtime paths abstain on clipping.
+Workflow 2.1 preserves the explicit bearing-policy-v2 reference and default
+confidence/harmonic thresholds. Scored waveform outcomes improved from 39/48 to
+47/48 per path, with 0/12 healthy-noise diagnoses and 0/12 clipped diagnoses;
+72/72 spectrum probes pass. These are inspected, correlated synthetic regression
+probes, not independent bearing validation. One clean-fault case still abstains
+after selecting an off-carrier resonance band. Next improve band selection, then
+compare physics/CNN/fusion and calibrate coverage versus false alarms. Full
+protocol and raw evidence remain in Git-ignored
+`../local_testing/experiments/results/bearing_improvement_20261009.md`.
+
 This is the single maintained record of the project's technical direction,
 scientific baselines, and improvement decisions. Update it when an approach,
 benchmark protocol, or priority changes. The README remains the user-facing

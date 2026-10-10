@@ -1,5 +1,48 @@
 # Next implementation plan
 
+10 October three-domain cycle: Transformer now has metadata-aware phase-subtype
+consistency checks and optional strict verification, but its historical AD-TFM
+inter-phase classification failures remain open; no retraining was performed.
+Battery now rejects stale/invalid histories, brackets observed EOL and includes
+raw measurement noise in its still-uncalibrated projection intervals. Turbofan
+now supports engine-disjoint residual calibration, interval-width holds and
+strict calibration requirements; a separate synthetic train/calibration/test
+pilot covered 40/40 test-engine RULs. Thirty-two focused tests and all 239
+diagnostic tests pass; ControlPlane's two-second budget is unchanged. Details,
+limits and raw outputs remain local-only in
+`local_testing/experiments/results/three_domain_repairs_20261010.md`.
+Next: Transformer training/development data and a new untouched class-evaluation
+partition; Battery cell-disjoint interval/censoring evaluation; Turbofan shifted
+regimes and artifact deployment. Do not describe the historical public benchmarks
+as repaired by these synthetic checks.
+
+10 October bearing follow-up: energy-weighted resonance selection fixes the
+remaining inspected clean-fault abstention without changing decision thresholds.
+Both paths now pass 48/48 scored synthetic waveform cases, including 12/12 clean
+faults; healthy-noise and clipped diagnoses remain 0/12 each. The shared selector
+keeps its original default for other domains. This closes the targeted band
+selection regression, not bearing calibration or independent validation. Local
+details and the cross-domain priority audit are in
+`local_testing/experiments/results/bearing_resonance_completion_20261010.md`.
+Next time-series priorities: Wind normal-regime false-alarm calibration, then
+Transformer inter-phase fault confusion; Battery censoring/interval coverage and
+Turbofan uncertainty follow. Historical domain metrics have not been rerun here.
+
+Bearing checkpoint (9 October): the first synthetic audit/repair cycle is complete.
+Noise bins no longer count automatically as harmonics, local background prevents
+inflated band-limited evidence scores, and both runtime paths hold clipped signals.
+Same-input waveform decisions improved from 39/48 to 47/48 per path, with zero
+fault diagnoses in 12 healthy-noise probes and 12 clipped probes. One clean-fault
+case still abstains at confidence 0.42345 against the unchanged 0.45 threshold
+after selecting an off-carrier band. Next repair band selection, then run the
+specimen-grouped physics/CNN/fusion comparison and confidence/coverage evaluation.
+This is an inspected synthetic pilot, not independent or real-bearing validation.
+Verification: 34 focused bearing tests and all 201 diagnostic tests passed.
+Detailed tests/results stay in local-only
+`local_testing/experiments/results/bearing_improvement_20261009.md`.
+
+Factual-report generator fix (9 October): explicit facts-only requests now use a bounded JSON facts/citations contract, validated locally before the unchanged ControlPlane release check. Ordinary diagnostic requests retain free-text synthesis. The prompt no longer requires unrelated diagnosis, revision discussion or physical-action suggestions for narrow reporting. Thirty-five targeted tests passed; two real Ollama Qwen3 4B generations on the frozen synthetic trace each returned exactly the two requested pressure facts with matching citations and no unsolicited advice. This is a generator-only regression, not an all-service release or universal instruction-following claim. Evidence: local-only `local_testing/experiments/results/factual_reporting_20261009_223859.json`.
+
 Updated: 9 October 2026
 
 User-approved timing update: internal_assistant policy v1.3 allows 2,000 ms for the checker stage (previously 1,500 ms). This is not an end-to-end request deadline and does not relax factuality, authorization or missing-service gates. Historical measurements below used the old budget; restart ControlPlane to apply the updated policy. SGLang is a candidate generator-serving experiment, not a replacement for the current local NLI verifier; compare it on matched models/workloads before switching runtimes.

@@ -8,11 +8,12 @@ def _history(cycle_index, capacity_ah) -> tuple[np.ndarray, np.ndarray]:
     y = np.asarray(capacity_ah, dtype=float).ravel()
     if x.size != y.size:
         raise ValueError("cycle_index and capacity_ah must have equal length")
-    finite = np.isfinite(x) & np.isfinite(y)
+    if not np.all(np.isfinite(x)) or np.any(x < 0) or np.any(np.diff(x) <= 0):
+        raise ValueError("cycle_index must be finite, nonnegative and strictly increasing")
+    if np.any(np.isinf(y)) or np.any(y[np.isfinite(y)] <= 0):
+        raise ValueError("capacity must be positive; missing readings must use NaN")
+    finite = np.isfinite(y)
     x, y = x[finite], y[finite]
-    if x.size:
-        order = np.argsort(x)
-        x, y = x[order], y[order]
     return x, y
 
 
@@ -28,7 +29,10 @@ def smooth_capacity(capacity_ah, window: int = 5) -> np.ndarray:
 
 
 def capacity_features(cycle_index, capacity_ah, *, nominal_capacity_ah=2.0, slope_window=20) -> dict:
-    x, y = _history(cycle_index, capacity_ah)
+    if not np.isfinite(nominal_capacity_ah) or nominal_capacity_ah <= 0:
+        raise ValueError("nominal_capacity_ah must be positive and finite")
+    raw_y = np.asarray(capacity_ah, dtype=float).ravel()
+    x, y = _history(cycle_index, raw_y)
     smooth = smooth_capacity(y)
     if x.size < 2:
         return {
@@ -107,11 +111,19 @@ def estimate_capacity_eol(
     disagreement across fixed 20-cycle, 40-cycle and full-history regressions.
     No future observation or censoring bound is supplied to the predictor.
     """
-    x, y = _history(cycle_index, capacity_ah)
+    raw_y = np.asarray(capacity_ah, dtype=float).ravel()
+    x, y = _history(cycle_index, raw_y)
     features = capacity_features(
         x, y, nominal_capacity_ah=nominal_capacity_ah, slope_window=slope_window
     )
-    base = {**features, "method": "local_linear_multiscale_interval_v2"}
+    if not np.isfinite(eol_capacity_ah) or not 0 < eol_capacity_ah < nominal_capacity_ah:
+        raise ValueError("eol_capacity_ah must lie between zero and nominal capacity")
+    base = {**features, "method": "local_linear_multiscale_interval_v3",
+            "missing_capacity_observations": int(np.sum(~np.isfinite(raw_y))),
+            "interval_calibrated": False, "eol_state": "projected_not_observed",
+            "last_observed_cycle": None if not x.size else float(x[-1])}
+    if raw_y.size and not np.isfinite(raw_y[-1]):
+        return {**base, "abstained": True, "abstain_reason": "latest_capacity_missing"}
     if x.size < minimum_observations:
         return {**base, "abstained": True, "abstain_reason": "insufficient_history"}
 
@@ -119,16 +131,21 @@ def estimate_capacity_eol(
     current_cycle = float(x[-1])
     current_capacity = float(smooth[-1])
     if current_capacity <= eol_capacity_ah:
+        first = int(np.flatnonzero(smooth <= eol_capacity_ah)[0])
+        crossing = float(x[first])
+        lower = float(x[first-1]) if first else 0.0
+        width = crossing - lower
         return {
             **base,
+            "eol_state": "observed_crossing" if first else "left_censored_crossing",
             "abstained": False,
             "abstain_reason": None,
-            "predicted_eol_cycle": current_cycle,
-            "eol_interval_cycles": [current_cycle, current_cycle],
+            "predicted_eol_cycle": crossing,
+            "eol_interval_cycles": [lower, crossing],
             "remaining_useful_life_cycles": 0.0,
-            "uncertainty_cycles": 0.0,
+            "uncertainty_cycles": width,
             "risk": 1.0,
-            "candidate_eol_cycles": [current_cycle],
+            "candidate_eol_cycles": [crossing],
             "parameter_uncertainty_cycles": 0.0,
             "model_disagreement_cycles": 0.0,
         }
@@ -144,7 +161,9 @@ def estimate_capacity_eol(
         return {**base, "abstained": True, "abstain_reason": "projection_outside_credible_horizon"}
 
     parameter_uncertainty = _crossing_parameter_uncertainty(
-        xl, yl, slope, intercept, float(eol_capacity_ah), float(confidence_z)
+        # Smoothing stabilizes the point fit but must not erase measurement noise
+        # from the interval calculation. This remains uncalibrated uncertainty.
+        xl, y[-n:], slope, intercept, float(eol_capacity_ah), float(confidence_z)
     )
 
     candidate_eols: list[float] = []

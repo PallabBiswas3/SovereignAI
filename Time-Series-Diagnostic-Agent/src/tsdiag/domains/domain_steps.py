@@ -183,14 +183,43 @@ def turbo_health(s):
 def turbo_rul(s):
     h=s["health_index"]; cycles=s["cycle_index"]; slope,intercept=np.polyfit(cycles,h,1); model=s.get("trained_rul_model")
     if callable(model):
-        raw=model(signal_matrix=s["signal_matrix"],cycle_index=cycles,health_index=h); rul=float(raw["rul_cycles"] if isinstance(raw,dict) else raw); method="trained"
+        if getattr(model, "interval_calibration", None) is not None and hasattr(model, "predict_with_interval"):
+            try:
+                raw = model.predict_with_interval(s["signal_matrix"], cycles, unit_id=s.get("engine_id"))
+            except ValueError as exc:
+                return {"rul_cycles": None, "rul_method": "trained", "health_slope": float(slope),
+                        "fit_error": 0., "rul_abstain_reason": str(exc), "rul_calibration_output": {}}
+        else:
+            raw=model(signal_matrix=s["signal_matrix"],cycle_index=cycles,health_index=h)
+        rul=float(raw["rul_cycles"] if isinstance(raw,dict) else raw); method="trained"
     else: rul=max(0,float((float(s.get("failure_threshold",3))-intercept)/slope-cycles[-1])) if slope>1e-9 else None; method="linear"
-    residual=h-(slope*cycles+intercept); return {"rul_cycles":rul,"rul_method":method,"health_slope":float(slope),"fit_error":float(np.sqrt(np.mean(residual**2)))}
+    if rul is not None and (not np.isfinite(rul) or rul < 0): raise ValueError("RUL prediction must be finite and nonnegative")
+    residual=h-(slope*cycles+intercept); return {"rul_cycles":rul,"rul_method":method,"health_slope":float(slope),"fit_error":float(np.sqrt(np.mean(residual**2))),
+      "rul_calibration_output": raw if callable(model) and isinstance(raw,dict) and getattr(model,"interval_calibration",None) is not None else {}}
 
 
 def turbo_uncertainty(s):
     conf=float(np.clip(1/(1+s["fit_error"]),.1,.9)); rul=s["rul_cycles"]
-    return {"rul_interval":None if rul is None else [max(0,rul*(2-conf)),rul*(1+1-conf)],"uncertainty_score":1-conf,"confidence":conf}
+    calibrated = s.get("rul_calibration_output") or {}
+    reason = s.get("rul_abstain_reason")
+    interval = None if rul is None else [max(0,rul*conf),rul*(2-conf)]
+    if calibrated.get("calibrated"):
+        interval = list(calibrated["interval"])
+        width = interval[1]-interval[0]
+        # Interval precision is only a display heuristic; nominal coverage is not
+        # an individual engine's probability of being correct.
+        conf = float(np.clip(1/(1+width/max(float(rul),1.)), 0., .9))
+        maximum = float(s.get("maximum_rul_interval_width_cycles", 100.))
+        if not np.isfinite(maximum) or maximum <= 0: raise ValueError("maximum RUL interval width must be positive and finite")
+        if width > maximum: reason = "rul_interval_too_wide"
+    elif s.get("require_calibrated_rul", False):
+        reason = reason or "rul_calibration_required"
+    if rul is None: reason = reason or "rul_not_estimable"
+    return {"rul_interval":None if reason else interval,"uncertainty_score":1-conf,"confidence":conf,
+            "rul_abstain_reason":reason, "rul_calibrated":bool(calibrated.get("calibrated")),
+            "rul_calibration_dataset":calibrated.get("calibration_dataset"),
+            "rul_nominal_coverage":calibrated.get("coverage"),
+            "rul_uncertainty_method":calibrated.get("calibration_method","uncalibrated_health_residual_heuristic")}
 
 
 def turbo_explain(s): return {"critical_sensors":s["health_contributors"],"explanation":"Sensors with the strongest normalized monotonic trends."}

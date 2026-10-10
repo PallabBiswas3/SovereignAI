@@ -39,6 +39,50 @@ def _sequence(phasors: np.ndarray) -> tuple[complex, complex, complex]:
     return zero, positive, negative
 
 
+def verify_grid_fault_subtype(signal_matrix, sampling_rate_hz, channel_names, predicted_class,
+                              *, fundamental_hz=50.0, zero_sequence_observable=False) -> dict:
+    """Check a grid-fault subtype against named three-phase current evidence.
+
+    This does not retrain the classifier or locate the fault inside a transformer.
+    Missing metadata, short windows and weak/ambiguous sequence evidence remain
+    insufficient; the model label is never silently replaced by a physics guess.
+    """
+    classes = {"single_phase_ground_fault", "inter_phase_short_circuit_fault"}
+    base = {"status": "INSUFFICIENT", "predicted_class": predicted_class,
+            "method": "named_phase_sequence_consistency_v1"}
+    if predicted_class not in classes:
+        return {**base, "reason": "not_a_grid_fault_subtype"}
+    if zero_sequence_observable is not True:
+        return {**base, "reason": "measurement_grounding_and_zero_sequence_path_unverified"}
+    names = list(channel_names)
+    if any(names.count(name) != 1 for name in ("Ia", "Ib", "Ic")):
+        return {**base, "reason": "named_current_channels_required"}
+    x = np.asarray(signal_matrix, dtype=float)
+    fs, fundamental = float(sampling_rate_hz), float(fundamental_hz)
+    if x.ndim != 2 or x.shape[1] != len(names) or not np.all(np.isfinite(x)):
+        raise ValueError("phase verification requires aligned finite named channels")
+    if not np.isfinite(fs) or not np.isfinite(fundamental) or fs <= 0 or not 0 < fundamental < fs / 2:
+        raise ValueError("phase verification requires valid sampling and fundamental frequencies")
+    if len(x) / fs < 3 / fundamental:
+        return {**base, "reason": "at_least_three_fundamental_cycles_required"}
+    # Project onto the declared fundamental, not an arbitrary strongest FFT bin.
+    t = np.arange(len(x)) / fs
+    currents = x[:, [names.index(name) for name in ("Ia", "Ib", "Ic")]]
+    phasors = np.mean((currents - currents.mean(axis=0)) * np.exp(-2j*np.pi*fundamental*t)[:, None], axis=0)
+    zero, positive, negative = _sequence(phasors)
+    scale = float(np.linalg.norm(phasors))
+    if scale < 1e-9 or abs(negative) < .1 * scale:
+        return {**base, "reason": "insufficient_unbalanced_current_evidence"}
+    ratio = float(abs(zero) / max(abs(negative), 1e-12))
+    inferred = "inter_phase_short_circuit_fault" if ratio <= .1 else (
+        "single_phase_ground_fault" if ratio >= .5 else None)
+    if inferred is None:
+        return {**base, "reason": "ambiguous_zero_negative_sequence_ratio", "zero_negative_ratio": ratio}
+    return {**base, "status": "SUPPORTED" if inferred == predicted_class else "CONTRADICTED",
+            "reason": "phase_sequence_matches_subtype" if inferred == predicted_class else "phase_sequence_conflicts_with_subtype",
+            "sequence_signature": inferred, "zero_negative_ratio": ratio}
+
+
 def _thd(abc: np.ndarray) -> float:
     x = np.asarray(abc, dtype=float)
     x = x - np.mean(x, axis=0, keepdims=True)
