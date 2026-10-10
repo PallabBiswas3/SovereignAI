@@ -42,12 +42,12 @@ class BatteryPlugin(BatteryPackPlugin):
             )
             return {"battery_prognosis": result}
 
-        return Workflow((Step("battery_prognosis", prognosis, version="capacity-history-v2"),), version="prognosis-1.0")
+        return Workflow((Step("battery_prognosis", prognosis, version="capacity-history-v3"),), version="prognosis-1.1")
 
     def policy(self, request: DiagnosticRequest):
         if self._is_prognosis(request):
             return PassthroughDecisionPolicy(
-                "battery_prognosis", "prognosis-1.0", request,
+                "battery_prognosis", "prognosis-1.1", request,
                 version="capacity-prognosis-policy-v1",
             )
         return super().policy(request)

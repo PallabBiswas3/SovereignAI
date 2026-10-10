@@ -8,6 +8,7 @@ version = "0.4.0"
 description = "Modular industrial time-series diagnostic agent platform"
 requires-python = ">=3.10"
 dependencies = [
+  "pydantic>=2.6,<3",
   "numpy>=1.24",
   "pandas>=2.0",
   "scipy>=1.11",

@@ -1,6 +1,6 @@
 # Past experiments and results
 
-Last consolidated: 30 September 2026
+Last consolidated: 1 October 2026
 
 This file keeps the project history and measured outcomes in one place. Results are local engineering evidence, usually from synthetic or small fixtures; they are not production accuracy, safety, or performance claims.
 
@@ -66,7 +66,7 @@ This is harness validation, not a completed model/runtime comparison.
 - Focused synthetic protocol/HTTP fixtures plus existing system-benchmark,
   retrieval-ACL, integration, automatic-routing, and retry regressions: **58 passed**.
   Command:
-  `python -m pytest tests/test_inference_tradeoff.py tests/test_system_benchmark.py tests/test_phase31_retrieval_acl.py tests/test_phase38_system_integration.py tests/test_phase39_automatic_integration_routing.py tests/test_integration_retry.py`.
+  `python -m pytest local_testing/tests/test_inference_tradeoff.py local_testing/tests/test_system_benchmark.py local_testing/tests/test_phase31_retrieval_acl.py local_testing/tests/test_phase38_system_integration.py local_testing/tests/test_phase39_automatic_integration_routing.py local_testing/tests/test_integration_retry.py` (local-only layout).
 - Fixtures check randomized balanced repetition blocks, warm-up exclusion, failure
   suppression, invalid configuration before requests, private endpoint restrictions,
   no proxy/redirect use, truncated/empty stream rejection, raw provenance, unknown
@@ -75,7 +75,7 @@ This is harness validation, not a completed model/runtime comparison.
 - Actual unavailable-service smoke check on loopback ports 8001 and 11434:
   **20 attempted warm-ups, 20 failures, 0 measured successes, exit code 2**.
   Command:
-  `python benchmarks/inference_tradeoff.py --protocol controlled --vllm-model Qwen/Qwen3-0.6B --ollama-model qwen3:0.6b --vllm-format unavailable --ollama-format unavailable --context-lengths 64 --evidence-budgets 128 --repetitions 5 --timeout 0.2 --output /tmp/sovereign-inference-unavailable`.
+  `python local_testing/benchmarks/inference_tradeoff.py --protocol controlled --vllm-model Qwen/Qwen3-0.6B --ollama-model qwen3:0.6b --vllm-format unavailable --ollama-format unavailable --context-lengths 64 --evidence-budgets 128 --repetitions 5 --timeout 0.2 --output /tmp/sovereign-inference-unavailable`.
   Neither inference runtime was installed/running in this execution environment.
   No live inference latency, throughput, memory, or quality result is claimed.
 - Full repository regression suite and networked Pump-102 workflow were not run.
@@ -88,9 +88,88 @@ September 26 smoke results. Historical observations above remain unchanged.
 
 ## Reproducible evidence
 
-- Runtime results: [`../experiments/results/2026-09-26/`](../experiments/results/2026-09-26/)
-- Inference harness: [`../benchmarks/inference_tradeoff.py`](../benchmarks/inference_tradeoff.py)
-- System harness: [`../scripts/benchmark_system.py`](../scripts/benchmark_system.py)
-- Root regression tests: [`../tests/`](../tests/)
+- Runtime results: `local_testing/experiments/results/2026-09-26/` (local only)
+- Inference harness: `local_testing/benchmarks/inference_tradeoff.py` (local only)
+- System harness: `local_testing/scripts/benchmark_system.py` (local only)
+- Root regression tests: `local_testing/tests/` (local only)
 
 See [Current features](CURRENT_FEATURES.md) for the implemented system and [Next plan](NEXT_PLAN.md) for the remaining work.
+
+## 1 October 2026: inference engineering controls (no final benchmark)
+
+Base: `26865ff` on `pump102-inference-completion`. Original preliminary evidence
+in `local_testing/experiments/results/inference_controlled_live_check/` is byte-for-byte
+unchanged; its new README explains scope. It contains 40 successful requests:
+20 warm-ups, 20 measurements, zero failures, `experiment_complete=false`.
+Ollama used qwen3:0.6b GGUF Q4_K_M with declared digest
+`7df6b6e09427a769808717c0a93cadc4ae99ed4eb8bf5ca557c90846becea435`;
+vLLM used Qwen/Qwen3-0.6B BF16 in WSL. These are preliminary v2 observations,
+not v3 verified-identity/memory/cold evidence.
+
+Engineering validation in the Linux execution workspace:
+
+- Focused protocol suite: `python -m pytest local_testing/tests/test_inference_controls.py
+  local_testing/tests/test_inference_tradeoff.py` — **83 passed**. New tests use explicit
+  synthetic HTTP/process doubles, not model results or real human adjudication.
+- Complete root backend suite: `python -m pytest` — **241 passed, 5 failed**.
+  Unchanged base `26865ff`, same environment/demo preparation, rerun sequentially:
+  **192 passed, the same 5 failed**. No new failure was introduced.
+- Existing failures: semantic retrieval (`test_phase14_semantic_embeddings`),
+  paraphrased support (`test_phase16_structured_grounding`), grounding score
+  (`test_phase9_governance::test_claim_grounding_preserves_source`), and two
+  missing `workspace/uploads/Pump_Inspection_Report.md` fixture failures
+  (`test_phase17_multifile_package`, `test_phase18_approval_execution`).
+  PyTorch/Transformers/local MiniLM were unavailable; fallback scores did not meet
+  semantic thresholds. The PDF demo generator does not create the missing MD.
+- Environment: Python 3.12; pytest 8.4.2, pytest-asyncio 0.26.0, httpx 0.28.1,
+  psutil 7.2.2. Dependencies and generated demo assets were staged for tests only.
+  The original unprepared run had 186 passed/11 failed; missing PDF assets and
+  SOCKS support accounted for additional environment failures. Concurrent baseline
+  tests also conflicted over shared test state; the sequential baseline above is
+  the comparison used. One existing Starlette/httpx deprecation warning remains.
+- Frontend: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run typecheck`,
+  `npm run build` — successful; build generated 9/9 static pages. Typecheck also
+  passed after restoring the unrelated Next.js-generated declaration change.
+- CLI plan-only check: 360 scheduled batches for both providers, budgets 256/512,
+  five repetitions; zero runtime requests, expected exit 3, completion false.
+- `git diff --check` passes. Existing live-check JSON/CSV hashes match the base.
+
+No local Ollama/vLLM runtime was exercised. Real process inspection, platform
+permissions, API compatibility and external restart handling still require
+verification on the user's Windows/WSL hosts. Completion remains blocked until
+real reviewed fixtures and all measured evidence exist. No architecture,
+authorization, retrieval ACL, release behavior or plant-write code changed.
+
+## 4 October 2026: live all-service Pump-102 smoke
+
+The Windows host completed two synthetic live requests through Graph-RAG,
+diagnostics, Ollama and ControlPlane. Both returned HTTP 200 and held for human
+review; the pinned-offline NLI run took 16.063 seconds and checked seven NLI
+pairs. Graph-RAG abstained with zero authorized chunks because all existing
+database nodes/chunks lack required scope metadata. The service-path milestone
+passed, but a grounded or authenticated-user end-to-end result is still pending.
+The detailed report is local-only at `local_testing/reports/PUMP102_LIVE_SERVICE_PATH_2026-10-04.md`.
+
+## 4 October 2026: segregated synthetic seed and grounded rerun
+
+After approval, 15 synthetic, unreviewed Pump-102 documents were inserted as 15
+documents, 15 nodes and 15 chunks in the `sai-p102-v1` Supabase namespace.
+Preflight found no target IDs; strict postflight verified all 45 IDs and exact
+metadata/content. No legacy row, schema or claim table was changed. Live scope
+probes passed for an engineer query, a wrong organization and exclusion of a
+finance-only source, but used caller-supplied scope rather than a logged-in user.
+The full request reached all four services and retrieved six Graph-RAG chunks;
+ControlPlane held the answer, diagnostics abstained, and Graph-RAG had no
+structured claim verification. See the local-only `local_testing/reports/PUMP102_SUPABASE_SEED_2026-10-04.md`
+for the counts, hashes, recovery plan and limits.
+
+## Diagnostic input contracts — 10 October 2026
+
+Seven versioned task forms now share server-side Pydantic input contracts.
+Malformed/legacy data is rejected before analysis, and registered models must
+match task, ordered channels, units and sampling rate. Backend + diagnostic
+verification: **606 passed, 1 skipped**; eight frontend schema-render/decoder
+checks passed; TypeScript and production build passed. The active synthetic
+Pump-102 probe was migrated. Tests/raw reports remain ignored under
+`local_testing/`; details: `experiments/results/diagnostic_input_contract_20261010.md`
+inside that directory. No training or fresh all-service/browser run was performed.

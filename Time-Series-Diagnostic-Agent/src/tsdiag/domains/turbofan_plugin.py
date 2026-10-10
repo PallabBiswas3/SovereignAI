@@ -45,18 +45,19 @@ class TurbofanDecisionPolicy:
             score=confidence,
             details={
                 "selected_channels": state["critical_sensors"],
-                "rul_cycles": state["rul_cycles"],
+                "rul_cycles": None if state.get("rul_abstain_reason") else state["rul_cycles"],
             },
             evidence_id="turbofan-health-evidence",
             kind="prognostic",
         )
         trace.require("health_index_estimation").evidence_ids.append(evidence.evidence_id)
         verification = [turbofan_physics_verification(state, evidence.evidence_id)]
-        uncertainty = float(state["uncertainty_score"])
+        uncertainty = None if state["rul_calibrated"] else float(state["uncertainty_score"])
         critical_sensors = list(state["critical_sensors"])
         channel_names = list(state["channel_names"])
         sensor_slopes = np.asarray(state["sensor_slopes"], dtype=float)
         failure_threshold = float(state.get("failure_threshold", 3.0))
+        reason = state.get("rul_abstain_reason")
         detection_score = float(
             np.clip(max(float(state["current_health"]), 0.0) / max(failure_threshold, 1e-12), 0.0, 1.0)
         )
@@ -64,7 +65,7 @@ class TurbofanDecisionPolicy:
         return standardize_result(DiagnosticResult(
             domain="turbofan",
             task="remaining_useful_life",
-            decision="diagnose" if abnormal else "monitor",
+            decision="abstain" if reason else ("diagnose" if abnormal else "monitor"),
             detection=DetectionResult(abnormal, detection_score, method="health_index_trend"),
             localization=LocalizationResult(
                 channels=critical_sensors,
@@ -79,19 +80,28 @@ class TurbofanDecisionPolicy:
             evidence=[evidence],
             verification=verification,
             prognosis=PrognosisResult(
-                remaining_useful_life=state["rul_cycles"],
+                remaining_useful_life=None if reason else state["rul_cycles"],
                 horizon="cycles",
                 uncertainty=uncertainty,
-                details={"interval": state["rul_interval"], "method": state["rul_method"]},
+                details={"interval": state["rul_interval"], "method": state["rul_method"],
+                         "interval_calibrated": state["rul_calibrated"],
+                         "nominal_interval_coverage": state["rul_nominal_coverage"],
+                         "calibration_dataset": state["rul_calibration_dataset"]},
             ),
             confidence=confidence,
             uncertainty=uncertainty,
             uncertainty_estimate=UncertaintyEstimate(
                 uncertainty,
-                str(state["rul_method"]),
-                calibrated=False,
+                state["rul_uncertainty_method"],
+                calibrated=state["rul_calibrated"],
+                calibration_dataset=state["rul_calibration_dataset"],
+                interval=None if state["rul_interval"] is None else tuple(state["rul_interval"]),
+                details={"coverage_is_marginal_not_individual_probability": True},
             ),
-            recommended_actions=["Track the health trend and inspect critical sensors."] if abnormal else [],
+            abstained=bool(reason),
+            abstain_reason=reason,
+            recommended_actions=(["Obtain usable independent RUL calibration before relying on the forecast."]
+                                 if reason else (["Track the health trend and inspect critical sensors."] if abnormal else [])),
             tool_trace=trace,
             metadata={
                 "health_index": state["health_index"],
@@ -105,7 +115,7 @@ class TurbofanDecisionPolicy:
 
 class TurbofanPlugin:
     name = "turbofan"
-    workflow_version = "2.0"
+    workflow_version = "2.1"
 
     def validate(self, request: DiagnosticRequest) -> Mapping[str, Any]:
         values = dict(request.inputs)
@@ -143,7 +153,8 @@ class TurbofanPlugin:
         for step_id in step_ids:
             def execute(state, name=step_id):
                 return _tool(name, state)
-            steps.append(Step(step_id, execute, depends_on=() if previous is None else (previous,), version="1.0"))
+            steps.append(Step(step_id, execute, depends_on=() if previous is None else (previous,),
+                              version="1.1" if step_id in {"rul_prediction", "rul_uncertainty"} else "1.0"))
             previous = step_id
         return Workflow(tuple(steps), version=self.workflow_version)
 

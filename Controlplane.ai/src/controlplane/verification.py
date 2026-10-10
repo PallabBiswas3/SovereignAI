@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import os
+import math
+import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Protocol
@@ -17,10 +21,17 @@ from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
 from controlplane.detectors.privacy import mask_privacy_values
+from controlplane.compound_support import apply_compound_support
+from controlplane.range_facts import apply_cited_range_facts
+from controlplane.reported_events import apply_cited_review_events
+from controlplane.evidence_authority import apply_evidence_authority_checks
 from controlplane.evidence_quality import EvidenceAssessment, EvidenceQualityConfig, EvidenceQualityGate
 from controlplane.factuality import PreparedFactuality, build_response_record
 from controlplane.schema import DetectorResult, Finding, FindingStatus, Interaction, RiskCategory, Severity, VerificationDepth
-from controlplane.support_scorers import AlignScoreSupportScorer, MiniCheckSupportScorer, SupportScorer
+from controlplane.support_scorers import AlignScoreSupportScorer, MiniCheckSupportScorer, NLIEntailmentSupportScorer, SupportScorer
+
+
+_SOURCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
 
 
 class VerificationService(Protocol):
@@ -28,15 +39,54 @@ class VerificationService(Protocol):
 
 
 class LazyTransformersNLIScorer(NLIScorer):
-    def __init__(self, model_name: str, *, device: str | None = None) -> None:
+    def __init__(self, model_name: str, *, device: str | None = None, local_files_only: bool = True, batch_size: int = 16) -> None:
         self.model_name = model_name
         self.device = device
+        self.local_files_only = local_files_only
+        if not 1 <= batch_size <= 64:
+            raise ValueError("CONTROLPLANE_NLI_BATCH_SIZE must be between 1 and 64")
+        self.batch_size = batch_size
         self._delegate: TransformersNLIScorer | None = None
+        self._request_scores: ContextVar[dict | None] = ContextVar("nli_request_scores", default=None)
+
+    @contextmanager
+    def request_scope(self):
+        """Reuse identical NLI computations only within this verification call."""
+        state = {"scores": {}, "requested_pairs": 0, "inferred_pairs": 0, "calls": 0}
+        token = self._request_scores.set(state)
+        try:
+            yield state
+        finally:
+            self._request_scores.reset(token)
+
+    def preload(self) -> None:
+        # Exercise one forward pass before the API advertises readiness. Model
+        # files can exist in the cache while the runtime still cannot use them.
+        self.score(["The pump is operating."], ["The pump is operating."])
 
     def score(self, premises: list[str], hypotheses: list[str]):
+        if len(premises) != len(hypotheses):
+            raise ValueError("premises and hypotheses must have the same length")
         if self._delegate is None:
-            self._delegate = TransformersNLIScorer(self.model_name, device=self.device)
-        return self._delegate.score(premises, hypotheses)
+            self._delegate = TransformersNLIScorer(
+                self.model_name, device=self.device, local_files_only=self.local_files_only,
+                batch_size=self.batch_size,
+            )
+        state = self._request_scores.get()
+        if state is None:
+            return self._delegate.score(premises, hypotheses)
+        pairs = list(zip(premises, hypotheses))
+        cache = state["scores"]
+        missing = [pair for pair in dict.fromkeys(pairs) if pair not in cache]
+        state["requested_pairs"] += len(pairs)
+        if missing:
+            scores = self._delegate.score([p for p, _ in missing], [h for _, h in missing])
+            if len(scores) != len(missing):
+                raise RuntimeError("NLI returned an incomplete score batch")
+            cache.update(zip(missing, scores))
+            state["inferred_pairs"] += len(missing)
+            state["calls"] += 1
+        return [type(cache[pair])(**vars(cache[pair])) for pair in pairs]
 
 
 @dataclass
@@ -82,7 +132,29 @@ class AdaptiveFactVerificationService:
         self.phase6 = Phase6Pipeline(nli, retrieval_config=retrieval_config, nli_config=nli_config) if nli is not None else None
         self.evidence_gate = EvidenceQualityGate(evidence_quality_config)
 
-    def verify(self, interaction: Interaction, depth: VerificationDepth, prepared: PreparedFactuality | None = None) -> DetectorResult:
+    def verify(
+        self,
+        interaction: Interaction,
+        depth: VerificationDepth,
+        prepared: PreparedFactuality | None = None,
+        *,
+        evidence_authority_enabled: bool = True,
+    ) -> DetectorResult:
+        scorer = self.phase6.nli if self.phase6 is not None else None
+        if isinstance(scorer, LazyTransformersNLIScorer):
+            with scorer.request_scope() as computation:
+                result = self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
+                result.metadata["nli_computation"] = {
+                    key: computation[key] for key in ("requested_pairs", "inferred_pairs", "calls")
+                }
+                result.metadata["nli_computation"]["reused_pairs"] = computation["requested_pairs"] - computation["inferred_pairs"]
+                return result
+        return self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
+
+    def _verify(
+        self, interaction: Interaction, depth: VerificationDepth,
+        prepared: PreparedFactuality | None = None, *, evidence_authority_enabled: bool = True,
+    ) -> DetectorResult:
         started = perf_counter()
         if prepared is None or self._phase5_customized:
             record = build_response_record(interaction, factuality_response=mask_privacy_values(interaction.response))
@@ -135,10 +207,39 @@ class AdaptiveFactVerificationService:
                 "latency_ms": sum(item.latency_ms for item in results),
             }
 
+        # A narrow two-source numeric comparison can be checked exactly after
+        # NLI has had a chance to find a contradiction. Unknown comparisons
+        # remain unknown unless both authorized citations establish the fact.
+        compound_started = perf_counter()
+        compound_supported = apply_compound_support(interaction, record.atomic_claims)
+        range_facts_supported = apply_cited_range_facts(interaction, record.atomic_claims)
+        review_events_supported = apply_cited_review_events(interaction, record.atomic_claims)
+        compound_ms = (perf_counter() - compound_started) * 1000.0
+
+        # Reuse the entailment already computed by phase 6 for auditability.
+        # This is a signal, not a calibrated support probability or release
+        # decision: source authority and evidence quality are checked below.
+        for claim in record.atomic_claims:
+            entailment = claim.verification_scores.get("entailment")
+            if entailment is not None:
+                claim.verification_scores["support_score"] = entailment
+                claim.verification_metadata["support_score_basis"] = "phase6_nli_entailment_signal"
+
         support_started = perf_counter()
         assessments = {claim.id: self.evidence_gate.assess(interaction, claim) for claim in record.atomic_claims}
-        support_runtime = self._finalize_claim_states(record.atomic_claims, assessments, depth=depth)
+        support_runtime = self._finalize_claim_states(
+            record.atomic_claims, assessments, depth=depth, interaction=interaction,
+        )
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
+        support_runtime["deterministic_compound_supported"] = compound_supported
+        support_runtime["exact_cited_range_facts"] = range_facts_supported
+        support_runtime["exact_cited_review_events"] = review_events_supported
+        authority_started = perf_counter()
+        authority_runtime = (
+            apply_evidence_authority_checks(interaction, record.atomic_claims)
+            if evidence_authority_enabled else {"disabled_for_ablation": True}
+        )
+        authority_ms = (perf_counter() - authority_started) * 1000.0
 
         aggregation = aggregate_claims(record.atomic_claims, important_unknown_threshold=self.config.important_unknown_threshold)
         findings = self._normalize_findings(record, aggregation.label, interaction=interaction, depth=depth, assessments=assessments)
@@ -153,9 +254,18 @@ class AdaptiveFactVerificationService:
                 "claims_checked": len(record.atomic_claims),
                 "phase5": phase5_runtime,
                 "phase5_reused": phase5_reused,
+                "stage_latency_ms": {
+                    "nli": phase6_runtime.get("nli_batch_latency_ms", 0.0),
+                    "agent": agent_runtime["latency_ms"],
+                    "compound": compound_ms,
+                    "support": support_runtime["latency_ms"],
+                    "authority": authority_ms,
+                },
                 "phase6": phase6_runtime,
                 "agent": agent_runtime,
                 "support": support_runtime,
+                "evidence_authority": authority_runtime,
+                "evidence_authority_enabled": evidence_authority_enabled,
                 "claim_results": [
                     {
                         "claim_id": claim.id,
@@ -178,20 +288,31 @@ class AdaptiveFactVerificationService:
                         "evidence_ids": claim.evidence_ids,
                         "evidence_quality": assessments[claim.id].quality,
                         "evidence_complete_enough": assessments[claim.id].complete_enough_for_unsupported,
+                        "authority_reason": claim.verification_metadata.get("authority_reason"),
+                        "support_score_basis": claim.verification_metadata.get("support_score_basis"),
                     }
                     for claim in record.atomic_claims
                 ],
             },
         )
 
-    def _finalize_claim_states(self, claims, assessments: dict[str, EvidenceAssessment], *, depth: VerificationDepth) -> dict:
+    def _finalize_claim_states(
+        self, claims, assessments: dict[str, EvidenceAssessment],
+        *, depth: VerificationDepth, interaction: Interaction,
+    ) -> dict:
         backend = getattr(self.support_scorer, "name", None)
         batch_claims = []
         batch_documents: list[str] = []
         batch_texts: list[str] = []
+        batch_ids: list[list[str]] = []
+        batch_can_promote: list[bool] = []
+        evidence_by_id = {item.evidence_id: item for item in interaction.grounding_evidence}
 
         for claim in claims:
             assessment = assessments[claim.id]
+            if claim.verification_metadata.get("support_guard_reason"):
+                self._mark_undecidable(claim, assessment, claim.verifier_used or "support_guard")
+                continue
             if claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED}:
                 continue
             method = claim.verifier_used or ""
@@ -203,10 +324,28 @@ class AdaptiveFactVerificationService:
             if assessment.quality in {"no_evidence", "irrelevant_evidence"}:
                 self._mark_undecidable(claim, assessment, "v3_evidence_insufficient")
                 continue
-            if self.support_scorer is not None and depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP} and assessment.selected_texts:
+            selected_texts = assessment.selected_texts
+            selected_ids = assessment.selected_ids
+            cited_ids = set(_SOURCE_CITATION.findall(claim.verification_text))
+            if evidence_by_id:
+                selected_sources = [evidence_by_id[item_id] for item_id in selected_ids if item_id in evidence_by_id]
+                if cited_ids:
+                    selected_sources = [item for item in selected_sources if item.evidence_id in cited_ids]
+                    if {item.evidence_id for item in selected_sources} != cited_ids:
+                        selected_sources = []
+                selected_sources = [
+                    item for item in selected_sources
+                    if str(item.metadata.get("document_status", "")).casefold()
+                    not in {"superseded", "unverified", "draft"}
+                ]
+                selected_texts = [item.text for item in selected_sources]
+                selected_ids = [item.evidence_id for item in selected_sources]
+            if self.support_scorer is not None and depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP} and selected_texts:
                 batch_claims.append(claim)
-                batch_documents.append("\n\n".join(assessment.selected_texts))
-                batch_texts.append(claim.verification_text)
+                batch_documents.append("\n\n".join(selected_texts))
+                batch_texts.append(_SOURCE_CITATION.sub("", claim.verification_text).strip())
+                batch_ids.append(selected_ids)
+                batch_can_promote.append(backend != "nli_entailment" or bool(cited_ids))
                 continue
             self._mark_undecidable(claim, assessment, method or "phase5_unresolved")
 
@@ -215,17 +354,21 @@ class AdaptiveFactVerificationService:
             scores = [float(value) for value in self.support_scorer.score(batch_documents, batch_texts)]  # type: ignore[union-attr]
             if len(scores) != len(batch_claims):
                 raise RuntimeError("support scorer returned a different number of scores than requested claims")
-            for claim, score in zip(batch_claims, scores):
+            for claim, score, source_ids, can_promote in zip(batch_claims, scores, batch_ids, batch_can_promote):
+                if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+                    raise RuntimeError("support scorer returned a non-finite or out-of-range score")
                 assessment = assessments[claim.id]
                 claim.verification_scores["support_score"] = score
-                claim.evidence = assessment.selected_texts
-                claim.evidence_ids = assessment.selected_ids
+                claim.verification_metadata["support_score_basis"] = f"support:{backend}"
+                claim.evidence = [evidence_by_id[item_id].text for item_id in source_ids] if evidence_by_id else assessment.selected_texts
+                claim.evidence_ids = source_ids
                 claim.verification_metadata.update({"support_backend": backend, "evidence_quality": assessment.quality})
-                if score >= self.config.support_supported_threshold:
+                if can_promote and score >= self.config.support_supported_threshold:
                     claim.status = VerificationStatus.SUPPORTED
                     claim.confidence = score
                     claim.verifier_used = f"support:{backend}:supported"
-                elif score <= self.config.support_unsupported_threshold and assessment.complete_enough_for_unsupported:
+                elif (backend != "nli_entailment" and score <= self.config.support_unsupported_threshold
+                      and assessment.complete_enough_for_unsupported):
                     claim.status = VerificationStatus.UNSUPPORTED
                     claim.confidence = 1.0 - score
                     claim.verifier_used = f"support:{backend}:unsupported"
@@ -276,9 +419,13 @@ class AdaptiveFactVerificationService:
                 "evidence_complete_enough": assessment.complete_enough_for_unsupported,
                 "evidence_reason": assessment.reason,
                 "evidence_ids": claim.evidence_ids or assessment.selected_ids,
+                "authority_reason": claim.verification_metadata.get("authority_reason"),
             }
             if claim.status == VerificationStatus.CONTRADICTED:
-                findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_contradicted", severity=Severity.HIGH, confidence=float(claim.confidence or 0.5), status=FindingStatus.CONTRADICTED, message="A factual claim is contradicted by retrieved evidence.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
+                if metadata["authority_reason"] == "untrusted_instruction_promotion":
+                    findings.append(Finding(category=RiskCategory.POLICY, subtype="untrusted_instruction_promotion", severity=Severity.CRITICAL, confidence=1.0, status=FindingStatus.CONTRADICTED, message="Lower-trust document text was promoted to an instruction or system policy.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
+                else:
+                    findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_contradicted", severity=Severity.HIGH, confidence=float(claim.confidence or 0.5), status=FindingStatus.CONTRADICTED, message="A factual claim is contradicted by retrieved evidence.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
             elif claim.status == VerificationStatus.UNSUPPORTED:
                 findings.append(Finding(category=RiskCategory.HALLUCINATION, subtype="claim_unsupported", severity=Severity.HIGH if interaction.consequential else Severity.MEDIUM, confidence=float(claim.confidence or 0.5), status=FindingStatus.UNSUPPORTED, message="A checkable factual claim is not supported by a sufficiently complete evidence set.", detector=self.name, span=claim.span, evidence=claim.evidence, metadata=metadata))
             elif claim.status == VerificationStatus.CONFLICTING:
@@ -289,10 +436,14 @@ class AdaptiveFactVerificationService:
         return findings
 
 
-def build_support_scorer_from_env() -> SupportScorer | None:
+def build_support_scorer_from_env(nli: NLIScorer | None = None) -> SupportScorer | None:
     backend = os.getenv("CONTROLPLANE_SUPPORT_BACKEND", "none").strip().lower()
     if backend in {"", "none", "off", "0"}:
         return None
+    if backend == "nli":
+        if nli is None:
+            raise RuntimeError("CONTROLPLANE_SUPPORT_BACKEND=nli requires a configured NLI scorer")
+        return NLIEntailmentSupportScorer(nli)
     if backend == "minicheck":
         return MiniCheckSupportScorer(
             model_name=os.getenv("CONTROLPLANE_MINICHECK_MODEL", "flan-t5-large"),
@@ -316,8 +467,10 @@ def build_adaptive_verification_from_env() -> AdaptiveFactVerificationService | 
         return None
     model_name = os.getenv("CONTROLPLANE_NLI_MODEL", "cross-encoder/nli-deberta-v3-small")
     device = os.getenv("CONTROLPLANE_NLI_DEVICE") or None
-    nli = LazyTransformersNLIScorer(model_name, device=device)
+    local_files_only = os.getenv("CONTROLPLANE_NLI_LOCAL_ONLY", "1").strip().lower() not in {"0", "false", "no", "off"}
+    batch_size = int(os.getenv("CONTROLPLANE_NLI_BATCH_SIZE", "16"))
+    nli = LazyTransformersNLIScorer(model_name, device=device, local_files_only=local_files_only, batch_size=batch_size)
     retrieval = EvidenceRetrieverConfig(min_score=float(os.getenv("CONTROLPLANE_RETRIEVAL_MIN_SCORE", "0.05")))
     agent = BoundedVerificationAgent(nli, [ContextSearchTool(retrieval_config=retrieval)], AgentVerificationConfig())
-    support = build_support_scorer_from_env()
+    support = build_support_scorer_from_env(nli)
     return AdaptiveFactVerificationService(nli=nli, agent=agent, support_scorer=support, retrieval_config=retrieval)

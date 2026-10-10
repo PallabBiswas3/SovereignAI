@@ -1,10 +1,10 @@
 id: internal_assistant
-version: "1.1"
+version: "1.3"
 name: Internal Knowledge Assistant
 description: Balanced internal policy emphasizing source grounding, auditability, and selective escalation.
 geography: global
 industry: general
-latency_budget_ms: 1500
+latency_budget_ms: 2000
 default_action: allow
 
 checks:
@@ -74,6 +74,12 @@ rules:
       category: hallucination
       status: contradicted
     action: human_review
+  - id: internal-untrusted-instruction-block
+    description: A retrieved document cannot confer system or developer authority.
+    when:
+      category: policy
+      subtype: untrusted_instruction_promotion
+    action: block
   - id: internal-unsupported-warning
     description: Warn when a sufficiently complete evidence set does not support a factual claim.
     when:
@@ -99,6 +105,18 @@ rules:
       category: hallucination
       subtype: claim_undecidable
       consequential_only: true
+    action: human_review
+  - id: internal-physical-action-review
+    description: Current instructions for physical equipment actions require accountable review.
+    when:
+      category: policy
+      subtype: physical_action_requires_review
+    action: human_review
+  - id: internal-unverified-work-event-review
+    description: Do not release categorical work-execution claims without a matching authorized record.
+    when:
+      category: policy
+      subtype: unverified_operational_event
     action: human_review
   - id: internal-compounding-review
     description: Escalate risky claims propagated across conversation turns.

@@ -10,6 +10,11 @@ from adaptivefact.extraction.numeric_date import DateValue, NumberValue, extract
 from adaptivefact.verification.text import split_sentences
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_COMPARISON_RE = re.compile(
+    r"\b(?:within|outside|above|below|exceeds?|higher|lower)\b.{0,100}"
+    r"\b(?:range|band|threshold|limit)\b",
+    re.IGNORECASE,
+)
 _STOPWORDS = {
     "a", "an", "the", "is", "was", "were", "are", "be", "been", "being",
     "of", "to", "in", "on", "at", "for", "from", "by", "with", "and", "or",
@@ -59,6 +64,12 @@ class DeterministicVerifier:
 
         if not context.strip():
             return self._finish(claim, status, confidence, evidence, method, started)
+
+        # A matched date or measured number cannot establish the *comparison*
+        # with an operating limit. That needs both the observation and the
+        # authoritative range; leave it for the multi-source checker/NLI.
+        if _COMPARISON_RE.search(claim.verification_text):
+            return self._finish(claim, status, confidence, evidence, "deterministic_comparison_requires_context", started)
 
         claim_numbers = extract_numbers(claim.text)
         claim_dates = extract_dates(claim.text)

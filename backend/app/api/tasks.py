@@ -892,6 +892,7 @@ async def _execute_task(
                                 "domain": integration_plan.diagnostic.domain,
                                 "decision": (result.diagnostic or {}).get("decision"),
                                 "confidence": (result.diagnostic or {}).get("confidence"),
+                                "document_linkage": (result.diagnostic or {}).get("document_linkage"),
                             })
                         await event_callback("controlplane_release_decided", {
                             "status": result.status, "released": result.released,

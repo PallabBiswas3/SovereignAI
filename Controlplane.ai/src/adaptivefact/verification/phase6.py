@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import re
 from time import perf_counter
 
 import numpy as np
@@ -9,6 +10,15 @@ import numpy as np
 from adaptivefact.data.schema import Claim, ResponseRecord, VerificationStatus
 from adaptivefact.verification.evidence import ContextTfidfIndex, EvidenceRetrieverConfig, merge_seed_evidence
 from adaptivefact.verification.nli import NLIScorer, NLIScores
+from adaptivefact.verification.text import split_sentences
+
+
+_EVIDENCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
+_RETRIEVAL_STOPWORDS = frozenset({
+    "and", "are", "as", "at", "been", "for", "from", "has", "have", "into",
+    "its", "per", "that", "the", "their", "these", "this", "those", "was",
+    "were", "with",
+})
 
 
 @dataclass
@@ -97,9 +107,10 @@ class Phase6Pipeline:
                     continue
 
                 pair_start = len(premises)
+                hypothesis = _EVIDENCE_CITATION.sub("", query).strip()
                 for text in evidence_texts:
                     premises.append(text)
-                    hypotheses.append(query)
+                    hypotheses.append(hypothesis)
                 pair_end = len(premises)
                 pending.append(PendingClaim(record_index, claim_index, pair_start, pair_end, evidence_texts, evidence_scores, retrieval_ms))
 
@@ -114,7 +125,9 @@ class Phase6Pipeline:
             prior_evidence = list(claim.evidence)
             prior_method = claim.verifier_used
             local_scores = scores[item.pair_start:item.pair_end]
-            status, confidence, best_evidence, method, verification_scores = self._decide(local_scores, item.evidence_texts, item.evidence_scores)
+            status, confidence, best_evidence, method, verification_scores = self._decide(
+                local_scores, item.evidence_texts, item.evidence_scores, claim.subject, claim.verification_text,
+            )
 
             # Preserve a deterministic exact support only when semantic checking is
             # genuinely inconclusive. Explicit contradiction and CONFLICTING states
@@ -152,28 +165,42 @@ class Phase6Pipeline:
         return [item for item in raw if isinstance(item, dict) and str(item.get("text") or "").strip()]
 
     def _retrieve_structured(self, items: list[dict], query: str) -> tuple[list[str], list[float]]:
-        query_tokens = self._tokens(query)
-        ranked: list[tuple[float, str]] = []
+        cited_ids = set(_EVIDENCE_CITATION.findall(query))
+        query_tokens = self._tokens(_EVIDENCE_CITATION.sub(" ", query))
+        ranked: list[tuple[bool, float, float, str]] = []
         for item in items:
             text = str(item.get("text") or "").strip()
             supplied = item.get("retrieval_score")
             supplied_score = float(supplied) if isinstance(supplied, (int, float)) else 0.0
-            lexical = self._overlap(query_tokens, self._tokens(text))
-            score = max(supplied_score, lexical)
-            if score < self.retrieval_config.min_score:
+            shared_terms = query_tokens & self._tokens(text)
+            lexical = len(shared_terms) / max(1, len(query_tokens))
+            cited = bool(cited_ids.intersection(
+                str(item.get(key) or "") for key in ("evidence_id", "chunk_id", "document_id")
+            ))
+            # Superseded limits are not competing current authority. Retain a
+            # deliberate citation (including misuse for the authority guard to
+            # reject) and explicitly historical claims, but never let uncited
+            # obsolete ranges manufacture a conflict with a current fact.
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            historical = bool(re.search(r"\b(?:historical|superseded|archived|formerly|previous|obsolete)\b", query, re.IGNORECASE))
+            if str(metadata.get("document_status", "")).casefold() == "superseded" and not cited and not historical:
                 continue
-            ranked.append((score, text))
-        ranked.sort(key=lambda pair: pair[0], reverse=True)
+            # The supplied score ranks the original user query, not this atomic
+            # claim. It may break ties but cannot make an unrelated chunk relevant.
+            min_shared_terms = 1 if len(query_tokens) <= 2 else 2
+            if not cited and (len(shared_terms) < min_shared_terms or lexical < self.retrieval_config.min_score):
+                continue
+            ranked.append((cited, lexical, supplied_score, text))
+        ranked.sort(key=lambda pair: (pair[0], pair[1], pair[2]), reverse=True)
         selected = ranked[: max(1, self.retrieval_config.top_k)]
-        return [text for _, text in selected], [float(score) for score, _ in selected]
+        # 1.0 means a deliberate citation. Exact lexical overlap across a whole
+        # chunk must not grant an uncited source the same contradiction authority.
+        return [text for _, _, _, text in selected], [1.0 if cited else min(0.99, float(lexical)) for cited, lexical, _, _ in selected]
 
     @staticmethod
     def _tokens(text: str) -> set[str]:
-        return {token.casefold().strip(".,:;()[]{}\"'") for token in (text or "").split() if len(token.strip()) >= 3}
-
-    @staticmethod
-    def _overlap(a: set[str], b: set[str]) -> float:
-        return len(a & b) / max(1, len(a))
+        tokens = {token.casefold().strip(".,:;()[]{}\"'") for token in (text or "").split()}
+        return {token for token in tokens if len(token) >= 3 and token not in _RETRIEVAL_STOPWORDS}
 
     @staticmethod
     def _seed_evidence(claim: Claim) -> list[str]:
@@ -181,14 +208,64 @@ class Phase6Pipeline:
             return list(claim.evidence)
         return []
 
-    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float]):
-        status, confidence, evidence_index, method = decide_nli_evidence(scores, evidence_scores, self.nli_config)
+    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None, claim_text: str = ""):
+        # NLI over a long chunk can combine an entity in one sentence with a
+        # generic opposing rule in another. A contradiction needs a sentence
+        # that actually names the claim subject; support remains NLI-scored.
+        contradiction_scores = [
+            score if (self._subject_local_to_sentence(subject, text)
+                      and self._compatible_numeric_relation(claim_text, text)) else 0.0
+            for score, text in zip(evidence_scores, evidence_texts)
+        ]
+        status, confidence, evidence_index, method = decide_nli_evidence(scores, contradiction_scores, self.nli_config)
         best_evidence = [] if evidence_index is None else [evidence_texts[evidence_index]]
         verification_scores = {}
         if evidence_index is not None:
             selected = scores[evidence_index]
             verification_scores = {"entailment": float(selected.entailment), "contradiction": float(selected.contradiction), "neutral": float(selected.neutral)}
         return status, confidence, best_evidence, method, verification_scores
+
+    @staticmethod
+    def _compatible_numeric_relation(claim: str, evidence: str) -> bool:
+        """A recorded value and an operating band are not contradictory facts.
+
+        This guard only distinguishes explicit numeric scalar/range relations
+        for the same metric. It does not decide whether a reading is safe or
+        within limits. Comparisons, ambiguous prose and mixed source relations
+        retain the ordinary NLI contradiction path.
+        """
+        metrics = r"discharge\s+pressure|pressure|vibration|temperature|speed|load"
+        units = r"bar|mm/s(?:\s+RMS)?|rpm|percent|%|°?C"
+        metric = re.search(rf"\b({metrics})\b", claim, re.IGNORECASE)
+        if metric is None or re.search(r"\b(?:within|outside|above|below|exceed|exceeds|threshold|limit)\b", claim, re.IGNORECASE):
+            return True
+        value = rf"\d+(?:\.\d+)?\s*(?:{units})(?=\W|$)"
+        band = rf"\d+(?:\.\d+)?\s*(?:to|[-–])\s*{value}"
+        def kind(text: str) -> str | None:
+            if re.search(band, text, re.IGNORECASE):
+                return "range"
+            if re.search(value, text, re.IGNORECASE):
+                return "scalar"
+            return None
+        relation = kind(_EVIDENCE_CITATION.sub("", claim))
+        if relation is None:
+            return True
+        topic = metric.group(1)
+        source_relations = {
+            kind(sentence) for sentence in split_sentences(evidence)
+            if re.search(rf"\b{re.escape(topic)}\b", sentence, re.IGNORECASE)
+        } - {None}
+        return not source_relations or relation in source_relations
+
+    @classmethod
+    def _subject_local_to_sentence(cls, subject: str | None, evidence: str) -> bool:
+        if not subject:
+            return True
+        anchors = cls._tokens(subject)
+        if not anchors:
+            return True
+        required = min(2, len(anchors))
+        return any(len(anchors & cls._tokens(sentence)) >= required for sentence in split_sentences(evidence))
 
 
 def decide_nli_evidence(scores: list[NLIScores], evidence_scores: list[float], config: Phase6NLIConfig):
@@ -218,9 +295,15 @@ def decide_nli_evidence(scores: list[NLIScores], evidence_scores: list[float], c
 def summarize_phase6(records: list[ResponseRecord], *, phase5_status_counts: dict[str, int], runtime: dict) -> dict:
     claims = [claim for record in records for claim in record.atomic_claims]
     final_status_counts = Counter(claim.status.value for claim in claims)
+    # Resolution means a positive or negative factual verdict, not an abstention
+    # or conflicting evidence. Counts expose the denominator, including empty runs.
+    resolved = sum(claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED,
+                                  VerificationStatus.UNSUPPORTED} for claim in claims)
     return {
         "n_records": len(records),
         "n_claims": len(claims),
+        "resolved_claim_count": resolved,
+        "overall_claim_resolution_rate": resolved / len(claims) if claims else 0.0,
         "phase5_status_counts": phase5_status_counts,
         "final_status_counts": dict(final_status_counts),
         "claims_sent_to_nli": int(runtime.get("nli_claims", 0)),

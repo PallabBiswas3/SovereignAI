@@ -202,8 +202,10 @@ def _git_sha() -> str | None:
 def _resolve_models(request: DiagnosticRequest) -> tuple[DiagnosticRequest, dict[str, str], dict[str, str]]:
     model_refs = dict(request.model_refs)
     values = dict(request.inputs)
+    public_profile = (request.run_context.metadata.get("input_profile") if request.run_context else None)
     compatible_default_transformer = (
         request.domain == "transformer"
+        and public_profile is None
         and "raw_waveform_model" not in values
         and "trained_image_model" not in values
     )
@@ -223,6 +225,11 @@ def _resolve_models(request: DiagnosticRequest) -> tuple[DiagnosticRequest, dict
     versions: dict[str, str] = {}; checksums: dict[str, str] = {}
     for slot, ref in model_refs.items():
         record = model_registry.resolve(ref, validate=True); versions[slot] = record.version
+        if public_profile is not None:
+            if record.metadata.get("input_profile") != public_profile:
+                raise ValueError(f"model {ref!r} input profile does not match contract/task/channel order/units/sampling rate")
+            if record.artifact is None or not record.checksum:
+                raise ValueError(f"model {ref!r} requires a loaded artifact and checksum")
         if record.checksum: checksums[slot] = record.checksum
         if record.artifact is not None: values[slot] = record.artifact
     return DiagnosticRequest(domain=request.domain, task=request.task, inputs=values, policy_ref=request.policy_ref,

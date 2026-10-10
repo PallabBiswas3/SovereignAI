@@ -112,7 +112,13 @@ def time_frequency_analysis(signal, sampling_rate_hz: float, nperseg: int = 512,
     return {"time_axis": t, "frequency_axis": f, "time_frequency_map": power, "transient_regions": transient_regions}
 
 
-def spectral_kurtosis(signal, sampling_rate_hz: float, nperseg: int = 512, noverlap: int | None = None):
+def spectral_kurtosis(signal, sampling_rate_hz: float, nperseg: int = 512, noverlap: int | None = None,
+                      *, energy_weighted: bool = False):
+    """Select a resonance band; optionally suppress high-kurtosis low-energy noise.
+
+    Energy weighting is a bearing selection heuristic, not a calibrated statistic.
+    Other callers retain the original unweighted selection by default.
+    """
     tf = time_frequency_analysis(signal, sampling_rate_hz, nperseg=nperseg, noverlap=noverlap)
     power = tf["time_frequency_map"]
     f = tf["frequency_axis"]
@@ -120,17 +126,22 @@ def spectral_kurtosis(signal, sampling_rate_hz: float, nperseg: int = 512, nover
     m2 = np.mean(centered**2, axis=1)
     m4 = np.mean(centered**4, axis=1)
     scores = np.divide(m4, m2**2, out=np.zeros_like(m4), where=m2 > 1e-20)
+    mean_power = np.mean(power, axis=1)
     valid = (f > max(10.0, 0.01 * sampling_rate_hz)) & (f < 0.48 * sampling_rate_hz)
     if not np.any(valid):
         return {"band_scores": [], "recommended_band_hz": None}
-    idx = np.flatnonzero(valid)[np.argmax(scores[valid])]
+    energy_reference = max(float(np.max(mean_power[valid])), 1e-20)
+    selection_scores = scores * np.sqrt(mean_power / energy_reference) if energy_weighted else scores
+    idx = np.flatnonzero(valid)[np.argmax(selection_scores[valid])]
     df = float(f[1] - f[0]) if f.size > 1 else sampling_rate_hz / 2
     half_width = max(4 * df, 0.04 * sampling_rate_hz)
     band = [max(1.0, float(f[idx] - half_width)), min(float(sampling_rate_hz / 2 * 0.98), float(f[idx] + half_width))]
-    top = np.argsort(scores[valid])[::-1][:10]
+    top = np.argsort(selection_scores[valid])[::-1][:10]
     valid_idx = np.flatnonzero(valid)[top]
-    band_scores = [{"frequency_hz": float(f[i]), "kurtosis": float(scores[i])} for i in valid_idx]
-    return {"band_scores": band_scores, "recommended_band_hz": band}
+    band_scores = [{"frequency_hz": float(f[i]), "kurtosis": float(scores[i]),
+                    "mean_power": float(mean_power[i]), "selection_score": float(selection_scores[i])} for i in valid_idx]
+    return {"band_scores": band_scores, "recommended_band_hz": band,
+            "selection_method": "energy_weighted_kurtosis" if energy_weighted else "kurtosis"}
 
 
 def bandpass_filter(signal, sampling_rate_hz: float, band_hz, order: int = 4):

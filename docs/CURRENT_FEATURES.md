@@ -1,6 +1,50 @@
 # Current features
 
-Last consolidated: 30 September 2026
+## Versioned diagnostic forms (10 October 2026)
+
+`/integrations` now derives seven task-specific forms from the authoritative
+`tsdiag.input_contract` Pydantic models, exposed through the authenticated
+`GET /api/integrations/diagnostic-contracts` endpoint. There are no prefilled toy
+signals. Switching workflows clears measurements and metadata. Arrays support
+JSON import; numeric arrays also support headerless CSV, one sample per row.
+Matrices are `[observations, channels]`; vectors require one CSV column.
+No implicit column mapping or unit conversion is performed.
+
+Every request requires `contract_version=industrial-diagnostic-v1`, an exact
+domain/task/policy combination and collection metadata: asset ID, physical
+specimen ID, dataset ID/revision, UTC acquisition start/end, provenance
+(`synthetic`, `real`, `public_dataset`) and operating context. An observation-log
+document ID is optional, but existing document/sensor linkage checks still apply.
+
+| Workflow | Required measurement/configuration fields |
+|---|---|
+| Bearing / fault diagnosis | `signal` (>=256 samples), `sampling_rate_hz`, `signal_unit` (`g` or `m/s^2`), `channel_name`, `sensor_location`, `bearing_id`, `shaft_speed_rpm`, `load_percent`, `fault_frequencies` with BPFO/BPFI/BSF/FTF in Hz |
+| Process / root cause | `signal_matrix`, `normal_reference`, `channel_names`, `channel_units`, `sampling_rate_hz`, `reference_id`, `reference_revision` |
+| Wind SCADA / monitoring | `train_matrix` (>=60 healthy rows), `prediction_matrix`, `channel_names`, `channel_units`, `train_timestamps`, `prediction_timestamps`, `reference_id`, `reference_revision` |
+| Battery / cell anomaly localization | `cell_voltage`, `cell_temperature`, `cell_ids`, `timestamps`, `pack_current`, fixed units `V`, `degC`, `A` (positive current = charging) |
+| Battery / capacity prognosis | `cycle_index`, `capacity_ah` (>=20 observations), `nominal_capacity_ah`, `eol_capacity_ah`, `capacity_unit=Ah`, `battery_id` |
+| Turbofan / RUL | `signal_matrix`, `channel_names`, `channel_units`, `cycle_index`, per-cycle regime IDs `operating_conditions`, `engine_id`, `regime_map_revision`, `require_calibrated_rul=true`; registered `trained_rul_model` reference required |
+| Transformer / fault diagnosis | `signal_matrix` (>=32 rows), `sampling_rate_hz`, ordered `sensor_positions`, `channel_units`, `fundamental_hz` |
+
+Other matrices/vectors require at least eight rows. These are computational input
+floors, not evidence of sufficient diagnostic accuracy. The generated catalogue
+contains exact types, enum values, sizes and optional registered model slots.
+
+The server rejects legacy/unversioned payloads, unknown fields, threshold
+overrides, non-finite/coerced values, ragged arrays, misaligned channels/units,
+invalid timestamp/cycle order, overlapping Wind reference/prediction periods,
+invalid frequencies and inconsistent specimen IDs. Validation runs before
+integrated analysis and again at the diagnostic HTTP/tool boundary. Uploaded
+workbench JSON must meet the same contract. Authorization and ControlPlane's
+2,000-ms gate are unchanged; validation does not prove data authenticity.
+
+Public model selection additionally requires a loaded, checksummed artifact with
+matching `metadata.input_profile` (contract version, task, ordered channels,
+units, sampling rate). Public Transformer requests no longer silently select a
+default classifier. Missing/incompatible models abstain. Bearing currently
+exposes its physics workflow, not the separate experimental CNN benchmark.
+
+Last consolidated: 1 October 2026
 
 ## Project purpose
 
@@ -64,20 +108,55 @@ The Pump-102 path combines authorized manuals/SOP/history, sensor diagnosis, det
 
 ## Inference experiment tooling
 
-`benchmarks/inference_tradeoff.py --protocol controlled` provides seeded randomized
-condition blocks, at least five warm repetitions, and a same-condition warm-up
-before each measurement. Warm-up failures prevent that measurement; warm-ups stay
-in raw JSON/CSV but are excluded from measured summaries. Model format declarations,
-harness/prompt hashes, answers, sample counts, and failures are recorded. Only
-literal loopback/RFC1918/ULA runtime IPs (or pinned localhost) are accepted;
-environment proxies and redirects are disabled, and incomplete/empty streams fail.
-The legacy `smoke` protocol remains available.
+The local-only `local_testing/benchmarks/inference_tradeoff.py --protocol controlled` now runs the version-3
+host-local protocol implemented in `local_testing/benchmarks/inference_controls.py`. These harnesses are ignored by Git and must be backed up separately. The old
+warm-only protocol is explicitly `legacy-controlled`; `smoke` remains compatible.
+Neither legacy mode can mark an experiment complete.
 
-Budgets are whitespace words despite the historical `target_tokens` field name;
-provider-reported prompt token counts are separate. Throughput is completion tokens
-per end-to-end request second. Quality scores remain synthetic lexical/citation
-proxies. Cold-start isolation, memory instrumentation, verified model identities,
-and adjudicated factuality are not implemented; `experiment_complete` remains false.
+- Provider API identity plus local listener/process identity: Ollama version,
+  digest, format, quantization, template/system hashes and selected runtime
+  settings; vLLM/PyTorch/Transformers/Python versions, pinned local HF revision,
+  weight/config hashes, explicit dtype and selected runtime settings. vLLM must
+  use the same Python environment as its harness. Drift fails the experiment.
+- Host OS/CPU/RAM and normalized-source harness hash. Per-batch 50 ms host
+  available RAM and provider process-tree RSS samples, including errors and
+  limitations; unavailable measurements never become zero-valued substitutes.
+- Provider-verified **full prompt-token ceilings**, including template overhead.
+  The complete fixture is retained; budgets too small for it fail. Neutral padding
+  fills remaining space. vLLM uses `/tokenize`; Ollama uses untimed one-token
+  calibration. Measured provider usage must agree exactly with calibration.
+  `target_tokens` is retained only as a v3 compatibility alias for
+  `prompt_token_budget`; historical v2 values remain whitespace words.
+- Seeded shuffled repetition blocks cover requested budgets, concurrency 1/2/4,
+  warm fresh/reused prefixes, and unprimed cold batches. Each lane has its own
+  nonce. Warm-ups are excluded from summaries. Batch throughput uses the actual
+  batch wall-clock interval, not a sum across repetitions.
+- Reset after calibration and before every batch: Ollama unload acknowledgement
+  plus `/api/ps` absence; vLLM requires an external restart, disappearance of the
+  previous process tree, a newly created listener, and matching runtime identity.
+  The harness never invokes shell commands, terminates processes, or evicts OS
+  caches. Failed reset means no cold request. Cold concurrency describes an
+  initially cold **batch**, not an independently cold model for each lane.
+- Versioned expected-fact/citation JSON schema and fixture provenance/review
+  metadata. The shipped fixture is explicitly synthetic and unreviewed. Final
+  execution refuses it; `--plan-only` makes no runtime requests. Lexical output
+  scoring remains a proxy, even with reviewed expected labels.
+- `summary.json` records separate completion gates for both providers, identity
+  and its consistency, cold state, warm-ups, memory, complete condition coverage,
+  valid token accounting, reviewed real quality labels and failures. Host-local
+  partials remain incomplete until a strict matching-config merge. Raw JSON/CSV,
+  prompts, answers, samples and source-report hashes are retained. Existing output
+  directories cannot be overwritten by a new run.
+
+No final large live benchmark has been run with this protocol. Windows Ollama
+and WSL BF16 vLLM constitute a **runtime + format + host** comparison. Process RSS
+is not VRAM, may double-count shared pages, and misses between-sample peaks; WSL
+reports guest memory. A process restart is not disk/page-cache cold. vLLM loads
+weights before serving, so its measured cold request excludes server startup;
+Ollama's post-unload request may include loading. Prefix reuse is a controlled
+input condition, not proof of a cache hit. The two budget experiment labels both
+use full prompt ceilings with fixed evidence; they do not measure retrieval or
+evidence-selection quality. See `NEXT_PLAN.md` for commands and remaining gates.
 
 ## Important limits
 

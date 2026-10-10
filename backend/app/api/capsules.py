@@ -15,6 +15,7 @@ from app.audit.logger import AuditLogger
 from app.capsules.builder import EvidenceCapsuleBuilder
 from app.capsules.models import CapsuleState
 from app.capsules.verifier import EvidenceCapsuleVerifier
+from app.capsules.paths import capsule_storage_path
 from app.core.config import get_settings
 from app.core.database import AgentRunRecord, EvidenceCapsuleRecord, TaskEventRecord, get_db
 from app.core.events import task_event_broker
@@ -38,7 +39,7 @@ def _capsule_root(record: EvidenceCapsuleRecord) -> Path:
     path = (root / record.path).resolve()
     if root not in path.parents:
         raise HTTPException(status_code=400, detail="Invalid capsule path")
-    return path
+    return capsule_storage_path(path)
 
 
 def _metadata(record: EvidenceCapsuleRecord) -> dict[str, object]:

@@ -16,11 +16,21 @@ class DiagnosticInvocation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     domain: str = Field(min_length=1)
+    contract_version: str = Field(description="Required versioned diagnostic input contract.")
     task: str | None = None
     inputs: dict[str, Any]
     policy_ref: str | None = None
     model_refs: dict[str, str] = Field(default_factory=dict)
     run_context: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_diagnostic_contract(self):
+        from tsdiag.input_contract import validate_payload
+
+        validated = validate_payload(self.model_dump(mode="python"))
+        self.inputs = validated["inputs"]
+        self.run_context = validated["run_context"]
+        return self
 
 
 class IntegratedAnalysisRequest(BaseModel):

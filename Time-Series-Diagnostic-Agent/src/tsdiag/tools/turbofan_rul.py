@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import math
 from typing import Iterable
 
 import numpy as np
@@ -14,6 +16,62 @@ class TurbofanTrainingTrajectory:
     sensors: np.ndarray
 
 
+@dataclass(frozen=True)
+class TurbofanCalibrationCase:
+    unit_id: int
+    cycle_index: np.ndarray
+    sensors: np.ndarray
+    remaining_useful_life: float
+
+
+@dataclass(frozen=True)
+class RULResidualCalibration:
+    """One fixed prefix per held-out engine; nominal marginal coverage only.
+
+    Coverage relies on exchangeability and does not certify any individual engine
+    or out-of-distribution regime. Censored targets cannot be used as exact RUL.
+    """
+    radius_cycles: float
+    coverage: float
+    unit_ids: frozenset[int]
+    training_unit_ids: frozenset[int]
+    model_id: str
+    dataset_id: str
+
+    def __post_init__(self):
+        if not np.isfinite(self.radius_cycles) or self.radius_cycles < 0 or not 0 < self.coverage < 1:
+            raise ValueError("invalid calibration radius or nominal coverage")
+        if not self.unit_ids or not self.training_unit_ids or self.unit_ids & self.training_unit_ids:
+            raise ValueError("calibration and training identities must be nonempty and disjoint")
+        if not self.model_id or not self.dataset_id or math.ceil((len(self.unit_ids)+1)*self.coverage) > len(self.unit_ids):
+            raise ValueError("calibration provenance or finite-sample size is invalid")
+
+    @classmethod
+    def fit(cls, predictions, targets, unit_ids, *, training_unit_ids, model_id, dataset_id, coverage=.9):
+        p, y = np.asarray(predictions, float), np.asarray(targets, float)
+        units, training = list(unit_ids), frozenset(training_unit_ids)
+        if p.ndim != 1 or p.shape != y.shape or len(p) != len(units) or not len(p):
+            raise ValueError("calibration requires aligned predictions, exact RUL targets and engine identities")
+        if not np.all(np.isfinite(p)) or not np.all(np.isfinite(y)) or np.any(p < 0) or np.any(y < 0):
+            raise ValueError("calibration targets/predictions must be finite nonnegative exact RUL")
+        if any(unit is None for unit in units) or len(set(units)) != len(units) or set(units) & training:
+            raise ValueError("use one prefix per calibration engine, disjoint from training engines")
+        if not training or not model_id or not dataset_id or not 0 < coverage < 1:
+            raise ValueError("calibration requires training identities, model/dataset provenance and valid coverage")
+        rank = math.ceil((len(y) + 1) * coverage)
+        if rank > len(y):
+            raise ValueError("too few independent calibration engines for a finite interval at this coverage")
+        radius = float(np.sort(np.abs(p-y))[rank-1])
+        return cls(radius, float(coverage), frozenset(units), training, str(model_id), str(dataset_id))
+
+    def interval(self, prediction, *, unit_id, model_id):
+        if unit_id is None or unit_id in self.unit_ids or unit_id in self.training_unit_ids:
+            raise ValueError("prediction engine must be identified and disjoint from training/calibration")
+        if model_id != self.model_id or not np.isfinite(prediction) or prediction < 0:
+            raise ValueError("calibration model identity or prediction is invalid")
+        return [max(0., float(prediction)-self.radius_cycles), float(prediction)+self.radius_cycles]
+
+
 def _feature_vector(signal_matrix, cycle_index, *, recent_window: int = 20) -> np.ndarray:
     x = np.asarray(signal_matrix, dtype=float)
     cycles = np.asarray(cycle_index, dtype=float).ravel()
@@ -21,6 +79,8 @@ def _feature_vector(signal_matrix, cycle_index, *, recent_window: int = 20) -> n
         raise ValueError("signal_matrix and cycle_index must describe at least two aligned cycles")
     if not np.all(np.isfinite(x)) or not np.all(np.isfinite(cycles)):
         raise ValueError("turbofan RUL features require finite inputs")
+    if np.any(cycles < 0) or np.any(np.diff(cycles) <= 0):
+        raise ValueError("turbofan cycle_index must be nonnegative and strictly increasing")
 
     n = min(max(2, int(recent_window)), len(x))
     recent = x[-n:]
@@ -82,11 +142,18 @@ class TrainOnlyTurbofanRULModel:
         self._fitted = False
         self.maximum_training_rul_: float | None = None
         self.training_sample_count_: int = 0
+        self.training_unit_ids_: frozenset[int] = frozenset()
+        self.model_id_: str | None = None
+        self.interval_calibration: RULResidualCalibration | None = None
 
     def fit(self, trajectories: Iterable[TurbofanTrainingTrajectory]):
         features: list[np.ndarray] = []
         targets: list[float] = []
+        units = set()
         for trajectory in trajectories:
+            if trajectory.unit_id in units:
+                raise ValueError("duplicate training engine identity")
+            units.add(trajectory.unit_id)
             sensors = np.asarray(trajectory.sensors, dtype=float)
             cycles = np.asarray(trajectory.cycle_index, dtype=float).ravel()
             if len(sensors) != len(cycles):
@@ -113,11 +180,36 @@ class TrainOnlyTurbofanRULModel:
         self._fitted = True
         self.maximum_training_rul_ = float(np.max(y))
         self.training_sample_count_ = int(len(y))
+        self.training_unit_ids_ = frozenset(units)
+        self.model_id_ = hashlib.sha256(X.tobytes()+y.tobytes()+repr(sorted(units)).encode()).hexdigest()
+        self.interval_calibration = None  # Refitting invalidates prior intervals.
         return self
+
+    def calibrate(self, cases: Iterable[TurbofanCalibrationCase], *, dataset_id, coverage=.9):
+        if not self._fitted:
+            raise RuntimeError("fit the point model before held-out calibration")
+        records = list(cases)
+        predictions = [self.predict_rul(r.sensors, r.cycle_index) for r in records]
+        self.interval_calibration = RULResidualCalibration.fit(
+            predictions, [r.remaining_useful_life for r in records], [r.unit_id for r in records],
+            training_unit_ids=self.training_unit_ids_, model_id=self.model_id_, dataset_id=dataset_id, coverage=coverage)
+        return self
+
+    def predict_with_interval(self, signal_matrix, cycle_index, *, unit_id):
+        prediction = self.predict_rul(signal_matrix, cycle_index)
+        if self.interval_calibration is None:
+            raise ValueError("rul_calibration_required")
+        interval = self.interval_calibration.interval(prediction, unit_id=unit_id, model_id=self.model_id_)
+        return {"rul_cycles": prediction, "interval": interval, "calibrated": True,
+                "coverage": self.interval_calibration.coverage,
+                "calibration_dataset": self.interval_calibration.dataset_id,
+                "calibration_method": "engine_disjoint_split_conformal_v1"}
 
     def predict_rul(self, signal_matrix, cycle_index) -> float:
         if not self._fitted:
             raise RuntimeError("TrainOnlyTurbofanRULModel must be fitted before prediction")
+        if len(cycle_index) < self.minimum_history:
+            raise ValueError("insufficient_turbofan_history")
         feature = _feature_vector(
             signal_matrix,
             cycle_index,

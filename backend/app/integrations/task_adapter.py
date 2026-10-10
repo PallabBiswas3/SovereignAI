@@ -76,8 +76,9 @@ def integrated_result_state(
     diagnostic = result.diagnostic or {}
     chunks = graph.get("chunks") or []
     graph_claims = graph.get("claims") or []
-    diagnostic_evidence = diagnostic.get("evidence") or []
-    hypotheses = diagnostic.get("hypotheses") or []
+    diagnostic_linked = not plan.use_graph or diagnostic.get("document_linkage") == "linked"
+    diagnostic_evidence = (diagnostic.get("evidence") or []) if diagnostic_linked else []
+    hypotheses = (diagnostic.get("hypotheses") or []) if diagnostic_linked else []
 
     sources = [_graph_source(chunk) for chunk in chunks]
     sources.extend(_diagnostic_source(item, diagnostic) for item in diagnostic_evidence)
@@ -114,7 +115,11 @@ def integrated_result_state(
                 if diagnostic_available else "Diagnostic service was unavailable after bounded retry attempts."
             ),
             verification=(
-                f"Confidence: {diagnostic.get('confidence', 'not reported')}."
+                (
+                    "Diagnostic result not linked to the retrieved asset and time; not used as document evidence."
+                    if plan.use_graph and not diagnostic_linked
+                    else f"Confidence: {diagnostic.get('confidence', 'not reported')}."
+                )
                 if diagnostic_available else "No diagnostic output was represented as successfully produced."
             ),
             error=None if diagnostic_available else "Time-series diagnostic service unavailable.",
@@ -151,6 +156,8 @@ def integrated_result_state(
         warnings.append("Graph-RAG abstained because it found insufficient supported document evidence.")
     if diagnostic.get("abstained"):
         warnings.append(str(diagnostic.get("abstain_reason") or "The diagnostic service abstained."))
+    if plan.use_graph and diagnostic and not diagnostic_linked:
+        warnings.append("The diagnostic result was not linked to the retrieved asset and time; its claims were not merged.")
 
     return AgentRunState(
         id=str(uuid4()), request=request,
@@ -177,6 +184,7 @@ def integrated_result_state(
             "raw_candidate_count": len(chunks) + len(diagnostic_evidence),
             "final_evidence_count": len(sources),
             "controlplane_status": result.status,
+            "diagnostic_document_linkage": diagnostic.get("document_linkage") if diagnostic else None,
         },
     )
 

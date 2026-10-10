@@ -506,6 +506,7 @@ app.post("/api/integration/retrieve", async (req, res) => {
       chunks: state.chunks,
       claims: state.evidenceClaims,
       verificationMode,
+      authorizationScope,
     });
     const verificationMs = Date.now() - verificationStarted;
     const supportedClaimIds = new Set(

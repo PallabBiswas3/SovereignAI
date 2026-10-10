@@ -27,6 +27,29 @@ from app.workcells.defaults import configured_workcell_registry
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
 
+@router.get("/diagnostic-contracts")
+def diagnostic_contracts(
+    _principal: Principal = Depends(require_permission(Permission.task_read)),
+) -> dict[str, object]:
+    from tsdiag.input_contract import catalogue
+
+    return catalogue()
+
+
+@router.post("/validate-diagnostic")
+def validate_diagnostic(
+    payload: dict,
+    _principal: Principal = Depends(require_permission(Permission.workcell_execute)),
+) -> dict[str, object]:
+    from tsdiag.input_contract import validate_payload
+
+    try:
+        validated = validate_payload(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"valid": True, "diagnostic": validated}
+
+
 @router.get("/health")
 async def integration_health(
     _principal: Principal = Depends(require_permission(Permission.task_read)),

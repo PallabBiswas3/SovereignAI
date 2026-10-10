@@ -3,20 +3,27 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .integrations import diagnose_tool
+from .input_contract import catalogue, validate_payload
 
 
 class DiagnosticToolRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     domain: str = Field(min_length=1)
+    contract_version: str
     task: str | None = None
     inputs: dict[str, Any]
     policy_ref: str | None = None
     model_refs: dict[str, str] = Field(default_factory=dict)
     run_context: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_input_contract(self):
+        validate_payload(self.model_dump(mode="python"))
+        return self
 
 
 app = FastAPI(
@@ -24,6 +31,11 @@ app = FastAPI(
     version="1.1.0",
     description="Host-neutral HTTP boundary for evidence-backed industrial diagnostics.",
 )
+
+
+@app.get("/v1/input-contracts")
+def input_contracts() -> dict[str, Any]:
+    return catalogue()
 
 
 @app.get("/health")

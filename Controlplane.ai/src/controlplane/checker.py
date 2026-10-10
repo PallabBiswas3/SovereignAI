@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from inspect import signature
+import re
 from time import perf_counter
 
 from controlplane.actions import transform_response
@@ -14,6 +15,61 @@ from controlplane.verification import VerificationService
 
 
 _DEPTH_RANK = {VerificationDepth.QUICK: 0, VerificationDepth.STANDARD: 1, VerificationDepth.DEEP: 2}
+_PHYSICAL_ACTION = re.compile(r"\b(?:controlled\s+)?shutdown\b|\b(?:isolate|isolation|line[- ]break|bearing\s+replacement)\b", re.IGNORECASE)
+_ACTION_OBLIGATION = re.compile(r"\b(?:required|must|should|initiate|perform)\b", re.IGNORECASE)
+_NON_CURRENT_ACTION = re.compile(r"\b(?:historical|superseded|formerly|used\s+to|not\s+valid|do\s+not|must\s+not|should\s+not|cannot)\b", re.IGNORECASE)
+_WORK_RECORD_ASSERTION = re.compile(
+    r"\b(?:no\s+)?(?:physical|maintenance|repair)\s+work\s+(?:was|has\s+been)\s+(?:performed|completed)\b|"
+    r"\b(?:no\s+)?(?:repair|replacement)\s+(?:was|has\s+been)\s+(?:performed|completed)\b",
+    re.IGNORECASE,
+)
+_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_ASSET = re.compile(r"\b[A-Za-z]+-\d+\b", re.IGNORECASE)
+
+
+def infer_consequential_work_record(response: str) -> bool:
+    """A categorical execution-history claim needs accountable evidence."""
+    return bool(_WORK_RECORD_ASSERTION.search(response))
+
+
+def _matching_work_record(interaction: Interaction) -> bool:
+    assertion = _WORK_RECORD_ASSERTION.search(interaction.response)
+    if assertion is None:
+        return False
+    requested_date = _DATE.search(interaction.response) or _DATE.search(interaction.prompt)
+    requested_asset = _ASSET.search(interaction.response) or _ASSET.search(interaction.prompt)
+    normalized_assertion = " ".join(assertion.group().casefold().split())
+    for item in interaction.grounding_evidence:
+        if str(item.metadata.get("document_status", "")).casefold() in {"superseded", "unverified", "draft"}:
+            continue
+        kind = str(item.metadata.get("document_type") or item.source_name or "").casefold()
+        if not any(name in kind for name in ("work_order", "maintenance_history", "inspection_report", "operations_log")):
+            continue
+        if normalized_assertion not in " ".join(item.text.casefold().split()):
+            continue
+        if requested_date and requested_date.group() not in item.text:
+            continue
+        source_assets = {match.group().casefold() for match in _ASSET.finditer(item.text)}
+        if requested_asset and requested_asset.group().casefold() not in source_assets:
+            continue
+        return True
+    return False
+
+
+def infer_consequential_action(question: str, response: str) -> bool:
+    """Treat a present-tense physical-work instruction as consequential.
+
+    The caller's consequential=True remains authoritative; this is a narrow
+    upward-only fallback for callers that forgot to flag an actionable answer.
+    """
+    if not response.strip():
+        return False
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", response):
+        if _NON_CURRENT_ACTION.search(sentence):
+            continue
+        if _PHYSICAL_ACTION.search(sentence) and _ACTION_OBLIGATION.search(sentence):
+            return True
+    return False
 
 
 class ControlPlane:
@@ -29,6 +85,15 @@ class ControlPlane:
 
     def check(self, interaction: Interaction, profile: PolicyProfile | None = None) -> CheckReport:
         started = perf_counter()
+        inferred_action = infer_consequential_action(interaction.prompt, interaction.response)
+        inferred_work_record = infer_consequential_work_record(interaction.response)
+        if not interaction.consequential and (inferred_action or inferred_work_record):
+            interaction = interaction.model_copy(update={
+                "consequential": True,
+                "metadata": {**interaction.metadata, "consequential_inferred": (
+                    "physical_action_instruction" if inferred_action else "physical_work_record"
+                )},
+            })
         profile = profile or self.policy_repository.load(interaction.profile)
         enabled = {name: detector for name, detector in self.detectors.items() if name in profile.checks and profile.checks[name].enabled}
         results: dict[str, DetectorResult] = {}
@@ -80,6 +145,20 @@ class ControlPlane:
                 )
 
         findings = [finding for result in ordered_results for finding in result.findings]
+        if inferred_action:
+            findings.append(Finding(
+                category=RiskCategory.POLICY, subtype="physical_action_requires_review",
+                severity=Severity.HIGH, confidence=1.0, status=FindingStatus.UNKNOWN,
+                message="A current physical-action instruction requires accountable human review before release.",
+                detector="controlplane",
+            ))
+        if inferred_work_record and not _matching_work_record(interaction):
+            findings.append(Finding(
+                category=RiskCategory.POLICY, subtype="unverified_operational_event",
+                severity=Severity.HIGH, confidence=1.0, status=FindingStatus.UNKNOWN,
+                message="A categorical work-execution claim lacks a matching authorized work record.",
+                detector="controlplane",
+            ))
         for result in ordered_results:
             if result.error:
                 findings.append(

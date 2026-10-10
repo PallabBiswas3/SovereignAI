@@ -7,13 +7,6 @@
     "dev": "ts-node-dev --respawn server.ts",
     "build": "tsc",
     "serve": "node dist/server.js",
-    "test:metrics": "ts-node evaluation/metrics.test.ts",
-    "test:retrieval-core": "ts-node evaluation/retrievalCore.test.ts",
-    "test:agent-policy": "ts-node evaluation/agentPolicy.test.ts",
-    "test:verification-policy": "ts-node verification/verificationPolicy.test.ts",
-    "test:claim-verifier": "ts-node verification/claimVerifier.test.ts",
-    "test:local-model": "ts-node evaluation/localModel.test.ts",
-    "eval:retrieval": "ts-node evaluation/runRetrievalBenchmark.ts",
     "reindex:local": "ts-node scripts/reindexLocalEmbeddings.ts --apply"
   },
   "keywords": [],

@@ -5,45 +5,31 @@ from typing import Any, Mapping
 
 from ..contracts import DiagnosticRequest, RunContext
 from ..pipeline import diagnose
+from ..input_contract import Envelope, WORKFLOWS, validate_payload, model_input_profile
+
+
+def _public_schema():
+    schema = Envelope.model_json_schema()
+    variants = []
+    for domain, task, policy, model, _ in WORKFLOWS.values():
+        inputs = model.model_json_schema()
+        schema.setdefault("$defs", {}).update(inputs.pop("$defs", {}))
+        variants.append({"properties": {
+            "domain": {"const": domain}, "task": {"const": task},
+            "policy_ref": {"const": policy}, "inputs": inputs,
+        }})
+    schema["oneOf"] = variants
+    return schema
 
 
 DIAGNOSE_TOOL_MANIFEST = {
     "name": "diagnose_industrial_time_series",
-    "description": (
-        "Run an evidence-backed diagnostic workflow for one supported industrial "
-        "time-series domain and return a validated DiagnosticResult."
-    ),
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["domain", "inputs"],
-        "properties": {
-            "domain": {
-                "type": "string",
-                "enum": ["battery", "bearing", "process", "transformer", "turbofan", "wind_scada"],
-            },
-            "task": {"type": ["string", "null"]},
-            "inputs": {"type": "object"},
-            "policy_ref": {"type": ["string", "null"]},
-            "model_refs": {"type": "object", "additionalProperties": {"type": "string"}},
-            "run_context": {
-                "type": ["object", "null"],
-                "additionalProperties": False,
-                "properties": {
-                    "run_id": {"type": ["string", "null"]},
-                    "source": {"type": ["string", "null"]},
-                    "dataset_id": {"type": ["string", "null"]},
-                    "protocol_id": {"type": ["string", "null"]},
-                    "artifact_checksums": {"type": "object", "additionalProperties": {"type": "string"}},
-                    "metadata": {"type": "object"},
-                },
-            },
-        },
-    },
+    "description": "Run an evidence-backed diagnostic workflow using the versioned industrial input contract.",
+    "input_schema": _public_schema(),
 }
 
 
-_REQUEST_FIELDS = {"domain", "task", "inputs", "policy_ref", "model_refs", "run_context"}
+_REQUEST_FIELDS = {"contract_version", "domain", "task", "inputs", "policy_ref", "model_refs", "run_context"}
 _CONTEXT_FIELDS = {"run_id", "source", "dataset_id", "protocol_id", "artifact_checksums", "metadata"}
 
 
@@ -63,7 +49,7 @@ def _mapping_payload(payload: str | Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("diagnostic tool payload requires an inputs object")
     if not str(decoded.get("domain") or "").strip():
         raise ValueError("diagnostic tool payload requires a domain")
-    return decoded
+    return validate_payload(decoded)
 
 
 def _run_context(value: Any) -> RunContext | None:
@@ -92,6 +78,13 @@ def diagnose_tool(payload: str | Mapping[str, Any]) -> dict[str, Any]:
     dynamically imports user-supplied callables.
     """
     request_data = _mapping_payload(payload)
+    request_data["run_context"]["metadata"]["input_profile"] = model_input_profile(request_data)
+    request_data["run_context"]["metadata"]["synthetic"] = request_data["run_context"]["metadata"]["provenance"] == "synthetic"
+    # Acquisition metadata is retained in run_context, while tool-specific
+    # context uses the established scientific runner names.
+    if request_data["domain"] == "bearing":
+        values = request_data["inputs"]
+        values["operating_condition"] = {"shaft_speed_rpm": values["shaft_speed_rpm"], "load_percent": values["load_percent"]}
     request = DiagnosticRequest(
         domain=str(request_data["domain"]),
         task=request_data.get("task"),

@@ -70,13 +70,14 @@ class BearingDiagnosticPipeline:
             "fault_frequencies": fault_frequencies,
             "shaft_rate_hz": shaft_rate_hz,
             "operating_condition": dict(operating_condition or {}),
+            "energy_weighted": True,
         }
         executor = StepExecutor("bearing", default_domain_tool_registry())
         trace = executor.trace
 
         quality = executor.run("signal_integrity", state)
         trace[-1].outputs_summary = {"quality_flags": quality["quality_flags"]}
-        fatal_quality = {"nan_or_inf", "too_short", "invalid_sampling_rate", "no_finite_samples"}
+        fatal_quality = {"nan_or_inf", "too_short", "invalid_sampling_rate", "no_finite_samples", "possible_clipping", "severe_clipping"}
         if fatal_quality.intersection(quality["quality_flags"]):
             result = DiagnosticResult(
                 domain="bearing",

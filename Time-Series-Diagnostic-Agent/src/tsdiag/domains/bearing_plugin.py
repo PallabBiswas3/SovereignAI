@@ -26,7 +26,7 @@ _FAULT_COMPONENTS = {
     "BSF": "rolling_element",
     "FTF": "cage",
 }
-_FATAL_QUALITY = {"nan_or_inf", "too_short", "invalid_sampling_rate", "no_finite_samples"}
+_FATAL_QUALITY = {"nan_or_inf", "too_short", "invalid_sampling_rate", "no_finite_samples", "possible_clipping", "severe_clipping"}
 
 
 def _tool(name: str, state: dict[str, Any]) -> dict[str, Any]:
@@ -214,7 +214,7 @@ class BearingDecisionPolicy:
 
 class BearingPlugin:
     name = "bearing"
-    workflow_version = "2.0"
+    workflow_version = "2.2"
 
     def validate(self, request: DiagnosticRequest) -> Mapping[str, Any]:
         values = dict(request.inputs)
@@ -229,6 +229,7 @@ class BearingPlugin:
             raise ValueError("signal must be [samples] or [samples, channels]")
         values["signal"] = signal
         values["sampling_rate_hz"] = float(values["sampling_rate_hz"])
+        values["energy_weighted"] = True
         frequencies = dict(values.get("fault_frequencies") or {})
         for key in ("BPFO", "BPFI", "BSF", "FTF"):
             if values.get(key) is not None:
@@ -276,6 +277,7 @@ class BearingPlugin:
             return {**out, "bearing_frequency_match_result": out}
 
         def fusion(state):
+            if _inactive(state): return {}
             match_result = state.get("bearing_frequency_match_result") or {"fault_ranking": []}
             state = dict(state)
             state["fault_ranking"] = match_result.get("fault_ranking", [])
@@ -287,12 +289,12 @@ class BearingPlugin:
             Step("signal_integrity", quality, version="1.0"),
             Step("time_domain_features", features, depends_on=("signal_integrity",), version="1.0"),
             Step("welch_psd", psd, depends_on=("signal_integrity",), version="1.0"),
-            Step("spectral_kurtosis", sk, depends_on=("welch_psd",), version="1.0"),
+            Step("spectral_kurtosis", sk, depends_on=("welch_psd",), version="1.1"),
             Step("bandpass_filter", bandpass, depends_on=("spectral_kurtosis",), version="1.0"),
             Step("hilbert_envelope", envelope, depends_on=("bandpass_filter",), version="1.0"),
             Step("envelope_spectrum", envelope_spectrum, depends_on=("hilbert_envelope",), version="1.0"),
-            Step("bearing_frequency_match", match, depends_on=("envelope_spectrum",), version="1.0"),
-            Step("bearing_evidence_fusion", fusion, depends_on=("bearing_frequency_match",), version="1.0"),
+            Step("bearing_frequency_match", match, depends_on=("envelope_spectrum",), version="1.1"),
+            Step("bearing_evidence_fusion", fusion, depends_on=("bearing_frequency_match",), version="1.1"),
         ), version=self.workflow_version)
 
     def policy(self, request: DiagnosticRequest) -> BearingDecisionPolicy:

@@ -1,5 +1,5 @@
 id: regulated_decision_support
-version: "1.1"
+version: "1.2"
 name: Regulated Decision Support
 description: Safety-first policy for consequential workflows requiring human accountability.
 geography: global
@@ -60,6 +60,12 @@ rules:
       category: hallucination
       status: contradicted
     action: human_review
+  - id: regulated-untrusted-instruction-block
+    description: A retrieved document cannot confer system or developer authority.
+    when:
+      category: policy
+      subtype: untrusted_instruction_promotion
+    action: block
   - id: regulated-consequential-unsupported-review
     description: A consequential claim unsupported by sufficiently complete evidence requires review.
     when:
