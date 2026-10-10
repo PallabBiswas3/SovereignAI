@@ -1,5 +1,49 @@
 # Current features
 
+## Versioned diagnostic forms (10 October 2026)
+
+`/integrations` now derives seven task-specific forms from the authoritative
+`tsdiag.input_contract` Pydantic models, exposed through the authenticated
+`GET /api/integrations/diagnostic-contracts` endpoint. There are no prefilled toy
+signals. Switching workflows clears measurements and metadata. Arrays support
+JSON import; numeric arrays also support headerless CSV, one sample per row.
+Matrices are `[observations, channels]`; vectors require one CSV column.
+No implicit column mapping or unit conversion is performed.
+
+Every request requires `contract_version=industrial-diagnostic-v1`, an exact
+domain/task/policy combination and collection metadata: asset ID, physical
+specimen ID, dataset ID/revision, UTC acquisition start/end, provenance
+(`synthetic`, `real`, `public_dataset`) and operating context. An observation-log
+document ID is optional, but existing document/sensor linkage checks still apply.
+
+| Workflow | Required measurement/configuration fields |
+|---|---|
+| Bearing / fault diagnosis | `signal` (>=256 samples), `sampling_rate_hz`, `signal_unit` (`g` or `m/s^2`), `channel_name`, `sensor_location`, `bearing_id`, `shaft_speed_rpm`, `load_percent`, `fault_frequencies` with BPFO/BPFI/BSF/FTF in Hz |
+| Process / root cause | `signal_matrix`, `normal_reference`, `channel_names`, `channel_units`, `sampling_rate_hz`, `reference_id`, `reference_revision` |
+| Wind SCADA / monitoring | `train_matrix` (>=60 healthy rows), `prediction_matrix`, `channel_names`, `channel_units`, `train_timestamps`, `prediction_timestamps`, `reference_id`, `reference_revision` |
+| Battery / cell anomaly localization | `cell_voltage`, `cell_temperature`, `cell_ids`, `timestamps`, `pack_current`, fixed units `V`, `degC`, `A` (positive current = charging) |
+| Battery / capacity prognosis | `cycle_index`, `capacity_ah` (>=20 observations), `nominal_capacity_ah`, `eol_capacity_ah`, `capacity_unit=Ah`, `battery_id` |
+| Turbofan / RUL | `signal_matrix`, `channel_names`, `channel_units`, `cycle_index`, per-cycle regime IDs `operating_conditions`, `engine_id`, `regime_map_revision`, `require_calibrated_rul=true`; registered `trained_rul_model` reference required |
+| Transformer / fault diagnosis | `signal_matrix` (>=32 rows), `sampling_rate_hz`, ordered `sensor_positions`, `channel_units`, `fundamental_hz` |
+
+Other matrices/vectors require at least eight rows. These are computational input
+floors, not evidence of sufficient diagnostic accuracy. The generated catalogue
+contains exact types, enum values, sizes and optional registered model slots.
+
+The server rejects legacy/unversioned payloads, unknown fields, threshold
+overrides, non-finite/coerced values, ragged arrays, misaligned channels/units,
+invalid timestamp/cycle order, overlapping Wind reference/prediction periods,
+invalid frequencies and inconsistent specimen IDs. Validation runs before
+integrated analysis and again at the diagnostic HTTP/tool boundary. Uploaded
+workbench JSON must meet the same contract. Authorization and ControlPlane's
+2,000-ms gate are unchanged; validation does not prove data authenticity.
+
+Public model selection additionally requires a loaded, checksummed artifact with
+matching `metadata.input_profile` (contract version, task, ordered channels,
+units, sampling rate). Public Transformer requests no longer silently select a
+default classifier. Missing/incompatible models abstain. Bearing currently
+exposes its physics workflow, not the separate experimental CNN benchmark.
+
 Last consolidated: 1 October 2026
 
 ## Project purpose

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import DiagnosticForm, { Catalogue, Diagnostic } from "./DiagnosticForm";
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -26,13 +27,6 @@ type Analysis = {
   capsule?: { id?: string; state: string; capsule_root_hash?: string; signature_status?: string; verify_url?: string; download_url?: string; error?: string };
 };
 
-const pumpSignal = [
-  0.11, 0.12, 0.1, 0.14, 0.13, 0.16, 0.18, 0.21,
-  0.19, 0.24, 0.3, 0.36, 0.42, 0.49, 0.61, 0.73,
-  0.68, 0.79, 0.86, 0.91, 0.82, 0.74, 0.66, 0.58,
-  0.5, 0.43, 0.38, 0.31, 0.26, 0.22, 0.18, 0.15,
-];
-
 function cookie(name: string) {
   if (typeof document === "undefined") return "";
   return document.cookie.split("; ").find((item) => item.startsWith(`${name}=`))?.split("=").slice(1).join("=") ?? "";
@@ -49,13 +43,18 @@ export default function IntegrationsPage() {
   const [health, setHealth] = useState<Health | null>(null);
   const [query, setQuery] = useState("Assess Pump-102 using sensor history and authorized manuals/SOPs. Recommend the next maintenance action with citations.");
   const [useDiagnostics, setUseDiagnostics] = useState(true);
-  const [domain, setDomain] = useState("bearing");
-  const [inputs, setInputs] = useState(JSON.stringify({ signal: pumpSignal, sampling_rate_hz: 8000 }, null, 2));
+  const [useGraph, setUseGraph] = useState(true);
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    apiFetch("/api/integrations/diagnostic-contracts").then(async (response) => {
+      if (!response.ok) throw new Error("Sign in and restart the backend to load diagnostic input contracts.");
+      return response.json();
+    }).then(setCatalogue).catch((caught) => setError(caught instanceof Error ? caught.message : "Contract loading failed"));
     apiFetch("/api/integrations/health").then(async (response) => {
       if (!response.ok) throw new Error("Sign in from the workbench to inspect integration services.");
       return response.json();
@@ -65,20 +64,27 @@ export default function IntegrationsPage() {
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(""); setAnalysis(null);
     try {
-      const diagnosticInputs = useDiagnostics ? JSON.parse(inputs) : undefined;
+      if (useDiagnostics) {
+        if (!diagnostic) throw new Error("Complete the required diagnostic fields first.");
+        const validation = await apiFetch("/api/integrations/validate-diagnostic", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(diagnostic),
+        });
+        const checked = await validation.json();
+        if (!validation.ok) throw new Error(typeof checked.detail === "string" ? checked.detail : JSON.stringify(checked.detail));
+      }
       const response = await apiFetch("/api/integrations/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query,
-          include_graph_evidence: true,
-          diagnostic: useDiagnostics ? { domain, inputs: diagnosticInputs } : null,
+          include_graph_evidence: useGraph,
+          diagnostic: useDiagnostics ? diagnostic : null,
           policy_profile: "internal_assistant",
           consequential: true,
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail?.code ?? payload.detail ?? `Analysis failed (${response.status})`);
+      if (!response.ok) throw new Error(payload.detail?.code ?? (typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail)) ?? `Analysis failed (${response.status})`);
       setAnalysis(payload);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Integrated analysis failed");
@@ -95,8 +101,9 @@ export default function IntegrationsPage() {
       <form className="integrationForm" onSubmit={submit}>
         <label>ANALYSIS REQUEST<textarea value={query} onChange={(event) => setQuery(event.target.value)} required minLength={3}/></label>
         <label className="integrationToggle"><input type="checkbox" checked={useDiagnostics} onChange={(event) => setUseDiagnostics(event.target.checked)}/> Include time-series diagnosis</label>
-        {useDiagnostics && <div className="diagnosticInputs"><label>DOMAIN<select value={domain} onChange={(event) => setDomain(event.target.value)}><option>bearing</option><option>process</option><option>wind_scada</option><option>battery</option><option>turbofan</option><option>transformer</option></select></label><label>DIAGNOSTIC INPUTS (JSON)<textarea value={inputs} onChange={(event) => setInputs(event.target.value)} spellCheck={false}/></label></div>}
-        <button disabled={busy || !query.trim()}>{busy ? "Running controlled workflow..." : "Run integrated analysis"}</button>
+        <label className="integrationToggle"><input type="checkbox" checked={useGraph} onChange={(event) => setUseGraph(event.target.checked)}/> Include authorized document evidence</label>
+        {useDiagnostics && (catalogue ? <DiagnosticForm catalogue={catalogue} onChange={setDiagnostic}/> : <p>Diagnostic contracts unavailable. Sign in and check backend connectivity.</p>)}
+        <button disabled={busy || !query.trim() || (!useDiagnostics && !useGraph) || (useDiagnostics && !diagnostic)}>{busy ? "Running controlled workflow..." : "Validate data and run analysis"}</button>
         {error && <p className="error">{error}</p>}
       </form>
       <section className="integrationResult">

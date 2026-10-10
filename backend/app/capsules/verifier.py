@@ -14,6 +14,7 @@ from app.capsules.models import (
     SignatureStatus,
 )
 from app.capsules.signing import WorkcellTrustStore
+from app.capsules.paths import capsule_storage_path
 from app.identity import ContentIdentityService
 
 
@@ -30,7 +31,7 @@ class EvidenceCapsuleVerifier:
         return CapsuleVerificationFailure(type=type_, message=message, path=path)
 
     def verify(self, root: Path) -> CapsuleVerificationResult:
-        root = root.resolve()
+        root = capsule_storage_path(root)
         failures: list[CapsuleVerificationFailure] = []
         manifest_path = root / "capsule_manifest.json"
         try:

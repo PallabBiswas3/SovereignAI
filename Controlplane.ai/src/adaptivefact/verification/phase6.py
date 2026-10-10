@@ -126,7 +126,7 @@ class Phase6Pipeline:
             prior_method = claim.verifier_used
             local_scores = scores[item.pair_start:item.pair_end]
             status, confidence, best_evidence, method, verification_scores = self._decide(
-                local_scores, item.evidence_texts, item.evidence_scores, claim.subject,
+                local_scores, item.evidence_texts, item.evidence_scores, claim.subject, claim.verification_text,
             )
 
             # Preserve a deterministic exact support only when semantic checking is
@@ -177,6 +177,14 @@ class Phase6Pipeline:
             cited = bool(cited_ids.intersection(
                 str(item.get(key) or "") for key in ("evidence_id", "chunk_id", "document_id")
             ))
+            # Superseded limits are not competing current authority. Retain a
+            # deliberate citation (including misuse for the authority guard to
+            # reject) and explicitly historical claims, but never let uncited
+            # obsolete ranges manufacture a conflict with a current fact.
+            metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            historical = bool(re.search(r"\b(?:historical|superseded|archived|formerly|previous|obsolete)\b", query, re.IGNORECASE))
+            if str(metadata.get("document_status", "")).casefold() == "superseded" and not cited and not historical:
+                continue
             # The supplied score ranks the original user query, not this atomic
             # claim. It may break ties but cannot make an unrelated chunk relevant.
             min_shared_terms = 1 if len(query_tokens) <= 2 else 2
@@ -200,12 +208,13 @@ class Phase6Pipeline:
             return list(claim.evidence)
         return []
 
-    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None):
+    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None, claim_text: str = ""):
         # NLI over a long chunk can combine an entity in one sentence with a
         # generic opposing rule in another. A contradiction needs a sentence
         # that actually names the claim subject; support remains NLI-scored.
         contradiction_scores = [
-            score if self._subject_local_to_sentence(subject, text) else 0.0
+            score if (self._subject_local_to_sentence(subject, text)
+                      and self._compatible_numeric_relation(claim_text, text)) else 0.0
             for score, text in zip(evidence_scores, evidence_texts)
         ]
         status, confidence, evidence_index, method = decide_nli_evidence(scores, contradiction_scores, self.nli_config)
@@ -215,6 +224,38 @@ class Phase6Pipeline:
             selected = scores[evidence_index]
             verification_scores = {"entailment": float(selected.entailment), "contradiction": float(selected.contradiction), "neutral": float(selected.neutral)}
         return status, confidence, best_evidence, method, verification_scores
+
+    @staticmethod
+    def _compatible_numeric_relation(claim: str, evidence: str) -> bool:
+        """A recorded value and an operating band are not contradictory facts.
+
+        This guard only distinguishes explicit numeric scalar/range relations
+        for the same metric. It does not decide whether a reading is safe or
+        within limits. Comparisons, ambiguous prose and mixed source relations
+        retain the ordinary NLI contradiction path.
+        """
+        metrics = r"discharge\s+pressure|pressure|vibration|temperature|speed|load"
+        units = r"bar|mm/s(?:\s+RMS)?|rpm|percent|%|°?C"
+        metric = re.search(rf"\b({metrics})\b", claim, re.IGNORECASE)
+        if metric is None or re.search(r"\b(?:within|outside|above|below|exceed|exceeds|threshold|limit)\b", claim, re.IGNORECASE):
+            return True
+        value = rf"\d+(?:\.\d+)?\s*(?:{units})(?=\W|$)"
+        band = rf"\d+(?:\.\d+)?\s*(?:to|[-–])\s*{value}"
+        def kind(text: str) -> str | None:
+            if re.search(band, text, re.IGNORECASE):
+                return "range"
+            if re.search(value, text, re.IGNORECASE):
+                return "scalar"
+            return None
+        relation = kind(_EVIDENCE_CITATION.sub("", claim))
+        if relation is None:
+            return True
+        topic = metric.group(1)
+        source_relations = {
+            kind(sentence) for sentence in split_sentences(evidence)
+            if re.search(rf"\b{re.escape(topic)}\b", sentence, re.IGNORECASE)
+        } - {None}
+        return not source_relations or relation in source_relations
 
     @classmethod
     def _subject_local_to_sentence(cls, subject: str | None, evidence: str) -> bool:

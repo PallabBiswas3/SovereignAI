@@ -21,6 +21,7 @@ from app.capsules.models import (
     CapsuleWorkcellIdentity,
 )
 from app.capsules.signing import CapsuleSigner
+from app.capsules.paths import capsule_storage_path
 from app.core.database import ArtifactRecord, AuditEventRecord, EvidenceCapsuleRecord, HumanApprovalRecord
 from app.identity import ContentIdentityService
 from app.workcells.models import WorkcellDefinition
@@ -32,7 +33,7 @@ class EvidenceCapsuleBuilder:
 
     def __init__(self, session: Session, root: Path, artifact_root: Path) -> None:
         self.session = session
-        self.root = root.resolve()
+        self.root = capsule_storage_path(root)
         self.artifact_root = artifact_root.resolve()
         self.identity = ContentIdentityService()
         self.root.mkdir(parents=True, exist_ok=True)

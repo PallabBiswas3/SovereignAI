@@ -162,3 +162,14 @@ The full request reached all four services and retrieved six Graph-RAG chunks;
 ControlPlane held the answer, diagnostics abstained, and Graph-RAG had no
 structured claim verification. See the local-only `local_testing/reports/PUMP102_SUPABASE_SEED_2026-10-04.md`
 for the counts, hashes, recovery plan and limits.
+
+## Diagnostic input contracts — 10 October 2026
+
+Seven versioned task forms now share server-side Pydantic input contracts.
+Malformed/legacy data is rejected before analysis, and registered models must
+match task, ordered channels, units and sampling rate. Backend + diagnostic
+verification: **606 passed, 1 skipped**; eight frontend schema-render/decoder
+checks passed; TypeScript and production build passed. The active synthetic
+Pump-102 probe was migrated. Tests/raw reports remain ignored under
+`local_testing/`; details: `experiments/results/diagnostic_input_contract_20261010.md`
+inside that directory. No training or fresh all-service/browser run was performed.

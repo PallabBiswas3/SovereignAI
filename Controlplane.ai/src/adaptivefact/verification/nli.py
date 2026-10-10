@@ -73,29 +73,45 @@ class TransformersNLIScorer(NLIScorer):
         if not premises:
             return []
 
-        outputs: list[NLIScores] = []
-        for start in range(0, len(premises), self.batch_size):
-            p_batch = premises[start : start + self.batch_size]
-            h_batch = hypotheses[start : start + self.batch_size]
-            tokens = self.tokenizer(
-                p_batch,
-                h_batch,
-                padding=True,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
+        # Share only byte-identical pair computations within this call. Source
+        # identity/authority and each original evidence position remain separate
+        # in Phase6; no scores or source text are cached across requests.
+        unique = list(dict.fromkeys(zip(premises, hypotheses)))
+        positions = {pair: index for index, pair in enumerate(unique)}
+        encoded = self.tokenizer(
+            [pair[0] for pair in unique], [pair[1] for pair in unique],
+            padding=False, truncation=True, max_length=self.max_length,
+        )
+        order = sorted(range(len(unique)), key=lambda index: len(encoded["input_ids"][index]))
+        outputs: dict[int, NLIScores] = {}
+        start = 0
+        while start < len(order):
+            end = start + 1
+            shortest = len(encoded['input_ids'][order[start]])
+            # A small response can still mix short tool statements and long
+            # manuals. Split before padding would double the shortest pair;
+            # this changes batch shape only, never tokens or evidence coverage.
+            while (end < len(order) and end - start < self.batch_size
+                   and len(encoded['input_ids'][order[end]]) <= 2 * shortest):
+                end += 1
+            indices = order[start:end]
+            start = end
+            tokens = self.tokenizer.pad(
+                {key: [value[index] for index in indices] for key, value in encoded.items()},
+                padding=True, return_tensors="pt",
             )
             tokens = {k: v.to(self.device) for k, v in tokens.items()}
             with self.torch.inference_mode():
                 logits = self.model(**tokens).logits
                 probs = self.torch.softmax(logits, dim=-1).cpu().numpy()
 
-            for row in probs:
+            for index, row in zip(indices, probs):
                 values = {"entailment": 0.0, "contradiction": 0.0, "neutral": 0.0}
                 for idx, prob in enumerate(row):
                     label = self.label_map.get(idx)
                     if label is not None:
                         values[label] = float(prob)
-                outputs.append(NLIScores(**values))
+                outputs[index] = NLIScores(**values)
 
-        return outputs
+        # Return independent score objects in the caller's original order.
+        return [NLIScores(**vars(outputs[positions[pair]])) for pair in zip(premises, hypotheses)]

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import math
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Protocol
@@ -20,6 +22,8 @@ from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
 from controlplane.detectors.privacy import mask_privacy_values
 from controlplane.compound_support import apply_compound_support
+from controlplane.range_facts import apply_cited_range_facts
+from controlplane.reported_events import apply_cited_review_events
 from controlplane.evidence_authority import apply_evidence_authority_checks
 from controlplane.evidence_quality import EvidenceAssessment, EvidenceQualityConfig, EvidenceQualityGate
 from controlplane.factuality import PreparedFactuality, build_response_record
@@ -43,6 +47,17 @@ class LazyTransformersNLIScorer(NLIScorer):
             raise ValueError("CONTROLPLANE_NLI_BATCH_SIZE must be between 1 and 64")
         self.batch_size = batch_size
         self._delegate: TransformersNLIScorer | None = None
+        self._request_scores: ContextVar[dict | None] = ContextVar("nli_request_scores", default=None)
+
+    @contextmanager
+    def request_scope(self):
+        """Reuse identical NLI computations only within this verification call."""
+        state = {"scores": {}, "requested_pairs": 0, "inferred_pairs": 0, "calls": 0}
+        token = self._request_scores.set(state)
+        try:
+            yield state
+        finally:
+            self._request_scores.reset(token)
 
     def preload(self) -> None:
         # Exercise one forward pass before the API advertises readiness. Model
@@ -50,12 +65,28 @@ class LazyTransformersNLIScorer(NLIScorer):
         self.score(["The pump is operating."], ["The pump is operating."])
 
     def score(self, premises: list[str], hypotheses: list[str]):
+        if len(premises) != len(hypotheses):
+            raise ValueError("premises and hypotheses must have the same length")
         if self._delegate is None:
             self._delegate = TransformersNLIScorer(
                 self.model_name, device=self.device, local_files_only=self.local_files_only,
                 batch_size=self.batch_size,
             )
-        return self._delegate.score(premises, hypotheses)
+        state = self._request_scores.get()
+        if state is None:
+            return self._delegate.score(premises, hypotheses)
+        pairs = list(zip(premises, hypotheses))
+        cache = state["scores"]
+        missing = [pair for pair in dict.fromkeys(pairs) if pair not in cache]
+        state["requested_pairs"] += len(pairs)
+        if missing:
+            scores = self._delegate.score([p for p, _ in missing], [h for _, h in missing])
+            if len(scores) != len(missing):
+                raise RuntimeError("NLI returned an incomplete score batch")
+            cache.update(zip(missing, scores))
+            state["inferred_pairs"] += len(missing)
+            state["calls"] += 1
+        return [type(cache[pair])(**vars(cache[pair])) for pair in pairs]
 
 
 @dataclass
@@ -108,6 +139,21 @@ class AdaptiveFactVerificationService:
         prepared: PreparedFactuality | None = None,
         *,
         evidence_authority_enabled: bool = True,
+    ) -> DetectorResult:
+        scorer = self.phase6.nli if self.phase6 is not None else None
+        if isinstance(scorer, LazyTransformersNLIScorer):
+            with scorer.request_scope() as computation:
+                result = self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
+                result.metadata["nli_computation"] = {
+                    key: computation[key] for key in ("requested_pairs", "inferred_pairs", "calls")
+                }
+                result.metadata["nli_computation"]["reused_pairs"] = computation["requested_pairs"] - computation["inferred_pairs"]
+                return result
+        return self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
+
+    def _verify(
+        self, interaction: Interaction, depth: VerificationDepth,
+        prepared: PreparedFactuality | None = None, *, evidence_authority_enabled: bool = True,
     ) -> DetectorResult:
         started = perf_counter()
         if prepared is None or self._phase5_customized:
@@ -164,7 +210,11 @@ class AdaptiveFactVerificationService:
         # A narrow two-source numeric comparison can be checked exactly after
         # NLI has had a chance to find a contradiction. Unknown comparisons
         # remain unknown unless both authorized citations establish the fact.
+        compound_started = perf_counter()
         compound_supported = apply_compound_support(interaction, record.atomic_claims)
+        range_facts_supported = apply_cited_range_facts(interaction, record.atomic_claims)
+        review_events_supported = apply_cited_review_events(interaction, record.atomic_claims)
+        compound_ms = (perf_counter() - compound_started) * 1000.0
 
         # Reuse the entailment already computed by phase 6 for auditability.
         # This is a signal, not a calibrated support probability or release
@@ -182,10 +232,14 @@ class AdaptiveFactVerificationService:
         )
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
         support_runtime["deterministic_compound_supported"] = compound_supported
+        support_runtime["exact_cited_range_facts"] = range_facts_supported
+        support_runtime["exact_cited_review_events"] = review_events_supported
+        authority_started = perf_counter()
         authority_runtime = (
             apply_evidence_authority_checks(interaction, record.atomic_claims)
             if evidence_authority_enabled else {"disabled_for_ablation": True}
         )
+        authority_ms = (perf_counter() - authority_started) * 1000.0
 
         aggregation = aggregate_claims(record.atomic_claims, important_unknown_threshold=self.config.important_unknown_threshold)
         findings = self._normalize_findings(record, aggregation.label, interaction=interaction, depth=depth, assessments=assessments)
@@ -200,6 +254,13 @@ class AdaptiveFactVerificationService:
                 "claims_checked": len(record.atomic_claims),
                 "phase5": phase5_runtime,
                 "phase5_reused": phase5_reused,
+                "stage_latency_ms": {
+                    "nli": phase6_runtime.get("nli_batch_latency_ms", 0.0),
+                    "agent": agent_runtime["latency_ms"],
+                    "compound": compound_ms,
+                    "support": support_runtime["latency_ms"],
+                    "authority": authority_ms,
+                },
                 "phase6": phase6_runtime,
                 "agent": agent_runtime,
                 "support": support_runtime,
