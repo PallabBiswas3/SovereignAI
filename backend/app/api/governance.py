@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.logger import AuditLogger
 from app.core.config import get_settings
-from app.core.database import AuditEventRecord, HumanApprovalRecord, MaintenanceDraftRecord, get_db
+from app.core.database import AgentRunRecord, AuditEventRecord, HumanApprovalRecord, MaintenanceDraftRecord, TaskAccessRecord, get_db
 from app.governance.action_guard import ActionGuard
 from app.governance.injection import PromptInjectionScanner
 from app.governance.pii import PIIDetector
@@ -20,11 +20,34 @@ from app.tools.registry import create_default_registry
 from app.identity import ContentIdentityService
 from app.identity.authorization import AuthorizationService
 from app.identity.dependencies import require_permission
-from app.identity.models import Permission, Principal
+from app.identity.models import ClearanceLevel, Permission, Principal, ResourceScope
 from app.identity.provider import LocalIdentityProvider
 
 
 router = APIRouter(prefix="/api", tags=["governance"])
+
+
+def _require_resource_scope(principal: Principal, record, permission: Permission) -> None:
+    if get_settings().auth_mode.lower() != "local":
+        return
+    if not record or not record.organization_id or not record.workspace_id:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    scope = ResourceScope(
+        organization_id=record.organization_id, workspace_id=record.workspace_id,
+        owner_id=getattr(record, "owner_id", None) or getattr(record, "requester_id", None),
+        department_id=getattr(record, "department_id", None),
+        classification=ClearanceLevel.parse(getattr(record, "classification", "INTERNAL")),
+    )
+    if not AuthorizationService().authorize(principal, permission, scope).allowed:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+
+def _audit_parent(db: Session, run_id: str):
+    # Old events without a scoped parent are not proof of access to a workspace.
+    return (db.get(AgentRunRecord, run_id) or db.get(TaskAccessRecord, run_id)
+            or (db.get(HumanApprovalRecord, run_id.removeprefix("approval:"))
+                if run_id.startswith("approval:") else None)
+            or db.query(HumanApprovalRecord).filter_by(run_id=run_id).first())
 
 
 class GovernanceCheckRequest(BaseModel):
@@ -66,6 +89,8 @@ async def propose_tool(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     settings = get_settings()
+    if payload.run_id:
+        _require_resource_scope(principal, db.get(AgentRunRecord, payload.run_id), Permission.task_read)
     action = ActionGuard(settings.tools_config).evaluate(payload.tool)
     response: dict[str, object] = action.model_dump(mode="json")
     if action.decision.value == "REQUIRE_HUMAN_APPROVAL":
@@ -101,6 +126,7 @@ async def decide_approval(
     approval = db.get(HumanApprovalRecord, approval_id)
     if not approval:
         raise HTTPException(status_code=404, detail="Approval not found")
+    _require_resource_scope(principal, approval, Permission.approval_approve)
     if approval.status != "pending":
         raise HTTPException(status_code=409, detail="Approval already decided")
     separation = AuthorizationService().can_approve_action(principal, approval.requester_id)
@@ -195,6 +221,7 @@ async def get_approval(
     approval = db.get(HumanApprovalRecord, approval_id)
     if not approval:
         raise HTTPException(status_code=404, detail="Approval not found")
+    _require_resource_scope(principal, approval, Permission.task_read)
     if get_settings().auth_mode.lower() == "local" and not (
         approval.requester_id == principal.user_id
         or principal.has_permission(Permission.approval_approve)
@@ -215,5 +242,9 @@ async def get_audit(
     principal: Principal = Depends(require_permission(Permission.audit_read)),
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    events = db.query(AuditEventRecord).filter_by(run_id=run_id).order_by(AuditEventRecord.created_at).all()
+    query = db.query(AuditEventRecord).filter_by(run_id=run_id)
+    if get_settings().auth_mode.lower() == "local":
+        _require_resource_scope(principal, _audit_parent(db, run_id), Permission.audit_read)
+        query = query.filter(AuditEventRecord.organization_id == principal.organization_id)
+    events = query.order_by(AuditEventRecord.created_at).all()
     return {"run_id": run_id, "events": [{"id": event.id, "type": event.event_type, "summary": event.summary, "payload": json.loads(event.payload_json), "timestamp": event.created_at.isoformat()} for event in events]}
