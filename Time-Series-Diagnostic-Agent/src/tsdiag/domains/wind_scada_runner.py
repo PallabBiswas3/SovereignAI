@@ -13,6 +13,7 @@ from ..detectors.residual_changepoint import (
     residual_cusum,
 )
 from .wind_physics import WindPhysicsConfig, physics_consistency_check
+from .wind_quality import assess_wind_measurement_quality
 from ..tools.wind_scada import (
     WindNormalBehaviorState,
     detect_wind_operating_regimes,
@@ -320,6 +321,8 @@ class WindScadaDiagnosticPipeline:
         if healthy.shape[0] < 60:
             raise ValueError("need at least 60 healthy SCADA samples for normal-behavior modeling")
 
+        measurement_quality = assess_wind_measurement_quality(pred, healthy, names)
+
         healthy, pred_clean = self._fill_reference_statistics(healthy, pred)
         drivers, driver_roles = self._driver_selection(names, healthy)
 
@@ -430,6 +433,7 @@ class WindScadaDiagnosticPipeline:
             artifacts={
                 "quality_train": quality_train,
                 "quality_prediction": quality_prediction,
+                "measurement_quality": measurement_quality,
                 "driver_indices": drivers,
                 "driver_channel_names": [names[int(i)] for i in drivers],
                 "driver_roles": driver_role_details,

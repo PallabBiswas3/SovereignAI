@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 import numpy as np
@@ -145,7 +145,9 @@ class WindScadaDecisionPolicy:
             recommended_actions=(
                 ["Inspect localized channels, operating regime support, and physics findings."]
                 if mapped_decision == "diagnose"
-                else (["Do not issue a fault diagnosis until operation returns inside validated regime support."] if mapped_decision == "abstain" else [])
+                else (["Check sensor/reference quality and obtain trustworthy measurements before diagnosis."]
+                      if artifacts.get("measurement_quality", {}).get("review_required")
+                      else (["Do not issue a fault diagnosis until operation returns inside validated regime support."] if mapped_decision == "abstain" else []))
             ),
             tool_trace=trace,
             metadata={
@@ -181,7 +183,7 @@ class WindScadaDecisionPolicy:
 
 class WindScadaPlugin:
     name = "wind_scada"
-    workflow_version = "1.1"
+    workflow_version = "1.2"
 
     def validate(self, request: DiagnosticRequest) -> Mapping[str, Any]:
         values = normalize_wind_inputs(request.inputs)
@@ -256,6 +258,11 @@ class WindScadaPlugin:
                 minimum_drift_fraction=float(config.get("event_minimum_drift_fraction", 0.02)),
                 ood_abstain_fraction=float(config.get("event_ood_abstain_fraction", 0.10)),
             )
+            quality = artifacts.get("measurement_quality", {})
+            if quality.get("review_required"):
+                decision = replace(decision, decision="abstain", event_detected=False,
+                    confidence=0.0, first_decision_index=None,
+                    reason="SCADA measurement quality requires review: " + ", ".join(quality.get("reasons", [])))
             return {"wind_event_decision": decision}
 
         return Workflow(
