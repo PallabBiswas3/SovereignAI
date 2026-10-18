@@ -3,10 +3,12 @@ from __future__ import annotations
 import csv
 import json
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
 from app.tools.base import Tool, ToolResult, ToolRisk
+from app.capsules.paths import windows_extended_path
 
 
 ALLOWED_EXTENSIONS = {
@@ -17,11 +19,16 @@ ALLOWED_EXTENSIONS = {
 
 class SafeWorkspace:
     def __init__(self, root: Path) -> None:
-        self.root = root.resolve()
+        self.root = self._native(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _native(path: Path) -> Path:
+        resolved = path.resolve()
+        return Path(windows_extended_path(str(resolved))) if os.name == "nt" else resolved
+
     def resolve(self, relative_path: str, *, must_exist: bool = False) -> Path:
-        candidate = (self.root / relative_path).resolve()
+        candidate = self._native(self.root / relative_path)
         if candidate != self.root and self.root not in candidate.parents:
             raise ValueError("Path traversal outside the configured workspace is blocked")
         if must_exist and not candidate.exists():
