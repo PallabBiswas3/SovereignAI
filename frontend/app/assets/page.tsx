@@ -15,27 +15,45 @@ const label = (value:string) => value.replaceAll("_", " ").replace(/\b\w/g, (par
 function age(seconds?:number|null) { if (seconds == null) return "Unknown age"; if (seconds < 60) return `${Math.round(seconds)} sec ago`; if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`; return `${(seconds / 3600).toFixed(1)} hr ago`; }
 
 export default function AssetsPage() {
-  const [assets,setAssets]=useState<Asset[]>([]); const [selected,setSelected]=useState("Pump-102");
+  const [assets,setAssets]=useState<Asset[]>([]); const [selected,setSelected]=useState("");
   const [asset,setAsset]=useState<Asset|null>(null); const [measurements,setMeasurements]=useState<Measurement[]>([]);
   const [trend,setTrend]=useState<Trend|null>(null); const [series,setSeries]=useState<Measurement[]>([]);
   const [timeline,setTimeline]=useState<TimelineItem[]>([]); const [maintenance,setMaintenance]=useState<Maintenance[]>([]);
   const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
 
-  useEffect(()=>{ fetch(`${api}/api/assets`,{credentials:"include"}).then(async response=>{if(!response.ok)throw new Error("Sign in from the workbench to view authorized assets.");return response.json();}).then(payload=>setAssets(payload.items??[])).catch(caught=>setError(caught instanceof Error?caught.message:"Assets unavailable")); },[]);
-  useEffect(()=>{ setError(""); Promise.all([
-    fetch(`${api}/api/assets/${encodeURIComponent(selected)}`,{credentials:"include"}),
-    fetch(`${api}/api/assets/${encodeURIComponent(selected)}/measurements/latest`,{credentials:"include"}),
-    fetch(`${api}/api/assets/${encodeURIComponent(selected)}/timeline`,{credentials:"include"}),
-    fetch(`${api}/api/assets/${encodeURIComponent(selected)}/maintenance`,{credentials:"include"}),
-    fetch(`${api}/api/assets/${encodeURIComponent(selected)}/measurements/history?metric=vibration`,{credentials:"include"}),
-  ]).then(async responses=>{if(!responses[0].ok)throw new Error(`Asset access failed (${responses[0].status}).`); const [passport,latest,time,work,history]=await Promise.all(responses.map(response=>response.ok?response.json():Promise.resolve({}))); setAsset(passport.asset??null);setMeasurements(latest.measurements??[]);setTimeline(time.items??[]);setMaintenance(work.history??[]);setTrend(history.trend??null);setSeries(history.series?.measurements??[]);}).catch(caught=>setError(caught instanceof Error?caught.message:"Asset view unavailable")); },[selected]);
+  useEffect(()=>{
+    const controller = new AbortController();
+    fetch(`${api}/api/assets`,{credentials:"include", signal:controller.signal})
+      .then(async response=>{if(!response.ok)throw new Error("Sign in from the workbench to view authorized assets.");return response.json();})
+      .then(payload=>{if(controller.signal.aborted)return;setAssets(payload.items??[]);setSelected(payload.items?.[0]?.asset_id??"");})
+      .catch(caught=>{if(!controller.signal.aborted)setError(caught instanceof Error?caught.message:"Assets unavailable");});
+    return ()=>controller.abort();
+  },[]);
+  useEffect(()=>{
+    if(!selected)return;
+    const controller=new AbortController();
+    setError("");setLoading(true);setAsset(null);setMeasurements([]);setTrend(null);setSeries([]);setTimeline([]);setMaintenance([]);
+    const base=`${api}/api/assets/${encodeURIComponent(selected)}`;
+    Promise.all(["", "/measurements/latest", "/timeline", "/maintenance", "/measurements/history?metric=vibration"].map(async suffix=>{
+      const response=await fetch(base+suffix,{credentials:"include",signal:controller.signal});
+      if(!response.ok)throw new Error(`Asset data unavailable (${response.status}). Select an authorized asset or sign in again.`);
+      return response.json();
+    })).then(([passport,latest,time,work,history])=>{
+      if(controller.signal.aborted)return;
+      setAsset(passport.asset??null);setMeasurements(latest.measurements??[]);setTimeline(time.items??[]);setMaintenance(work.history??[]);setTrend(history.trend??null);setSeries(history.series?.measurements??[]);
+    }).catch(caught=>{if(!controller.signal.aborted)setError(caught instanceof Error?caught.message:"Asset view unavailable");})
+      .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[selected]);
 
   const vibration=measurements.find(item=>item.metric==="vibration"); const maximum=Math.max(...series.map(item=>item.value),1);
   return <main className="assetPage">
     <header className="monitorHeader"><div><small>ASSET INTELLIGENCE · READ ONLY</small><h1>Plant asset context</h1></div><Link href="/">Back to workbench</Link></header>
     <div className="simulatedBanner"><b>SIMULATED PLANT DATA</b><span>Deterministic APEL demonstration — no live refinery connection and no plant-control commands.</span></div>
     <div className="assetToolbar"><label>AUTHORIZED ASSET<select value={selected} onChange={event=>setSelected(event.target.value)}>{assets.map(item=><option value={item.asset_id} key={item.asset_id}>{item.asset_id} · {item.canonical_name}</option>)}</select></label><span className="readonlyPill">READ ONLY</span></div>
-    {error&&<p className="error">{error}</p>}
+    {error&&<p className="error" role="alert">{error}</p>}
+    {loading&&<p role="status">Loading authorized asset data...</p>}
     {asset&&<><section className="assetHero"><div><small>{asset.asset_id}</small><h2>{asset.canonical_name}</h2><p>{label(asset.asset_type)} · {asset.plant_id} / {asset.area_id} / {asset.unit_id}</p></div><div className="assetStatus"><span>{label(asset.status)}</span><b>{asset.criticality} CRITICALITY</b></div></section>
     <div className="assetGrid">
       <section className="assetCard passportCard"><label>ASSET PASSPORT</label><div className="assetFacts"><span>Asset ID<b>{asset.asset_id}</b></span><span>Type<b>{label(asset.asset_type)}</b></span><span>Plant<b>{asset.plant_id}</b></span><span>Area<b>{asset.area_id}</b></span><span>Unit<b>{asset.unit_id}</b></span><span>Manufacturer / model<b>{asset.manufacturer??"—"} {asset.model??""}</b></span></div><p>Aliases: {asset.aliases.join(", ")||"None"}</p></section>

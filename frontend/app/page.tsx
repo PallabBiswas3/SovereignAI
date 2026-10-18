@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { openTaskStream } from "./task-stream";
 
 type TaskResult = {
   id: string;
@@ -167,6 +168,21 @@ export default function Home() {
   const [capsule, setCapsule] = useState<Capsule | null>(null);
   const [capsuleBusy, setCapsuleBusy] = useState(false);
   const conversationEnd = useRef<HTMLDivElement>(null);
+  const closeStream = useRef<(() => void) | null>(null);
+  const sessionRequests = useRef(new AbortController());
+
+  useEffect(() => {
+    sessionRequests.current = new AbortController();
+    return () => { closeStream.current?.(); sessionRequests.current.abort(); };
+  }, []);
+
+  function clearSession() {
+    closeStream.current?.(); closeStream.current = null;
+    sessionRequests.current.abort(); sessionRequests.current = new AbortController();
+    setPrincipal(null); setChatEntries([]); setResult(null); setCapsule(null);
+    setAttachments([]); setLiveEvents([]); setModels([]); setResources(null); setWorkcells([]);
+    setLoading(false); setActiveTaskId(""); setMessage(""); setError("");
+  }
 
   useEffect(() => {
     apiFetch("/api/auth/me").then(async (response) => {
@@ -199,6 +215,7 @@ export default function Home() {
     const submittedMessage = message.trim();
     const submittedAttachments = attachments.map((item) => item.name);
     const assistantEntryId = `assistant-${Date.now()}`;
+    const signal = sessionRequests.current.signal;
     setChatEntries((current) => [...current,
       { id: `user-${Date.now()}`, role: "user", content: submittedMessage, attachments: submittedAttachments },
       { id: assistantEntryId, role: "assistant", content: "", waiting: true },
@@ -209,7 +226,7 @@ export default function Home() {
     try {
       setResult(null); setLiveEvents([]); setCapsule(null);
       const response = await apiFetch("/api/tasks/start", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", signal, headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request: submittedMessage,
           model_override: modelOverride || null,
@@ -222,46 +239,39 @@ export default function Home() {
       });
       if (!response.ok) throw new Error(`Backend returned ${response.status}: ${await response.text()}`);
       const started = await response.json();
+      if (signal.aborted) return;
       setActiveTaskId(started.task_id);
-      const stream = new EventSource(`${api}/api/tasks/${started.task_id}/events`, { withCredentials: true });
-      let finished = false;
       const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
-      const receive = (event: MessageEvent) => {
-        const item = JSON.parse(event.data) as LiveEvent;
+      const receive = (item: LiveEvent) => {
         setLiveEvents((current) => [...current, item]);
-        if (item.type === "model_token") {
-          const token = String(item.payload.text ?? "");
-          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: entry.content + token, waiting: true }
-            : entry));
+        if (item.type === "access_revoked") {
+          clearSession(); setLoginError("Your session expired or access changed. Sign in again.");
         } else if (item.type === "task_completed") {
           const completed = item.payload.result as TaskResult;
-          finished = true;
           setResult(completed);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
             ? { ...entry, content: completed.final_response ?? "Task completed without a text response.", waiting: false, warnings: completed.warnings }
             : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
+          setLoading(false); setActiveTaskId("");
         } else if (item.type === "task_failed" || item.type === "task_cancelled") {
           const failure = String(item.payload.error ?? "Task failed");
-          finished = true;
           setError(failure);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
             ? { ...entry, content: failure, waiting: false, warnings: ["The task stopped safely."] }
             : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
+          setLoading(false); setActiveTaskId("");
         }
       };
-      eventTypes.forEach((type) => stream.addEventListener(type, receive as EventListener));
-      stream.onerror = () => {
-        if (!finished && stream.readyState === EventSource.CLOSED) {
+      closeStream.current?.();
+      closeStream.current = openTaskStream(`${api}/api/tasks/${started.task_id}/events`, eventTypes, receive, (failure) => {
           setLoading(false);
+          setError(failure);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: "The live task connection closed before a final response arrived.", waiting: false }
+            ? { ...entry, content: failure, waiting: false }
             : entry));
-        }
-      };
+      });
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return;
       const failure = caught instanceof Error ? caught.message : "Request failed";
       setError(failure);
       setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
@@ -274,18 +284,24 @@ export default function Home() {
 
   async function cancelActiveTask() {
     if (!activeTaskId) return;
-    await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE" });
+    try {
+      const response = await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`Cancellation failed (${response.status}).`);
+      closeStream.current?.(); setLoading(false); setActiveTaskId("");
+      setChatEntries(current => current.map(entry => entry.waiting
+        ? { ...entry, content: "Cancellation requested.", waiting: false } : entry));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Cancellation failed"); }
   }
 
   async function upload(file: File) {
     setError("");
     const form = new FormData(); form.append("file", file);
     try {
-      const response = await apiFetch("/api/files/upload", { method: "POST", body: form });
+      const response = await apiFetch("/api/files/upload", { method: "POST", body: form, signal: sessionRequests.current.signal });
       if (!response.ok) throw new Error(`Upload returned ${response.status}`);
       const uploaded = await response.json();
       setAttachments((current) => [...current, { name: uploaded.name, path: uploaded.path }]);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Upload failed"); }
+    } catch (caught) { if (!(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Upload failed"); }
   }
 
   async function buildCapsule() {
@@ -327,8 +343,11 @@ export default function Home() {
   }
 
   async function logout() {
-    await apiFetch("/api/auth/logout", { method: "POST" });
-    setPrincipal(null); setChatEntries([]); setResult(null);
+    try {
+      const response = await apiFetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok && response.status !== 401) throw new Error(`Logout failed (${response.status}). Try again.`);
+      clearSession();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Logout failed. Try again."); }
   }
 
   if (!authChecked) return <main className="loginShell"><div className="loginCard"><div className="mark">S</div><p>Checking local session…</p></div></main>;
@@ -340,7 +359,7 @@ export default function Home() {
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
-      <button className="newTask" onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
+      <button className="newTask" disabled={loading} onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
       <nav><a className="active">Workbench</a><Link href="/integrations">Integrated analysis</Link><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
@@ -356,7 +375,7 @@ export default function Home() {
               : <><p>{entry.content}</p>{entry.warnings?.map((warning) => <em key={warning}>{warning}</em>)}</>}</div></article>)}
           <div ref={conversationEnd}/>
         </div> : <div className="empty"><div className="mark">S</div><h2>Confidential work stays here.</h2><p>Analyze industrial documents, search internal knowledge, execute controlled tools, and generate finished deliverables—all inside your infrastructure.</p></div>}
-        {error && !chatEntries.length && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </div>
       <form onSubmit={submit} className="composer">
         <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message SovereignAI…" />
