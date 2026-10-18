@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -188,6 +189,10 @@ class _ArtifactTool(Tool):
             "artifact": {"id": record.id, "name": record.name, "url": f"/api/artifacts/{record.id}"}
         }, generated_files=[record.path])
 
+    def output_path(self, filename: str) -> Path:
+        # Retain friendly download names without sharing writable file paths.
+        return self.artifacts.root / uuid4().hex / filename
+
 
 class GenerateDocxTool(_ArtifactTool):
     name = "generate_docx"
@@ -196,7 +201,7 @@ class GenerateDocxTool(_ArtifactTool):
 
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         filename = _filename(str(args.get("filename", "report.docx")), ".docx")
-        path = self.artifacts.root / filename
+        path = self.output_path(filename)
         DocxGenerator().generate_report(path, str(args["title"]), list(args["sections"]), list(args.get("sources", [])))
         return self.register(path, str(args.get("run_id")) if args.get("run_id") else None)
 
@@ -208,7 +213,7 @@ class GenerateXlsxTool(_ArtifactTool):
 
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         filename = _filename(str(args.get("filename", "analysis.xlsx")), ".xlsx")
-        path = self.artifacts.root / filename
+        path = self.output_path(filename)
         XlsxGenerator().generate(path, str(args["title"]), list(args["rows"]))
         return self.register(path, str(args.get("run_id")) if args.get("run_id") else None)
 
@@ -220,6 +225,6 @@ class GeneratePptxTool(_ArtifactTool):
 
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         filename = _filename(str(args.get("filename", "briefing.pptx")), ".pptx")
-        path = self.artifacts.root / filename
+        path = self.output_path(filename)
         PptxGenerator().generate(path, str(args["title"]), list(args["slides"]))
         return self.register(path, str(args.get("run_id")) if args.get("run_id") else None)
