@@ -26,6 +26,32 @@ python scripts\import_organization.py --pack organizations\example-industrial --
 
 It is deliberately honest about runtime dependencies: model answers require the configured local vLLM or Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
+## Final v1 verification (18 October 2026)
+
+**Ready for a controlled research release review, with documented non-blocking
+limitations. No merge, release or deployment has been performed.**
+The verification branch is `verification/v1-final`; the original security branch
+remains at `f15e2867c03d322a7049ec5cf05df233612fc2c9`. The separate diagnostic
+research branch is preserved and Wind SCADA remains frozen.
+
+Final checks: backend **436 passed, 1 skipped**; security **69 passed** (included
+in the backend total); ControlPlane **221 passed, 1 failed, 7 skipped**;
+diagnostics **237 passed, 2 failed**. The three remaining failures concern a
+historical ablation and research-branch version literals; their evidence and
+non-blocking classification are in [Past experiments](docs/PAST_EXPERIMENTS.md).
+GraphRAG builds/tests, frontend type checking, four stream tests and the
+production build pass.
+
+An authenticated synthetic Pump-102 run actually used GraphRAG, Process 3.0,
+Ollama and ControlPlane, released a cited assessment and generated an artifact
+and integrity-valid capsule. Client latency was **161.6 seconds**, including
+**144.5 seconds** of model generation; the release check took **1.781 seconds**
+under the unchanged 2-second policy. Negative authorization, review and real
+service-outage checks held or denied access. The browser displayed the actual
+held state for a separate default maintenance request. These observations do
+not establish plant accuracy or production accreditation. See the maintained
+report for exact commands, identifiers, remaining limits and test evidence.
+
 ## Architecture
 
 ```mermaid

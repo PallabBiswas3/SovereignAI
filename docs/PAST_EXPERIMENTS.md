@@ -1,6 +1,299 @@
 # Past experiments and results
 
-## V1 security and integration remediation — 18 October 2026
+## Final v1 release verification (18 October 2026)
+
+This section supersedes the initial remediation checkpoint below. Scope is the
+existing read-only research prototype; no new agents, frameworks, diagnostic
+research, policy relaxation, merge, release or deployment was introduced.
+Tested implementation: `c725ce8f94016351607d27e523a109edbcade6bb` on
+`verification/v1-final`. The subsequent commit updates maintained documentation
+only; obtain the final documentation SHA with `git rev-parse HEAD`.
+
+### Worktree reconciliation and changes
+
+| Worktree / branch | Verified state and disposition |
+|---|---|
+| `1_SIH`, `research/diagnostic-guards-review` | Clean at `56d742020028657f6c200f24af100ff4e6fa341c`, already pushed; the former eleven files are preserved in three commits, not pending changes |
+| `SovereignAI_v1_security`, `security/v1-remediation` | Original security branch retained at `f15e2867c03d322a7049ec5cf05df233612fc2c9` |
+| Same isolated worktree, `verification/v1-final` | Two independent corrections based on that security SHA, followed by this documentation update; no research merge |
+
+The research branch contains Process guard/sensitivity/calibration changes
+(`b2e3abd`), Wind quality guards (`2cd2b3d`), and research documentation
+(`56d7420`) from common base `480ee767933b91c55f01a3f9aa3ed71ce6380fac`.
+Its Process changes are not essential to the existing v1 demonstration:
+the live path below succeeds with committed Process 3.0. The research evaluation
+also reports healthy alert burden 57/80, so it must not be presented as an
+accepted accuracy improvement. Wind remains frozen at 1.1 and outside this demo.
+
+Smallest safe integration procedure: review this verification branch against
+the security SHA, then obtain explicit approval before any merge or release.
+Do not merge the research branch for v1. If Process research is later explicitly
+approved, select its Process commit and reconcile documentation separately;
+a blanket merge would also bring the frozen Wind changes. Nothing was reset,
+stashed, discarded or overwritten in the original worktree.
+
+| Increment | Files and reason | Verification |
+|---|---|---|
+| `291684a3064346a2a0f1d8dae35cd0e2d6da5638` | Three sanitized `local_testing/Controlplane.ai/tests/` files: adapt historical clock/NLI doubles to the existing profiling interface; preserve assertions | 16 affected tests passed |
+| `c725ce8f94016351607d27e523a109edbcade6bb` | `backend/app/tools/file_tools.py`: normalize Windows extended paths before confined I/O; `backend/app/sandbox/executor.py`: use ordinary Windows host syntax only for Docker volume arguments; `backend/tests/security/test_workspace_long_paths.py`: owner/foreign access and mount regression checks | 27 affected tests passed; live upload changed from HTTP 500 to 200; final security 69 passed |
+| Documentation | README and the three maintained documents: evidence, current boundaries and final handoff | Final diff reviewed; no runtime reports, database, uploads, credentials or build outputs included |
+
+The original four high findings remain fixed: approval/audit scope, private file
+consumers, GraphRAG service authentication and validated scopes, and legacy chat
+governance. No new critical finding was observed in this scoped verification.
+The extra Windows bug was an availability failure: a 267-character upload path
+failed at `Path.open('xb')`. Root and candidate now use the same resolved native
+form; the containment check still runs before file access. Foreign absolute
+paths, prefixed paths and traversal remain denied. The Docker check uses a
+subprocess stub; no live container execution is claimed.
+
+### Every original remaining failure
+
+Paths in the next table are relative to `local_testing/Controlplane.ai/tests/`.
+No assertion, release policy or expected outcome was relaxed to obtain a pass.
+
+| Exact test | Original error / cause | Impact and disposition |
+|---|---|---|
+| `test_latency_budget_boundary.py::test_internal_two_second_budget_boundary[1999-False]` | `StopIteration`: profiling exhausts the finite mocked clock | Test fixture only; fixed with a clock that retains its terminal value; passes |
+| `test_latency_budget_boundary.py::test_internal_two_second_budget_boundary[2000-False]` | Same exhausted clock | Fixture only; unchanged exact-boundary allow assertion passes |
+| `test_latency_budget_boundary.py::test_internal_two_second_budget_boundary[2001-True]` | Same exhausted clock | Fixture only; unchanged over-budget review assertion passes |
+| `test_local_nli_loading.py::test_lazy_nli_forwards_local_only_to_transformers_loader` | Fake NLI lacks `score_profiled` | Fixture only; adapter returns existing scores and empty profile; local-only forwarding assertions pass |
+| `test_nli_exact_batching.py::test_identical_pairs_are_inferred_once_but_results_keep_original_positions` | `__new__` fake scorer lacks profiling attributes (`profile_model`, model configuration) | Fixture only; initialize fake profiling/configuration fields; pass |
+| `test_nli_exact_batching.py::test_changed_evidence_is_never_reused_across_calls` | Same incomplete fake scorer | No change to cache isolation assertions; pass |
+| `test_nli_exact_batching.py::test_small_mixed_length_batch_avoids_padding_short_pairs_to_long_manuals` | Same incomplete fake scorer | No change to batching/parity assertions; pass |
+| `test_nli_exact_batching.py::test_request_memo_reuses_exact_pairs_and_does_not_cross_requests` | Same incomplete fake scorer | No change to request isolation assertions; pass |
+| `test_nli_exact_batching.py::test_request_memo_resets_on_exception_and_is_context_isolated` | Same incomplete fake scorer | No change to exception/context isolation assertions; pass |
+| `test_pump102_factuality_regressions.py::test_pre_authority_ablation_reuses_same_evidence_and_semantic_score`, line 252 | Expected `supported`, actual `undecidable` with `evidence_authority_enabled=False` | Non-blocking historical research ablation; still fails, expectation unchanged |
+
+The ablation no longer isolates its authority switch: Phase 6 filters uncited
+superseded evidence before NLI. Inspection showed `nli_pairs=0`,
+`no_evidence_claims=1`, and verifier `phase6_no_evidence:undecidable_v3`.
+The normal/default authority-enabled path reports **contradicted** with
+`evidence_authority:superseded_current`; current production factuality/revision
+regressions pass. The disabled experimental flag does not yield an unsafe
+release. Restoring obsolete evidence merely to make the experiment pass would
+weaken the current policy, so neither source nor expectation was changed.
+
+Two diagnostic failures also remain unchanged, relative to
+`local_testing/Time-Series-Diagnostic-Agent/tests/`:
+
+| Exact test | Error / root cause | V1 impact |
+|---|---|---|
+| `test_plugin_architecture.py::test_structured_wind_request_uses_plugin_policy`, line 87 | Workflow version expected `1.2`, actual frozen `1.1` | Non-blocking research version literal; Wind excluded and unchanged |
+| `test_public_pipeline.py::test_process_uses_decomposed_cross_domain_workflow`, line 53 | Workflow version expected `3.3`, actual committed `3.0` | Non-blocking research version literal; actual Process 3.0 all-service behavior verified below |
+
+These local historical tests target the separate research checkout. They do
+not justify importing its unaccepted code. They remain visible failures, not
+skips, xfails or modified expected outcomes. The full suite is not entirely green.
+
+### Final component and test status
+
+| Check | Actual final result |
+|---|---|
+| Backend, including security | **436 passed, 1 skipped**, 105.05 s |
+| Security separately | **69 passed**, 6.04 s; included in backend total |
+| ControlPlane | **221 passed, 1 failed, 7 skipped**, 7.29 s; remaining ablation above |
+| Diagnostics | **237 passed, 2 failed**, 66.76 s; version literals above |
+| GraphRAG | Server TypeScript build passed; 3 service-auth tests passed; all 8 existing retrieval/verification/adapter test files passed |
+| Frontend | Type check passed; 4 stream tests passed; webpack production build passed |
+| Local services | Backend 8000, frontend 3000, GraphRAG 3100, ControlPlane 8100, diagnostics 8200 and Ollama 11434 returned HTTP 200 during verification; authenticated integration health was `ok` |
+
+Copied missing ignored local benchmark/config fixtures into the isolated
+worktree before the final ControlPlane run; four transient missing-file setup
+failures are not included as product failures. The backend skip is unavailable
+Windows symlink creation; the seven ControlPlane skips require the undownloaded
+RAGTruth corpus. Those cases were not successfully exercised. Dependency
+deprecation warnings remain. Temporary verification services were stopped after
+testing; the pre-existing Ollama service was left alone.
+
+### Actual authenticated synthetic Pump-102 demonstration
+
+An isolated SQLite database used synthetic engineer, outsider, approver,
+foreign-organization engineer/approver and browser identities. The backend used
+`SOVEREIGN_AUTH_MODE=local`, CSRF checks and matching randomly generated
+server-side GraphRAG bearer credentials. Global GraphRAG operator access was
+disabled. A read-only preflight found the existing `sai-p102-v1` namespace and
+zero missing documents/nodes/chunks; this session did not seed, clear or rewrite
+the shared GraphRAG database. Existing storage uses remote Supabase, so this run
+is not an offline/air-gap demonstration.
+
+The released request explicitly asked for a structured cited assessment and
+forbade authorizing physical work. Its normalized synthetic pressure/flow/level
+signals declare independent generation and explicit linkage to observation log
+`LOG-P102-SEP-R1`; they are not physical measurement attestations.
+
+| Measurement | Actual result |
+|---|---|
+| Run | `ca493758-9241-49dc-a8dc-54529d2ef701`, HTTP 200, `released=true` |
+| Required services | GraphRAG, diagnostics, local model and ControlPlane all actually called; precheck/release both `allow` |
+| Retrieval | Authorized 5 nodes / 6 raw chunks; 1,975 ms; GraphRAG structured claim verification unavailable (zero claims), dense retrieval disabled in this configuration |
+| Diagnostics | Process 3.0, `diagnose`, DPCA/CVA confirmed pressure deviation; asset, specimen, dataset revision, units, sampling and synthetic log linkage retained in metadata |
+| Generation | Ollama `qwen3:4b-instruct`, CPU, fallback false; completed source-typed assessment, not truncated; 1,909 prompt tokens / 274 generated tokens |
+| Model timing | 144.511 s provider duration, including 8.021 s loading; 4.874 generated tokens/s |
+| ControlPlane | 5 supported atomic claims, 9 NLI pairs, no detector errors/findings, no latency-budget violation; release check **1,781 ms** |
+| Other timing | Precheck 78 ms, evidence stage 2,078 ms, orchestrator 148,531 ms; actual client request **161,590.62 ms** |
+| Artifact | `915b94e4-0ef7-44a1-bfc2-9e524022c174` |
+| Evidence Capsule | `da3e5eca-114e-440c-a077-38be4aabd47e`; downloaded capsule integrity **VALID**, unsigned development mode |
+
+The final answer cited the observed **5.1 bar** at
+`2026-09-01T08:00:00Z` and maintenance-review request to chunk
+`dae6f0f7-8ca9-57e3-b820-562bd7788367`; the **4.8-5.5 bar** normal range to
+`8ada71d0-5c35-5079-bcd9-12fffb8da37c`; and the pressure root-cause candidate
+to `process-diagnostic-evidence`. Every rendered citation resolved to supplied
+evidence. The four rendered statements yielded five checked atomic claims.
+This is source correspondence on synthetic evidence, not independent plant
+truth, calibrated diagnostic confidence or a new accuracy percentage.
+
+Actual downloaded outputs had matching registered SHA-256, run/answer/citations
+and a valid capsule manifest. The owner could list/download both actual IDs;
+outsiders listed neither and guessed downloads returned 404; anonymous downloads
+returned 401. The restricted synthetic finance canary was absent from the
+response and downloaded payloads, including nested ZIP payloads.
+
+### Live negative paths and frontend/backend behavior
+
+| Actual check | Result |
+|---|---|
+| No login / missing CSRF | Analysis 401 / 403 |
+| Anonymous GraphRAG integration retrieval | 401; anonymous global graph/evidence/ingest/clear returned 403 with operator access disabled |
+| Outsider without workcell permission | Analysis 403 |
+| Foreign organization with workcell permission | Retrieval abstained, zero chunks, held for human review, no artifact/capsule |
+| Uploaded file consumer | Owner upload 200 and foreign list empty; foreign engineer OCR 400 before parsing because private path cannot resolve |
+| Human approval boundary | Proposal 200; requester self-approval 403; foreign read/decision 404; authorized approver 200 and executed only a 35-byte synthetic private `review-note.txt` write |
+| Audit boundary | Foreign audit 404, authorized audit 200 |
+| Unsupported claim, no evidence | Injected candidate `Pump-102 discharge pressure is 999 bar.` held for human review, no outputs |
+| Unsafe physical-work candidate | Held for human review, no outputs |
+| Legacy prompt injection | 403 |
+| Actual required-service outage | Stopped this worktree's ControlPlane process; backend returned 503 `INTEGRATION_SERVICE_UNAVAILABLE`, `failed_services=[controlplane]`, three attempts, 6,957.32 ms, no new artifacts; ControlPlane then restarted |
+
+Unsafe/unsupported negative candidates used the existing `candidate_response`
+input to exercise the actual live release gate; these were not generated by the
+model. The foreign-evidence run and unsupported no-evidence run cover absence
+of authorized support without loosening retrieval or release policy.
+
+The real production frontend signed in through its login form and submitted
+versioned synthetic diagnostic arrays through `/integrations`. The browser's
+actual query remained the default maintenance-action request, unlike the
+structured request above. Run `badb30b9-d12e-4d1b-b7a1-2a6b424b046c` returned
+HTTP 200 with `held_human_review` and `released=false`. The DOM displayed
+**Not released**, `human_review`, and the fixed review notice; there were no
+artifact/capsule links, and the busy state reset. Retrieved authorized evidence,
+diagnostic state and actual Ollama identity were displayed. This was a real
+backend response, not a browser HTTP fixture. Earlier session/stream/error
+fixture checks below and four final stream regressions remain separate evidence.
+
+The existing dev launcher encountered Turbopack's external-directory restriction
+because dependencies are junctioned to the original checkout. The already
+supported webpack production build plus `npm run start` served the actual UI.
+Browser-tool file upload/screenshot saving was denied by that tool's configured
+roots; diagnostic arrays were entered through normal form controls. No runtime
+or security policy was changed for these tooling constraints.
+
+### Exact commands and retained evidence
+
+All commands below ran in `SovereignAI_v1_security` unless a cwd is shown.
+Existing dependencies, local model caches, historical ignored fixtures and an
+already seeded approved synthetic namespace are prerequisites. The `.workspace`
+helpers orchestrate existing scripts/APIs for this local verification and are
+ignored; they are not shipped product entry points or a fresh-clone test suite.
+They did not print authentication headers or secrets.
+
+```powershell
+python .workspace/final_graph_preflight.py
+python .workspace/final_runtime.py
+python .workspace/final_test_accounts.py
+python .workspace/final_live_probe.py health
+python .workspace/final_live_probe.py normal
+python .workspace/final_resume.py
+python .workspace/final_live_probe.py boundaries
+python .workspace/final_outage.py
+python .workspace/final_resume.py controlplane
+
+$env:PYTHONPATH='backend;Controlplane.ai/src;Time-Series-Diagnostic-Agent/src;local_testing;local_testing/tests;backend/tests/security;../1_SIH/.workspace/test_deps'
+$env:SOVEREIGN_GRAPHRAG_SERVICE_TOKEN='synthetic-test-credential-0000000000000000'
+$env:CONTROLPLANE_BASELINE_SOURCE='../.baseline_sovereign/Controlplane.ai'
+python -m pytest local_testing/tests backend/tests/security -o addopts='' -q --tb=short --junitxml=.workspace/final-backend.xml
+python -m pytest backend/tests/security -o addopts='' -q --tb=short --junitxml=.workspace/final-security.xml
+
+# cwd: Controlplane.ai
+$env:PYTHONPATH='src;../local_testing'
+$env:CONTROLPLANE_BASELINE_SOURCE='../../.baseline_sovereign/Controlplane.ai'
+python -m pytest ../local_testing/Controlplane.ai/tests -o addopts='' -q --tb=short --junitxml=../.workspace/final-controlplane.xml
+
+# cwd: Time-Series-Diagnostic-Agent; PYTHONPATH=src;../local_testing
+python -m pytest ../local_testing/Time-Series-Diagnostic-Agent/tests -o addopts='' -q --tb=short --junitxml=../.workspace/final-diagnostics.xml
+
+# cwd: Graph-RAG
+npm run build --workspace=server
+node --test server/security/serviceAuth.test.cjs
+
+# cwd: frontend
+npm run typecheck
+node --test tests/task-stream.test.cjs
+npm run build -- --webpack
+npm run start -- --hostname 127.0.0.1 --port 3000
+```
+
+The runtime helpers use `scripts/Run-Service.ps1 -Service` with
+`sovereign-api`, `graph-rag`, `controlplane`, `diagnostics` and initially
+`sovereign-ui`; the production frontend command above replaces its dev launcher.
+Backend and GraphRAG inherit matching `SOVEREIGN_GRAPHRAG_SERVICE_TOKEN` /
+`GRAPHRAG_SERVICE_TOKEN`, `SOVEREIGN_AUTH_MODE=local`, isolated storage paths,
+`SOVEREIGN_LLM_PROVIDER=ollama`, deterministic fallback disabled, and offline
+ControlPlane NLI loading. Actual random credentials were never command literals.
+
+The eight existing GraphRAG files were run from repository root as follows,
+separately from the live retrieval above:
+
+```powershell
+$env:TS_NODE_PROJECT='Graph-RAG/server/tsconfig.json'
+$env:TS_NODE_TRANSPILE_ONLY='true'
+$env:SUPABASE_URL='http://127.0.0.1:59999'
+$env:SUPABASE_SERVICE_ROLE_KEY='synthetic-test-service-role-key'
+$taskTests = @(
+  'local_testing/Graph-RAG/server/evaluation/agentPolicy.test.ts',
+  'local_testing/Graph-RAG/server/evaluation/localModel.test.ts',
+  'local_testing/Graph-RAG/server/evaluation/metrics.test.ts',
+  'local_testing/Graph-RAG/server/evaluation/retrievalCore.test.ts',
+  'local_testing/Graph-RAG/server/retrieval/revisionSelection.test.ts',
+  'local_testing/Graph-RAG/server/verification/claimVerifier.test.ts',
+  'local_testing/Graph-RAG/server/verification/verificationPolicy.test.ts',
+  'local_testing/Graph-RAG/server/verification/verificationScope.test.ts'
+)
+node --test --require ./Graph-RAG/server/node_modules/ts-node/register @taskTests
+```
+
+Raw JUnit files are the four `.workspace/final-*.xml` paths above. Live JSON
+evidence is retained locally under `.workspace/final_release_20261018/`:
+`health.json`, `normal-request.json`, `normal-response.json`,
+`normal-summary.json`, `boundaries.json`, `required-service-outage.json`, and
+`browser-summary.json`, plus service logs. The generic summary helper's phrase
+"not an authenticated-user validation" refers to lack of enterprise-user
+validation: this run **did use actual authentication with synthetic identities**.
+Runtime credential material was isolated from Git and removed after services
+were stopped. Generated build/runtime artifacts are excluded from commits.
+
+### Remaining limitations and release gate
+
+No observed critical security or essential integration defect remains in the
+tested authenticated, supervised synthetic v1 path. The three remaining failures
+are non-blocking for that scope for the reasons above. **Verdict: ready for a
+controlled research release review with documented limitations; not released.**
+User approval is still required before any merge or final release.
+
+This does not approve production deployment: disabled authentication remains
+single-user development only; trusted internal bearer transport is not mutual
+TLS; remote Supabase is not an air gap; legacy uploads/conversations need
+explicit migration; content hashes remain globally unique; private files use
+the primary workspace; unsigned capsule integrity is not provenance attestation.
+GraphRAG's structured claim verifier was unavailable and this configuration did
+not exercise dense retrieval. CPU generation is slow, a default maintenance
+request conservatively held, and diagnostic confidence is uncalibrated.
+No claim is made about live Docker, vision/OCR model accuracy, enterprise
+identity, physical equipment, calibrated system accuracy or full CI portability
+of ignored historical fixtures. These limits are disclosed, not new v1 work.
+
+## Initial v1 security and integration remediation — 18 October 2026
 
 ### Scope and preserved work
 
@@ -117,7 +410,7 @@ correctly. For a fresh live demonstration use README's authenticated service-tok
 configuration and NEXT_PLAN's ordered acceptance steps; no seeded or generated
 data should be assumed present on a clean checkout.
 
-**Final research-release readiness: BLOCKED.** The four verified high-severity
+**Initial checkpoint (superseded above): BLOCKED.** The four verified high-severity
 issues and scoped file-consumer gaps are remediated and focused regressions pass.
 The remaining blockers are existing broader-test failures/version alignment and
 an unavailable fresh all-service workflow. Default development authentication,

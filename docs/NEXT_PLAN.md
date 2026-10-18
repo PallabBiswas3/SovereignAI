@@ -1,41 +1,44 @@
 # Next implementation plan
 
-## V1 release handoff (18 October 2026; supersedes older acceptance lists)
+## Final v1 handoff (18 October 2026; supersedes older acceptance lists)
 
-Security, integration and small UI remediation is implemented on
-`security/v1-remediation` in `../SovereignAI_v1_security`. No merge, push, tag or
-final release was performed. Do not overwrite the separate dirty `1_SIH` tree.
+Final verification is complete on `verification/v1-final` in
+`../SovereignAI_v1_security`, based on unchanged security branch
+`security/v1-remediation` at `f15e2867c03d322a7049ec5cf05df233612fc2c9`.
+The original eleven files are separately committed on
+`research/diagnostic-guards-review` at
+`56d742020028657f6c200f24af100ff4e6fa341c`; that working tree is clean.
+No research code was merged, no branch was merged and no release was created.
 
-Remaining release gates:
+Completed acceptance work:
 
-1. Resolve the ten existing ControlPlane test failures documented in
-   PAST_EXPERIMENTS: profiling-aware test doubles, timing fixtures and the
-   historical-evidence ablation expectation. All reproduce on the original
-   checkout. Preserve the 2,000 ms policy and all authority/coverage checks.
-2. Reconcile the user's pending Time-Series edits separately. The isolated
-   branch intentionally retains committed process workflow 3.0 and Wind workflow
-   1.1; local tests currently expect 3.3 and 1.2 from excluded uncommitted edits.
-   Wind remains frozen and outside the flagship demonstration.
-3. Configure authenticated mode and the matching server-only GraphRAG token.
-   Run services from their own directories with the existing launch script;
-   ensure backend and GraphRAG terminals inherit their respective environment
-   variables. Use `http://localhost:3000` with API `http://localhost:8000`.
-4. In an explicitly enabled synthetic APEL environment, seed using
-   `scripts/seed_apel_demo.py`, sign in, and upload the versioned diagnostic JSON
-   through the authenticated user's session. If the existing local GraphRAG
-   seed utility is available, run its `--plan` and `--check` before its explicit
-   namespace-confirmed apply. Do not seed a non-demo graph implicitly.
-5. Execute the actual Pump-102 assessment through `/integrations` or Automatic
-   task routing. Record release/hold, model identity, component/total timings,
-   authorized evidence IDs, citations, artifact and capsule IDs. Download and
-   verify outputs under authorized and unauthorized sessions. Preserve any hold
-   or outage result; never substitute synthetic browser fixtures for this run.
-6. Rerun the release checks and obtain explicit user approval before merging a
-   draft PR or creating a final research release.
+1. Corrected nine historical profiling/clock test fixtures without changing
+   expected outcomes, source or the 2,000 ms release policy. The remaining
+   authority ablation is explicitly non-blocking research behavior; expectation
+   remains unchanged and its failure is disclosed.
+2. Verified that Process 3.0 supports the existing v1 path. Research Process 3.3
+   and Wind 1.2 version assertions remain two visible non-blocking failures;
+   importing research code is not a release requirement. Wind stays frozen.
+3. Ran the actual authenticated synthetic Pump-102 workflow with matching
+   GraphRAG service credentials, local Ollama generation and all required
+   services. Checked citations, scoped downloads, capsule integrity, approvals,
+   foreign/missing evidence, unsafe/unsupported candidates and a real outage.
+   The browser displayed a separate actual held backend response correctly.
+4. Fixed the live Windows long-path upload failure in an isolated increment.
+   Security 69 passed; backend 436 passed/1 skipped; ControlPlane 221 passed/
+   1 failed/7 skipped; diagnostics 237 passed/2 failed. GraphRAG and frontend
+   builds/checks passed. Evidence and exact limitations are in PAST_EXPERIMENTS.
 
-Do not expand architectures, add agents, retrain models, or loosen release policy
-to clear these gates. Existing historical research plans below are not part of
-this v1 remediation.
+**Final handoff: ready for controlled research release review with documented
+non-blocking limitations.** The whole suite is not entirely green. No observed
+critical security or essential integration defect remains in the tested scope.
+Review the final diff and report, then obtain explicit approval before merging
+or creating a final release. Do not automatically publish, deploy or merge the
+separate research branch. Stop v1 work at this report.
+
+Do not expand architectures, add agents, retrain models, or loosen release policy.
+Existing historical research plans below are not part of this v1 completion and
+do not authorize additional work.
 
 ## Diagnostic input contract and training handoff (10 October 2026)
 

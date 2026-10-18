@@ -2,9 +2,12 @@
 
 ## V1 security remediation (18 October 2026)
 
-Implemented on `security/v1-remediation` in the isolated
-`SovereignAI_v1_security` worktree. Original Time-Series and documentation edits
-remain in `1_SIH`, byte-for-byte unchanged; they are not in these commits.
+Implemented on `security/v1-remediation`, with final verification and the
+Windows long-path correction on `verification/v1-final`, in the isolated
+`SovereignAI_v1_security` worktree. The original eleven Time-Series/documentation
+changes are now committed separately on `research/diagnostic-guards-review` at
+`56d742020028657f6c200f24af100ff4e6fa341c`; its working tree is clean. No research
+changes were merged. Process 3.0 and frozen Wind 1.1 remain the v1 baseline.
 
 - Approval reads, decisions and audit access require an authorized scoped
   parent. Orphan/unscoped legacy resources are denied in authenticated mode.
@@ -46,10 +49,33 @@ Configuration and compatibility boundaries:
 - The ControlPlane 2,000 ms release deadline and existing claim/evidence policy
   remain unchanged. Passing software tests does not establish model accuracy.
 
-**Release verdict: blocked.** The backend/integration suite passes, but a fresh
-all-service Pump-102 run is unavailable. Broader ControlPlane tests retain ten
-failures reproduced on the original checkout. Two diagnostic version assertions
-expect the user's excluded uncommitted changes. See PAST_EXPERIMENTS for evidence.
+Final verification additionally supports Windows extended paths in private file
+I/O while preserving canonical confinement, relative API paths and ordinary
+Docker mount syntax. The actual long-path upload now succeeds; foreign file
+access remains denied. Docker mount behavior was checked with a subprocess
+stub; no live Docker execution is claimed.
+
+**Research-release verdict: ready for controlled review with documented
+non-blocking limitations.** An authenticated synthetic all-service Pump-102
+assessment was released with citations, an authorized artifact and a capsule
+whose stored-byte integrity verified. A separate live browser maintenance
+request was held and correctly displayed as not released. Cross-scope access,
+self approval, unsafe/unsupported candidates and an actual ControlPlane outage
+were denied or held without generating outputs.
+
+Backend: 436 passed/1 skipped; security: 69 passed (included); ControlPlane:
+221 passed/1 failed/7 skipped; diagnostics: 237 passed/2 failed. The remaining
+failures are an experimental authority ablation and two research version
+literals, not failures of the frozen v1 path. The suite is **not entirely green**.
+GraphRAG and frontend builds/checks pass. No merge/release/deployment occurred.
+
+The live configured GraphRAG path supplied authorized raw chunks; its structured
+claim verifier was unavailable and dense retrieval was disabled. ControlPlane
+performed the final claim verification. The local CPU model took 144.5 seconds;
+the client request took 161.6 seconds, so this is not a 3-second workflow. Process
+baseline confidence is not calibrated accuracy. The capsule was unsigned in
+development, and existing remote Supabase storage does not establish an air gap.
+See PAST_EXPERIMENTS for commands, identifiers, findings and exact limitations.
 
 ## Versioned diagnostic forms (10 October 2026)
 
