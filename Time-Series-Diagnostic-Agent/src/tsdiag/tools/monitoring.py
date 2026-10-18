@@ -451,6 +451,52 @@ def run_monitoring_method(
     return result
 
 
+def run_reference_calibrated_monitoring(signal, reference, config: MonitoringConfig) -> dict[str, Any]:
+    """Fit on an early reference segment; calibrate joint T2/SPE on its tail.
+
+    No current observations or fault labels select the limit. The finite-sample
+    upper order statistic accounts for testing either T2 or SPE. This is an
+    empirical pointwise calibration, not a run-level FAR guarantee: serial
+    dependence and reference/regime mismatch still require separate evaluation.
+    """
+    ref = _as_2d(reference)
+    alpha = float(config.alpha)
+    if not np.isfinite(alpha) or not 0 < alpha < 1:
+        raise ValueError('alpha must be strictly between zero and one')
+    split = int(len(ref) * .6)
+    minimum_tail = int(np.ceil(alpha / (1 - alpha)))
+    if split < max(40, 4 * config.lags + 5) or len(ref) - split - config.lags < minimum_tail:
+        raise ValueError('insufficient healthy reference for held-out tail calibration')
+    fit, heldout = ref[:split], ref[split:]
+    center = fit.mean(axis=0)
+    scale = fit.std(axis=0)
+    scale = np.where(scale < 1e-12, 1., scale)
+    # Refit preprocessing too: the held-out tail must not influence the model.
+    fit, heldout = (fit - center) / scale, (heldout - center) / scale
+    current = (_as_2d(signal) - center) / scale
+    calibration = run_monitoring_method(heldout, fit, config)
+    scores = np.asarray(calibration['combined_score'], dtype=float)
+    scores = scores[np.isfinite(scores)]
+    rank = int(np.ceil((len(scores) + 1) * alpha))
+    if not len(scores) or rank > len(scores):
+        raise ValueError('insufficient healthy reference scores for requested alpha')
+    cutoff = max(float(np.sort(scores)[rank - 1]), np.finfo(float).eps)
+    out = run_monitoring_method(current, fit, config)
+    out['control_limits'] = {key: float(value * cutoff) for key, value in out['control_limits'].items()}
+    out['combined_score'] = np.asarray(out['combined_score']) / cutoff
+    out['raw_alarm_mask'] = out['combined_score'] > 1.
+    out['alarm_mask'] = apply_alarm_persistence(out['raw_alarm_mask'], config.min_consecutive)
+    out['calibration'] = {
+        **out['calibration'], 'method': 'healthy_reference_joint_holdout_v1',
+        'fit_rows': len(fit), 'heldout_rows': len(heldout),
+        'finite_calibration_scores': len(scores), 'joint_cutoff': cutoff,
+        'order_statistic_rank': rank, 'current_used_for_calibration': False,
+        'preprocessing_fit_rows': split,
+        'scope': 'empirical_pointwise_not_run_level_or_probability_guarantee',
+    }
+    return out
+
+
 def calibrate_monitoring_config(
     standardized_reference,
     *,

@@ -112,11 +112,15 @@ class Process(StrictModel):
     sampling_rate_hz: Positive
     reference_id: Text
     reference_revision: Text
+    current_regime_id: Text | None = Field(default=None, description="Declared operating regime of the current acquisition. Supply together with reference_regime_id; equality is not proof of authenticity.")
+    reference_regime_id: Text | None = Field(default=None, description="Declared operating regime of the healthy reference. A mismatch requires a compatible reference, not confident diagnosis.")
 
     @model_validator(mode="after")
     def check(self):
         channel_check(self.signal_matrix, self.channel_names, self.channel_units)
         channel_check(self.normal_reference, self.channel_names, self.channel_units, "normal_reference")
+        if (self.current_regime_id is None) != (self.reference_regime_id is None):
+            raise ValueError("current_regime_id and reference_regime_id must be supplied together")
         return self
 
 

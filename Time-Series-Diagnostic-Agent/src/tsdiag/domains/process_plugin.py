@@ -16,6 +16,9 @@ from ..models import (
     UncertaintyEstimate,
 )
 from ..result_contract import standardize_result
+from .process_assessment import assess_process_reference, assess_root_identifiability
+from .process_sensitivity import sustained_process_alert
+from ..tools.monitoring import run_reference_calibrated_monitoring
 from ..tools import (
     MonitoringConfig,
     arbitrate_dpca_cva,
@@ -36,7 +39,7 @@ from ..tools import (
 
 
 def _inactive(state: Mapping[str, Any]) -> bool:
-    return state.get("fault_detected") is False
+    return state.get("fault_detected") is False or bool(state.get('supplemental_only', False))
 
 
 def _causal_input(x: np.ndarray, stationarity: Mapping[str, Any]) -> tuple[np.ndarray, list[int]]:
@@ -60,6 +63,29 @@ class ProcessDecisionPolicy:
         state = dict(execution)
         detected = bool(state.get("fault_detected", False))
         alarm_fraction = float(state.get("alarm_fraction", 0.0))
+        assessment = assess_root_identifiability(self.request.inputs) if detected else assess_process_reference(self.request.inputs)
+        if state.get('supplemental_only') and not assessment['reason']:
+            assessment = {**assessment, 'reason': 'process_deviation_requires_review',
+                          'sensitivity_alert': state.get('sensitivity_alert')}
+        if state.get('reference_calibration_unavailable') and not assessment['reason']:
+            assessment = {**assessment, 'reason': 'insufficient_healthy_reference_calibration'}
+        if assessment['reason']:
+            return standardize_result(DiagnosticResult(
+                domain="process", task="root_cause", decision="abstain",
+                detection=DetectionResult(detected, score=alarm_fraction, method=str(state.get("monitoring_method", "dpca_cva_hybrid")),
+                                          details={"alarm_fraction": alarm_fraction, "interpretation": "statistical_deviation_not_confirmed_physical_fault"}),
+                localization=LocalizationResult(components=[], channels=assessment.get('competing_channels', []), scores={}),
+                hypotheses=[], confidence=0.0, uncertainty=None,
+                uncertainty_estimate=UncertaintyEstimate(None, "not_calibrated_process_baseline"),
+                abstained=True, abstain_reason=assessment['reason'],
+                evidence=[Evidence(source="process_reference_assessment", statement="A statistical deviation or reference/identifiability limitation does not establish a physical fault or unique root.",
+                                   details=assessment, evidence_id="process-reference-assessment", kind="statistical")],
+                recommended_actions=["Check operating-regime compatibility and competing causes; provide a suitable healthy reference for review."],
+                tool_trace=trace, metadata={"workflow_version": ProcessPlugin.workflow_version, "policy_version": self.version,
+                                           "reference_assessment": assessment, "allow_confidence_complement_uncertainty": False,
+                                           "monitoring_calibration": state.get('monitoring_calibration'),
+                                           "sensitivity_alert": state.get('sensitivity_alert')},
+            ))
         if not detected:
             confidence = 0.8
             early_warning = bool(state.get("early_warning", False))
@@ -80,6 +106,9 @@ class ProcessDecisionPolicy:
                     "early_warning": early_warning,
                     "monitoring_arbitration": state.get("monitoring_arbitration"),
                     "allow_confidence_complement_uncertainty": False,
+                    "reference_assessment": assessment,
+                    "monitoring_calibration": state.get('monitoring_calibration'),
+                    "sensitivity_alert": state.get('sensitivity_alert'),
                 },
             ))
 
@@ -149,16 +178,20 @@ class ProcessDecisionPolicy:
                 "monitoring_arbitration": state.get("monitoring_arbitration"),
                 "supervised_classification": state.get("supervised_classification"),
                 "allow_confidence_complement_uncertainty": False,
+                "reference_assessment": assessment,
+                "monitoring_calibration": state.get('monitoring_calibration'),
+                "sensitivity_alert": state.get('sensitivity_alert'),
             },
         ))
 
 
 class ProcessPlugin:
     name = "process"
-    workflow_version = "3.0"
+    workflow_version = "3.3"
 
     def validate(self, request: DiagnosticRequest) -> Mapping[str, Any]:
         values = dict(request.inputs)
+        assess_process_reference(values)
         required = ("signal_matrix", "normal_reference", "channel_names")
         missing = [key for key in required if values.get(key) is None]
         if missing:
@@ -191,27 +224,47 @@ class ProcessPlugin:
             lags = int(cfg.get("dynamic_lags", 2))
             minimum = float(cfg.get("minimum_alarm_fraction", 0.05))
             if method == "hybrid":
-                dpca = run_monitoring_method(
-                    state["standardized_signal"], state["standardized_reference"],
-                    MonitoringConfig("dpca", alpha, persistence, variance_target=variance, lags=lags),
-                )
-                cva = run_monitoring_method(
-                    state["standardized_signal"], state["standardized_reference"],
-                    MonitoringConfig("cva", alpha, persistence, variance_target=variance, lags=lags),
-                )
+                calibration_mode = str(cfg.get('monitoring_calibration', 'in_sample'))
+                if calibration_mode not in {'in_sample', 'healthy_holdout'}:
+                    raise ValueError('monitoring_calibration must be in_sample or healthy_holdout')
+                def calibrated(method):
+                    config = MonitoringConfig(method, alpha, persistence, variance_target=variance, lags=lags)
+                    if calibration_mode == 'in_sample':
+                        return run_monitoring_method(state['standardized_signal'], state['standardized_reference'], config)
+                    try:
+                        return run_reference_calibrated_monitoring(
+                            state['standardized_signal'], state['standardized_reference'], config)
+                    except ValueError as exc:
+                        if not str(exc).startswith('insufficient healthy reference'):
+                            raise
+                        out = run_monitoring_method(state['standardized_signal'], state['standardized_reference'], config)
+                        out['calibration'] = {**out['calibration'], 'unavailable_reason': str(exc)}
+                        return out
+                dpca = calibrated('dpca')
+                cva = calibrated('cva')
                 arbitration = arbitrate_dpca_cva(
                     dpca, cva, minimum_alarm_fraction=minimum,
                     strong_dpca_alarm_fraction=float(cfg.get("strong_dpca_alarm_fraction", 0.20)),
                 )
                 alarm = np.asarray(arbitration["alarm_mask"], dtype=bool)
+                sensitivity = sustained_process_alert(state['signal_matrix'], state['normal_reference'])
+                supplemental_only = bool(sensitivity['detected'] and not arbitration['fault_detected'])
+                # Preserve the existing root-analysis evidence for old detections.
+                # Additional alerts require review, not altered root confidence.
+                if supplemental_only:
+                    alarm = alarm | sensitivity['alarm_mask']
                 return {
                     "monitoring_method": "dpca_cva_hybrid",
                     "dpca_monitoring": dpca,
                     "cva_monitoring": cva,
                     "monitoring_arbitration": arbitration,
+                    "reference_calibration_unavailable": any('unavailable_reason' in out['calibration'] for out in (dpca, cva)),
+                    "monitoring_calibration": {method: out['calibration'] for method, out in (('dpca', dpca), ('cva', cva))},
                     "alarm_mask": alarm,
                     "alarm_fraction": float(np.mean(alarm)),
-                    "fault_detected": bool(arbitration["fault_detected"]),
+                    "fault_detected": bool(arbitration["fault_detected"] or sensitivity['detected']),
+                    "supplemental_only": supplemental_only,
+                    "sensitivity_alert": {key: value for key, value in sensitivity.items() if key not in {'alarm_mask', 'score'}},
                     "early_warning": bool(arbitration["early_warning"]),
                     "variable_contributions": cva["variable_contributions"],
                 }
@@ -344,7 +397,7 @@ class ProcessPlugin:
 
         steps = (
             Step("standardize_against_normal", standardize, version="baseline-v1"),
-            Step("hybrid_process_monitoring", monitor, depends_on=("standardize_against_normal",), version="dpca-cva-v1"),
+            Step("hybrid_process_monitoring", monitor, depends_on=("standardize_against_normal",), version="dpca-cva-sensitivity-v3"),
             Step("supervised_fault_classification", classify, depends_on=("hybrid_process_monitoring",), version="cva-classifier-v1"),
             Step("contribution_analysis", contributions, depends_on=("supervised_fault_classification",), version="cva-contribution-v1"),
             Step("pre_post_shift_evidence", shift, depends_on=("contribution_analysis",), version="baseline-v1"),
