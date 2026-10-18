@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from app.core.config import get_settings
 from app.multimodal.vision import OllamaVisionProvider
 from app.router.model_registry import ModelRegistry
-from app.tools.file_tools import SafeWorkspace
+from app.tools.file_tools import principal_workspace
 from app.resources.cache import get_cache_backend
 from app.identity.dependencies import require_permission
 from app.identity.models import Permission, Principal
@@ -27,7 +27,7 @@ async def analyze_image(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        path = SafeWorkspace(settings.workspace_root).resolve(payload.path, must_exist=True)
+        path = principal_workspace(settings.workspace_root, principal).resolve(payload.path, must_exist=True)
         if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}:
             raise ValueError("Vision analysis requires a common raster image")
         model = ModelRegistry(settings.models_config).get("vision")

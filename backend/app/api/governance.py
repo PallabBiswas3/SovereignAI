@@ -97,7 +97,7 @@ async def propose_tool(
         if not principal.has_permission(Permission.approval_request):
             raise HTTPException(status_code=403, detail={"code": "ACCESS_DENIED"})
         try:
-            errors = create_default_registry(settings.workspace_root).validate_arguments(payload.tool, payload.args)
+            errors = create_default_registry(settings.workspace_root, principal).validate_arguments(payload.tool, payload.args)
         except KeyError:
             errors = []  # A configured high-risk tool may be proposed but remains non-executable.
         if errors:
@@ -188,7 +188,7 @@ async def decide_approval(
             }
             AuditLogger(db, principal).log(f"asset:{draft.asset_id}", "MAINTENANCE_DRAFT_APPROVED", "Maintenance draft approved; no plant action was executed.", {"approval_id": approval.id, "draft_id": draft.id})
     else:
-        registry = create_default_registry(settings.workspace_root)
+        registry = create_default_registry(settings.workspace_root, requester)
         try:
             errors = registry.validate_arguments(approval.tool, args)
             if errors:

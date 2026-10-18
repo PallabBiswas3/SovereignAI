@@ -34,7 +34,7 @@ from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
 from app.rag.factory import configured_hybrid_retriever
 from app.sandbox.executor import DockerSandboxExecutor
-from app.tools.file_tools import SafeWorkspace
+from app.tools.file_tools import SafeWorkspace, principal_workspace
 from app.workflows.coding import CodingWorkflow
 from app.workflows.inspection import InspectionWorkflow
 from pathlib import Path
@@ -92,6 +92,16 @@ class StartTaskResponse(BaseModel):
 
 
 EventCallback = Callable[[str, dict[str, object]], Awaitable[None]]
+
+
+def _validate_attachments(payload: CreateTaskRequest, settings, principal: Principal) -> None:
+    try:
+        workspace = principal_workspace(settings.workspace_root, principal)
+        for item in payload.attachments:
+            if not workspace.resolve(item, must_exist=True).is_file():
+                raise ValueError("Invalid attachment")
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="Attachment not found") from exc
 
 
 def _mode_selection(payload: CreateTaskRequest, routing):
@@ -469,7 +479,7 @@ async def _run_inspection_task_implementation(
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
-    workspace = SafeWorkspace(settings.workspace_root)
+    workspace = principal_workspace(settings.workspace_root, principal)
     attachment_paths = [workspace.resolve(item, must_exist=True) for item in payload.attachments]
     uploaded_sops = [path for path in attachment_paths if "sop" in path.stem.lower()]
     candidates = [path for path in attachment_paths if path not in uploaded_sops and path.suffix.lower() in {".pdf", ".md", ".txt", ".docx"}]
@@ -683,7 +693,7 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, pr
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
-    csv_path = SafeWorkspace(settings.workspace_root).resolve(payload.attachments[0], must_exist=True)
+    csv_path = principal_workspace(settings.workspace_root, principal).resolve(payload.attachments[0], must_exist=True)
     if csv_path.suffix.lower() != ".csv":
         raise ValueError("Coding workflow requires a CSV attachment")
     action = ActionGuard(settings.tools_config).evaluate("run_python")
@@ -785,6 +795,7 @@ async def _execute_task(
     cancellation_event: asyncio.Event | None = None,
 ) -> AgentRunState:
     settings = get_settings()
+    _validate_attachments(payload, settings, principal)
     chat_selection = _chat_mode_selection(payload)
     if event_callback:
         await event_callback("chat_mode_selected", chat_selection.model_dump(mode="json"))
@@ -823,7 +834,7 @@ async def _execute_task(
                 and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop"))
             )
             and (integration_plan := IntegrationRoutePlanner().plan(
-                payload.request, payload.attachments, settings.workspace_root,
+                payload.request, payload.attachments, principal_workspace(settings.workspace_root, principal).root,
             )).handles_request
         ):
             registry = ModelRegistry(settings.models_config)
@@ -1182,6 +1193,7 @@ async def start_task(
     principal: Principal = Depends(require_permission(Permission.task_create)),
     db: Session = Depends(get_db),
 ) -> StartTaskResponse:
+    _validate_attachments(payload, get_settings(), principal)
     tracking_id = str(uuid4())
     scope = AuthorizationService.owned_scope(principal)
     db.add(TaskAccessRecord(

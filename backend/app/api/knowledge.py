@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
 from app.rag.factory import configured_hybrid_retriever
-from app.tools.file_tools import SafeWorkspace
+from app.tools.file_tools import principal_workspace
 from app.governance.injection import PromptInjectionScanner
 from app.resources.cache import get_cache_backend
 from app.identity.authorization import AuthorizationService
@@ -43,8 +43,11 @@ async def ingest(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     settings = get_settings()
-    workspace = SafeWorkspace(settings.knowledge_root)
     try:
+        workspace = principal_workspace(
+            settings.workspace_root if settings.auth_mode.lower() == "local" else settings.knowledge_root,
+            principal,
+        )
         path = workspace.resolve(payload.path, must_exist=True)
         scan_text = path.read_text(encoding="utf-8", errors="ignore") if path.suffix.lower() in {".txt", ".md", ".csv", ".json"} else ""
         injection_findings = PromptInjectionScanner().scan(scan_text)

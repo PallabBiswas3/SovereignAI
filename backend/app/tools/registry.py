@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from app.sandbox.executor import DockerSandboxExecutor
 from app.tools.base import Tool
-from app.tools.file_tools import FileMetadataTool, ListFilesTool, ReadFileTool, SafeWorkspace, SearchFilesTool, WriteFileTool
+from app.tools.file_tools import FileMetadataTool, ListFilesTool, ReadFileTool, SafeWorkspace, SearchFilesTool, WriteFileTool, principal_workspace
 from app.tools.python_tool import PythonSandboxTool
 
 if TYPE_CHECKING:
@@ -55,13 +55,13 @@ class ToolRegistry:
                  "input_schema": tool.input_schema} for tool in self._tools.values()]
 
 
-def create_default_registry(workspace_root: Path) -> ToolRegistry:
-    workspace = SafeWorkspace(workspace_root)
+def create_default_registry(workspace_root: Path, principal=None) -> ToolRegistry:
+    workspace = principal_workspace(workspace_root, principal)
     registry = ToolRegistry()
     for tool in (
         ListFilesTool(workspace), ReadFileTool(workspace), WriteFileTool(workspace),
         SearchFilesTool(workspace), FileMetadataTool(workspace),
-        PythonSandboxTool(DockerSandboxExecutor(workspace_root / "sandbox"), workspace),
+        PythonSandboxTool(DockerSandboxExecutor(workspace.root / "sandbox"), workspace),
     ):
         registry.register(tool)
     return registry
@@ -84,8 +84,8 @@ def create_agent_registry(
         OCRDocumentTool,
     )
 
-    registry = create_default_registry(settings.workspace_root)
-    workspace = SafeWorkspace(settings.workspace_root)
+    registry = create_default_registry(settings.workspace_root, principal)
+    workspace = principal_workspace(settings.workspace_root, principal)
     artifacts = ArtifactService(session, settings.workspace_root / "artifacts")
     vision = ModelRegistry(settings.models_config).get("vision")
     asset_tools = (
