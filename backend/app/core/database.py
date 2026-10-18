@@ -18,6 +18,9 @@ class Conversation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
+    organization_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -455,6 +458,11 @@ def init_db() -> None:
                 for statement in artifact_migrations:
                     connection.execute(text(statement))
         scoped_migrations = {
+            "conversations": {
+                "organization_id": "ALTER TABLE conversations ADD COLUMN organization_id VARCHAR(100)",
+                "owner_id": "ALTER TABLE conversations ADD COLUMN owner_id VARCHAR(100)",
+                "workspace_id": "ALTER TABLE conversations ADD COLUMN workspace_id VARCHAR(100)",
+            },
             "agent_runs": {
                 "organization_id": "ALTER TABLE agent_runs ADD COLUMN organization_id VARCHAR(100)",
                 "owner_id": "ALTER TABLE agent_runs ADD COLUMN owner_id VARCHAR(100)",
