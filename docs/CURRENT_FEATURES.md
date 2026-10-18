@@ -1,5 +1,41 @@
 # Current features
 
+## Diagnostic research branch status — 18 October 2026
+
+The previously uncommitted Process 3.3 and Wind 1.2 changes are retained on
+`research/diagnostic-guards-review`, separately from `security/v1-remediation`.
+References to an accepted configuration below mean the selected local research
+baseline, not acceptance for the v1 release or plant deployment. In particular,
+the Process sensitivity path produced 57/80 healthy alerts in its recorded fresh
+synthetic test; operational reviewer capacity remains unvalidated. The optional
+healthy-holdout mode remains disabled by default. No thresholds were retuned in
+this review and no diagnostic code was discarded.
+
+Process workflow 3.3's default hybrid detector retains existing DPCA/CVA detections
+and adds causal, reference-scaled sustained mean-change alerts across several
+sample horizons. Supplemental-only deviations are abnormal **review alerts**, not
+confident physical-fault/root diagnoses. Sensitivity improves on fresh synthetic
+families, with substantially more healthy alerts; zero missed faults is not promised.
+Existing root-analysis masks, authority checks and ControlPlane budget are retained.
+
+Workflow 3.3 remains the final accepted configuration after the weighted-mean and
+short-event innovation-energy experiments: no replacement passed the paired
+fault-sensitivity gate. Experimental code and complete selection evidence remain
+local; fewer false alarms alone did not justify promotion.
+
+Process also includes an **experimental internal** healthy-reference
+hold-out calibration mode (`monitoring_calibration='healthy_holdout'`), with
+reference-only preprocessing/limits, causal point alarms and short-reference
+abstention. It is not the default or a public-form option: broader synthetic
+testing reduced false alarms but substantially reduced weak-fault sensitivity.
+Existing monitoring defaults and the ControlPlane budget remain unchanged.
+
+Process workflow 3.1 additionally supports optional paired `current_regime_id` /
+`reference_regime_id`. A declared mismatch requires review; matching declarations
+do not establish authenticity. Sustained simultaneous multi-channel changes can
+abstain from a unique-root diagnosis while retaining deviation evidence. Monitoring
+thresholds are unchanged; analysis remains retrospective and confidence uncalibrated.
+
 ## Versioned diagnostic forms (10 October 2026)
 
 `/integrations` now derives seven task-specific forms from the authoritative
@@ -170,6 +206,23 @@ evidence-selection quality. See `NEXT_PLAN.md` for commands and remaining gates.
 - Plant writes and autonomous maintenance execution are intentionally absent.
 
 See [Past experiments](PAST_EXPERIMENTS.md) for evidence and [Next plan](NEXT_PLAN.md) for priorities.
+
+## Wind measurement safeguard — 11 October 2026
+
+Wind workflow 1.2 adds measurement-quality review for nonfinite values and sustained
+flatlines in reference-variable channels. Raw evidence stays available; these
+states cannot become a confident equipment-fault decision. Detector thresholds
+are unchanged. The guard is conservative and uncalibrated, not full sensor validation.
+
+## Process evaluation update — 11 October 2026
+
+Sensitivity-first workflow 3.3 remains the default. Local trade-off experiments
+now compare higher mean-alert thresholds with causal innovation-energy rescue.
+They explicitly report missed faults, healthy alerts, paired losses/gains and
+per-scenario delays. No candidate has been promoted; experiments stay Git-ignored.
+Frozen-threshold distribution/regime stress testing now covers seven conditions
+(1,008 records). It exposed a strong-autocorrelation sensitivity gap and frequent
+healthy alerts; this is a prototype limitation, not validated generalization.
 
 ## ControlPlane verification profiling — 17–18 October 2026
 

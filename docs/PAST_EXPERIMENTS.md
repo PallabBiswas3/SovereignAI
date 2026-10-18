@@ -4,6 +4,52 @@ Last consolidated: 1 October 2026
 
 This file keeps the project history and measured outcomes in one place. Results are local engineering evidence, usually from synthetic or small fixtures; they are not production accuracy, safety, or performance claims.
 
+## Review of pending diagnostic changes — 18 October 2026
+
+Retained the eleven pending files on `research/diagnostic-guards-review`: Process
+reference/regime and root-identifiability assessment, sensitivity-only review
+alerts, optional reference-holdout calibration, paired regime contract fields,
+Wind measurement-quality abstention, and the three maintained research documents.
+The source changes were reviewed without retuning or altering their behavior.
+The untracked helper modules are required by the modified plugins and must be
+committed together; discarding only those helpers would break imports.
+
+Verification: **273 passed** (239 existing diagnostic tests plus 34 focused guard
+regressions), 45 dependency/numerical warnings, 36.58 seconds. Public diagnostic
+input-contract and provenance/linkage checks: **55 passed**. `git diff --check`
+passed. JUnit evidence remains ignored in `.workspace/diagnostic-pending-review.xml`
+and `.workspace/diagnostic-pending-contracts.xml`; existing local test scripts,
+datasets and research archives remain unpublished under the repository convention.
+
+This retains research work rather than accepting an operational alarm policy.
+The reported 57/80 healthy-alert burden and weak-fault sensitivity trade-offs
+remain limitations. No fresh accuracy experiment, model training, live service
+replay, security-branch merge or final release was performed by this review.
+
+## Process sensitivity-first pilot (10 October 2026)
+
+Short-event/variance follow-up: reference-fitted VAR(1) innovation-energy monitoring
+plus weighted means, healthy-only calibration and development-only selection.
+Three settings lost 10/9/6 current post-onset fault cases on development; none
+qualified. Fresh test confirmed further losses despite fewer healthy alerts.
+Retained workflow 3.3; 289 tests pass. All evidence and the final selection remain
+local: `local_testing/experiments/results/process_short_event_v1/REPORT.md`.
+
+Follow-up weighted candidate: independently frozen 80-family comparison with
+healthy-only calibration reduced healthy alerts 51/80 → 13/80 and retained/improved
+step/drift post-onset evidence. It lost 19 individual intermittent/variance/oscillatory
+cases relative to current sensitivity. Not promoted; production unchanged. 281
+tests pass. Report: `local_testing/experiments/results/process_weighted_v1/REPORT.md`.
+
+The reference-holdout calibration candidate reduced healthy alarms but lost weak
+fault sensitivity, so it remains experimental. The subsequent additive mean-change
+alert recovers all ten development step/drift misses. On 80 fresh synthetic families,
+step/drift/intermittent event alerts improve 74/75/42 → 79/79/77 out of 80 each,
+without losing old detections. Healthy alerts increase 8/80 → 57/80. Some alerts
+precede faults and some faults remain missed; supplemental-only cases require
+review, not a confident root diagnosis. 275 tests pass; no live replay/publication.
+Detailed local evidence: `local_testing/experiments/results/process_sensitivity_v2/REPORT.md`.
+
 ## Delivery history
 
 | Stage | What was tested or added | Result |
@@ -173,6 +219,66 @@ checks passed; TypeScript and production build passed. The active synthetic
 Pump-102 probe was migrated. Tests/raw reports remain ignored under
 `local_testing/`; details: `experiments/results/diagnostic_input_contract_20261010.md`
 inside that directory. No training or fresh all-service/browser run was performed.
+
+## Wind synthetic pilot and quality repair — 11 October 2026
+
+332 frozen records; eight development, twelve healthy-calibration, twenty-four
+fresh-test simulation families. Healthy-only event calibration chose defaults;
+no threshold candidate promoted. Fresh strong step/drift/intermittent confirmations
+24/24 each, weak step 15/24; healthy/transition 0/48 confirmed but prefix reviews
+15/24 and 6/24 respectively. Historical CARE results not rerun or repaired.
+Dropout/flatline baseline false confirmations 1/24 and 11/24 motivated explicit
+quality routing in Wind workflow 1.2. Same-input helper audit holds 48/48 defective
+records and affects none of 96 fault records. Real fitted-runner/plugin regressions
+test the wiring; no live API run. Conservative sample-based guard, not calibrated.
+252 diagnostic/Wind tests passed (39 warnings); no full-repository suite run.
+Exact methods, snapshots, hashes and limitations:
+`local_testing/research/wind_monitoring/RESEARCH_LOG.md`.
+
+## Paired Process attribution — 11 October 2026
+
+Stationary independent Gaussian AR(1), common random disturbances, phi .3/.95,
+innovation SD `sigma*sqrt(1-phi²)` preserving marginal variance. 40 independent
+paired families, innovation/marginal fault-sizing arms, 960 stored records;
+duplicate healthy/variance controls are not independent. Fixed detector settings.
+Current high-phi additive misses 49/160 with innovation-relative amplitude versus
+0/160 marginal-relative; low phi 0/160 both. Paired interaction 30.625 percentage
+points (bootstrap 95% 19.375–42.5). Healthy high-phi post-onset alerts 21/40;
+zero misses is not proof of diagnosis accuracy. Production unchanged.
+307 tests passed (93 warnings). Archive retains dirty source snapshots, inputs,
+labels, model parameters, masks, commands and hashes. Complete research history:
+`local_testing/research/process_monitoring/RESEARCH_LOG.md`. No publication.
+
+## Process distribution/regime generalization — 11 October 2026
+
+Seven conditions, 24 independent families each, six scenarios/family: 1,008 frozen
+records with separate labels, input/source/calibration hashes, masks and fitted
+reference models. Compared original/current/fixed 3.5/0.4 rescue without retuning.
+Across reference-matched conditions: current 37/720 missed fault records versus
+rescue 43/720; healthy alerts 109/144 versus 94/144. Strong autocorrelation is the
+largest miss concentration: 35/120 versus 33/120. Declared mismatch guard returned
+the expected reason in 144/144 direct checks; full plugin/API was not exercised.
+Fault amplitudes are innovation-relative, so autocorrelation also changes SNR.
+Sensor-spike alerts are not necessarily unreasonable quality alerts. Post-onset
+hits can be incidental alarms; retrospective confirmation is not online validation.
+303 diagnostic/Process tests passed (93 warnings). Production unchanged; no
+publication. Report: `local_testing/experiments/results/process_generalization_v1/REPORT.md`.
+
+## Process trade-off experiment — 11 October 2026
+
+Added local threshold/innovation-energy rescue comparisons with independent
+80-family development/calibration/test splits, frozen input hashes and separate
+synthetic labels. Development selected current using exploratory cost
+`10 * missed fault records + healthy alert records`; this is not a safety utility.
+Test current: 390/400 post-onset detections, 40/80 healthy alerts. Illustrative
+3.5/0.4 rescue: 384/400 detections, 33/80 healthy alerts; seven paired losses and
+one gain. Other settings also trade fewer healthy alerts for more missed faults.
+Production unchanged. Same simulator/new seeds, unreviewed synthetic labels,
+retrospective baseline confirmation; not proven online or plant performance.
+The selected-versus-current bootstrap interval is trivially zero because current
+was selected; it is not evidence of uncertainty-free performance.
+Validation: 293 diagnostic/Process tests passed (93 warnings); no live replay.
+Local audit: `local_testing/experiments/results/process_tradeoff_v1/REPORT.md`.
 
 ## ControlPlane CPU verification study — 17–18 October 2026
 

@@ -1,5 +1,144 @@
 # Next implementation plan
 
+## Disposition of pending diagnostic work — 18 October 2026
+
+All eleven pending files (eight diagnostic source files and these three maintained
+documents) were reviewed and retained together on `research/diagnostic-guards-review`.
+The complete diagnostic suite plus focused Process/Wind guard regressions passed
+273 tests; another 55 public input-contract/provenance checks passed. These edits
+are not merged into the v1 security branch. The earlier research follow-ups below
+remain future work; none was started as part of this commit/push review. A fresh
+all-service assessment and operational acceptance remain separate release gates.
+
+## Wind synthetic cycle and quality repair (11 October 2026)
+
+Frozen family-split pilot completed; healthy calibration selected existing defaults.
+Fresh normal/transition cases: 0/48 confirmed events, but raw alerts and prefix
+reviews remain. Strong step/drift/intermittent 24/24 each; weak step 15/24.
+Dropout/flatline false confirmations 1/24 and 11/24 motivate workflow 1.2:
+nonfinite measurements and sustained new flatlines route to sensor/reference
+review, not equipment diagnosis. Raw alarms preserved; thresholds unchanged.
+Same-input quality audit holds 48/48 defective records, affects no fault records.
+Historical CARE false alarms are not reproduced or claimed repaired.
+Next: new conditions, weak faults, final-review burden and live UI/API replay.
+Research record: `local_testing/research/wind_monitoring/RESEARCH_LOG.md`.
+Restart diagnostics/backend to load the safeguard; no services were started here.
+
+## Paired dependence/fault-strength attribution (11 October 2026)
+
+Completed 40 independent paired families, four cells (960 stored records).
+Theoretical marginal variance held fixed at phi .3/.95; thresholds unchanged.
+Current additive misses: low phi 0/160 for both amplitude bases; high phi 49/160
+innovation-relative, 0/160 marginal-relative. High-phi healthy alerts 21/40.
+Reduced nominal fault/background strength explains an important observed gap in
+this simulator, not proof that dependence is harmless. No production change.
+307 diagnostic/Process tests pass. Full local methods/results/source-hash record:
+`local_testing/research/process_monitoring/RESEARCH_LOG.md` and findings supplement.
+Next test weaker marginal faults and durations using paired healthy controls and
+prefix-only online decisions; independent replication/novelty review before paper claims.
+
+## Process distribution/regime stress test (11 October 2026)
+
+Completed 1,008 synthetic records across seven conditions, 24 independent families
+each: Gaussian, t3 heavy tails, sensor spikes, strong autocorrelation, nonlinear
+coupling, matched load and mismatched load. Thresholds/calibration stayed frozen.
+Current misses 35/120 strong-autocorrelation faults; rescue misses 33/120 but loses
+detections elsewhere. Across six reference-matched conditions: current 37/720
+misses and 109/144 healthy alerts; rescue 43/720 misses and 94/144 healthy alerts.
+Production unchanged. Direct regime guard flags 144/144 mismatched records;
+this is not a full live-plugin check. 303 diagnostic/Process tests pass.
+Next isolate autocorrelation versus reduced fault SNR with paired experiments,
+then investigate regime-conditioned noise models and sensor-quality handling.
+Retain per-fault sensitivity and reviewer-burden metrics; freeze new test conditions.
+Local report: `local_testing/experiments/results/process_generalization_v1/REPORT.md`.
+
+## Process trade-off study (11 October 2026)
+
+Completed a fixed-grid mean-threshold/innovation-energy experiment, using separate
+development, healthy-calibration and fresh-test families. An exploratory cost of
+10 per missed fault record versus 1 per healthy alert selected current on development.
+Fresh test: current misses 10/400, healthy alerts 40/80. Illustrative rescue setting
+3.5/0.4: misses 16/400, healthy alerts 33/80; seven current detections lost, one gained.
+No candidate promoted, no test-driven setting selection. All research remains local.
+Next: agree an operational miss-versus-review cost and minimum per-fault sensitivity,
+then test new noise/regime conditions, not just new seeds from the same simulator.
+Report: `local_testing/experiments/results/process_tradeoff_v1/REPORT.md`.
+
+## Final accepted Process configuration (10 October 2026)
+
+Keep the current sensitivity-first hybrid workflow 3.3. A short-event innovation-
+energy branch was tested with the weighted-mean candidate. All three settings
+failed the paired development sensitivity gate, so current was selected before
+the fresh test. New 80-family test: current post-onset step/drift/intermittent/
+variance/oscillatory cases 79/79/77/80/77; healthy alerts 59/80. Candidate settings
+reduced healthy alerts but lost 19/17/10 individual current fault cases. No promotion
+or publication. 289 tests pass. All runs preserved; final selection is in
+`local_testing/experiments/results/process_short_event_v1/FINAL_SELECTION.json`.
+Next investigate residual misses and reviewer burden, then freeze new conditions.
+Report: `local_testing/experiments/results/process_short_event_v1/REPORT.md`.
+
+## Weighted Process candidate (latest: 10 October 2026)
+
+Tested a local, regularized correlation-aware moving-average approximation with
+healthy-only event calibration, independent calibration/test families, and no
+post-test tuning. Fresh 80-family test: healthy alerts 51/80 → 13/80; step/drift
+post-onset evidence 80/79 → 80/80. But 19 individual fault cases detected by the
+current sensitivity path were lost (10 intermittent, 1 variance, 8 oscillatory).
+Promotion gate **fails**; production remains unchanged. 281 tests pass. Next develop
+separate short-event/variance-sensitive statistics, then freeze new families;
+do not tune on this inspected test set. Local report:
+`local_testing/experiments/results/process_weighted_v1/REPORT.md`.
+
+## Sensitivity-first Process alerts (latest: 10 October 2026)
+
+Workflow 3.3 adds causal, reference-scaled mean alerts at several horizons to the
+default hybrid path. Existing detections/root masks are retained; supplemental-only
+deviations require review, without root hypotheses. All ten inspected development
+step/drift misses are recovered. Fresh 80-family test: step 74/80 → 79/80, drift
+75/80 → 79/80, intermittent 42/80 → 77/80 event alerts; no old detection lost.
+Healthy alerts rise 8/80 → 57/80: a substantial review burden. Residual misses and
+pre-onset false alerts remain; event alerts are not confirmed physical faults.
+275 tests pass. No live-service replay or publication. Next investigate residual
+misses, freeze new families, evaluate onset-localized detection and review workload.
+Local report: `local_testing/experiments/results/process_sensitivity_v2/REPORT.md`.
+
+## Process healthy false-alarm candidate (10 October 2026)
+
+Held-out healthy-reference joint T2/SPE calibration is implemented as an explicit
+internal research option; it is **not enabled by default**. Fresh 180-case pilot:
+stationary healthy alarms 3/30 → 0/30, faults still detected 120/120. Broader
+heavy-tailed/variable-condition stress: healthy alarms 7/40 → 1/40, but step
+recall 36/40 → 21/40 and drift 34/40 → 22/40. This sensitivity regression prevents
+promotion. Load-change confusion also remains. Next: event-level, dependence-aware
+calibration with predeclared healthy FAR and weak-fault recall gates, matched regime
+references, and newly frozen condition families. Do not tune on these inspected
+test results. Local report:
+`local_testing/experiments/results/process_reference_calibration_test_v2/REPORT.md`.
+
+## Process reasoning repair (latest: 10 October 2026)
+
+Workflow 3.1 adds declared regime-mismatch abstention and sustained simultaneous-change
+root-identifiability checks. On 72 fresh-family synthetic cases, matched decision-layer
+ablation versus repair: healthy diagnoses 16/24 → 6/24; ambiguous abstention 0/12 → 12/12;
+clear-root diagnoses remain correct 36/36. Raw healthy alarms remain 16/24. DPCA/CVA
+prefix/suffix score checks passed; pre-onset alarms remain a calibration gap, not
+demonstrated future-data leakage. Eight new reasoning tests, eleven harness tests and
+239 existing diagnostic tests pass. Next calibrate healthy regimes and evaluate online
+event decisions on new held-out conditions; no retraining or release-gate relaxation.
+Report: `local_testing/experiments/results/process_repair_unseen_v1/REPORT.md`.
+
+## Process synthetic baseline (latest: 10 October 2026)
+
+Frozen 72-case simulator pack; separate labels and family-grouped train/calibration/test
+splits. Current baseline tested on 18 cases from three test families: faults 12/12
+detected, roots 8/9 correct, but legitimate load changes falsely diagnosed 3/3 and
+ambiguous cases abstained 0/3. All 12 fault cases had pre-onset alarms; investigate
+retrospective fitting/alignment before claiming online detection delay. No training
+or threshold changes. Next: development regressions for regime mismatch, root
+identifiability and future-data influence; freeze new test families after repair.
+Local report: `local_testing/experiments/results/process_synthetic_v1_baseline_audited/REPORT.md`.
+Eleven harness tests pass. This is unreviewed synthetic evidence, not plant validation.
+
 ## Diagnostic input contract and training handoff (10 October 2026)
 
 Seven public workflows now share `industrial-diagnostic-v1`; exact required
