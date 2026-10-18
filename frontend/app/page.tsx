@@ -182,6 +182,7 @@ export default function Home() {
     setPrincipal(null); setChatEntries([]); setResult(null); setCapsule(null);
     setAttachments([]); setLiveEvents([]); setModels([]); setResources(null); setWorkcells([]);
     setLoading(false); setActiveTaskId(""); setMessage(""); setError("");
+    setCapsuleBusy(false); setWorkcellId(""); setModelOverride("");
   }
 
   useEffect(() => {
@@ -193,16 +194,26 @@ export default function Home() {
 
   useEffect(() => {
     if (!principal) return;
-    apiFetch("/api/models/status").then((response) => response.json())
-      .then((payload) => { setModels(payload.models ?? []); setResources(payload.resources ?? null); })
-      .catch(() => { setModels([]); setResources(null); });
+    const controller = new AbortController();
+    apiFetch("/api/models/status", { signal: controller.signal }).then((response) => {
+      if (!response.ok) throw new Error(`Model readiness unavailable (${response.status})`);
+      return response.json();
+    })
+      .then((payload) => { if (!controller.signal.aborted) { setModels(payload.models ?? []); setResources(payload.resources ?? null); } })
+      .catch(() => { if (!controller.signal.aborted) { setModels([]); setResources(null); } });
+    return () => controller.abort();
   }, [principal]);
 
   useEffect(() => {
     if (!principal) return;
-    apiFetch("/api/workcells").then((response) => response.json())
-      .then((payload: Workcell[]) => setWorkcells(payload.filter((item) => item.status === "READY")))
-      .catch(() => setWorkcells([]));
+    const controller = new AbortController();
+    apiFetch("/api/workcells", { signal: controller.signal }).then((response) => {
+      if (!response.ok) throw new Error(`Workflows unavailable (${response.status})`);
+      return response.json();
+    })
+      .then((payload: Workcell[]) => { if (!controller.signal.aborted) setWorkcells(payload.filter((item) => item.status === "READY")); })
+      .catch(() => { if (!controller.signal.aborted) setWorkcells([]); });
+    return () => controller.abort();
   }, [principal]);
 
   useEffect(() => {
@@ -284,22 +295,26 @@ export default function Home() {
 
   async function cancelActiveTask() {
     if (!activeTaskId) return;
+    const signal = sessionRequests.current.signal;
     try {
-      const response = await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE", signal });
+      if (signal.aborted) return;
       if (!response.ok) throw new Error(`Cancellation failed (${response.status}).`);
       closeStream.current?.(); setLoading(false); setActiveTaskId("");
       setChatEntries(current => current.map(entry => entry.waiting
         ? { ...entry, content: "Cancellation requested.", waiting: false } : entry));
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Cancellation failed"); }
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Cancellation failed"); }
   }
 
   async function upload(file: File) {
     setError("");
     const form = new FormData(); form.append("file", file);
+    const signal = sessionRequests.current.signal;
     try {
-      const response = await apiFetch("/api/files/upload", { method: "POST", body: form, signal: sessionRequests.current.signal });
+      const response = await apiFetch("/api/files/upload", { method: "POST", body: form, signal });
       if (!response.ok) throw new Error(`Upload returned ${response.status}`);
       const uploaded = await response.json();
+      if (signal.aborted) return;
       setAttachments((current) => [...current, { name: uploaded.name, path: uploaded.path }]);
     } catch (caught) { if (!(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Upload failed"); }
   }
@@ -307,25 +322,29 @@ export default function Home() {
   async function buildCapsule() {
     if (!result?.id || capsuleBusy) return;
     setCapsuleBusy(true); setError("");
+    const signal = sessionRequests.current.signal;
     try {
       const response = await apiFetch(`/api/tasks/${result.id}/capsule`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inputs: [] }),
+        method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inputs: [] }),
       });
       if (!response.ok) throw new Error(`Capsule build returned ${response.status}: ${await response.text()}`);
-      setCapsule(await response.json());
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Capsule build failed"); }
+      const built = await response.json();
+      if (!signal.aborted) setCapsule(built);
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Capsule build failed"); }
     finally { setCapsuleBusy(false); }
   }
 
   async function verifyCapsule() {
     if (!capsule || capsuleBusy) return;
     setCapsuleBusy(true); setError("");
+    const signal = sessionRequests.current.signal;
     try {
-      const response = await apiFetch(capsule.verify_url, { method: "POST" });
+      const response = await apiFetch(capsule.verify_url, { method: "POST", signal });
       if (!response.ok) throw new Error(`Capsule verification returned ${response.status}`);
       const verification = await response.json();
+      if (signal.aborted) return;
       setCapsule((current) => current ? { ...current, state: verification.status === "VALID" ? "VERIFIED" : "INVALID", verification } : current);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Capsule verification failed"); }
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Capsule verification failed"); }
     finally { setCapsuleBusy(false); }
   }
 
