@@ -123,3 +123,20 @@ def test_http_unauthenticated_chat_denied():
         else:
             os.environ["SOVEREIGN_AUTH_MODE"] = old
         get_settings.cache_clear()
+
+
+def test_legacy_conversation_schema_migration_keeps_unscoped_rows_denied(monkeypatch):
+    from sqlalchemy import text, inspect
+    from app.core import database
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE conversations (id VARCHAR(36) PRIMARY KEY, title VARCHAR(200), created_at DATETIME)"))
+        connection.execute(text("INSERT INTO conversations(id,title) VALUES ('legacy','Synthetic')"))
+    monkeypatch.setattr(database, "engine", engine)
+    database.init_db()
+    database.init_db()
+    assert {"organization_id", "owner_id", "workspace_id"}.issubset({c["name"] for c in inspect(engine).get_columns("conversations")})
+    with Session(engine) as db:
+        record = db.get(Conversation, "legacy")
+        assert record.organization_id is None and record.owner_id is None and record.workspace_id is None
+    engine.dispose()
