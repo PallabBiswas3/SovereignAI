@@ -1,5 +1,42 @@
 # Next implementation plan
 
+## V1 release handoff (18 October 2026; supersedes older acceptance lists)
+
+Security, integration and small UI remediation is implemented on
+`security/v1-remediation` in `../SovereignAI_v1_security`. No merge, push, tag or
+final release was performed. Do not overwrite the separate dirty `1_SIH` tree.
+
+Remaining release gates:
+
+1. Resolve the ten existing ControlPlane test failures documented in
+   PAST_EXPERIMENTS: profiling-aware test doubles, timing fixtures and the
+   historical-evidence ablation expectation. All reproduce on the original
+   checkout. Preserve the 2,000 ms policy and all authority/coverage checks.
+2. Reconcile the user's pending Time-Series edits separately. The isolated
+   branch intentionally retains committed process workflow 3.0 and Wind workflow
+   1.1; local tests currently expect 3.3 and 1.2 from excluded uncommitted edits.
+   Wind remains frozen and outside the flagship demonstration.
+3. Configure authenticated mode and the matching server-only GraphRAG token.
+   Run services from their own directories with the existing launch script;
+   ensure backend and GraphRAG terminals inherit their respective environment
+   variables. Use `http://localhost:3000` with API `http://localhost:8000`.
+4. In an explicitly enabled synthetic APEL environment, seed using
+   `scripts/seed_apel_demo.py`, sign in, and upload the versioned diagnostic JSON
+   through the authenticated user's session. If the existing local GraphRAG
+   seed utility is available, run its `--plan` and `--check` before its explicit
+   namespace-confirmed apply. Do not seed a non-demo graph implicitly.
+5. Execute the actual Pump-102 assessment through `/integrations` or Automatic
+   task routing. Record release/hold, model identity, component/total timings,
+   authorized evidence IDs, citations, artifact and capsule IDs. Download and
+   verify outputs under authorized and unauthorized sessions. Preserve any hold
+   or outage result; never substitute synthetic browser fixtures for this run.
+6. Rerun the release checks and obtain explicit user approval before merging a
+   draft PR or creating a final research release.
+
+Do not expand architectures, add agents, retrain models, or loosen release policy
+to clear these gates. Existing historical research plans below are not part of
+this v1 remediation.
+
 ## Diagnostic input contract and training handoff (10 October 2026)
 
 Seven public workflows now share `industrial-diagnostic-v1`; exact required

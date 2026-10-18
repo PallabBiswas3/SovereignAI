@@ -136,7 +136,34 @@ Set-Location frontend
 npm run dev
 ```
 
-Open `http://127.0.0.1:3000`. API docs are at `http://127.0.0.1:8000/docs`.
+Open `http://localhost:3000`. API docs are at `http://localhost:8000/docs`.
+Use `localhost` consistently in the browser and `NEXT_PUBLIC_API_URL`; mixing
+`localhost` with `127.0.0.1` prevents Strict session cookies from working.
+
+### Authenticated v1 configuration
+
+For the multi-user workflow, set `SOVEREIGN_AUTH_MODE=local` in the backend
+process. `disabled` is an explicit single-user development mode and provides no
+tenant isolation. Production mode already rejects disabled authentication.
+
+Set the same randomly generated secret of at least 32 characters as
+`SOVEREIGN_GRAPHRAG_SERVICE_TOKEN` in the backend process and
+`GRAPHRAG_SERVICE_TOKEN` in the GraphRAG process. Keep both server-side.
+Configure a separate `GRAPHRAG_ADMIN_TOKEN` only when an operator needs the
+legacy global graph ingestion, viewing or deletion APIs; they are disabled
+without it. Never expose either token through `NEXT_PUBLIC_*` or the GraphRAG
+browser client. Missing service credentials fail closed.
+
+Authenticated uploads now belong to the organization, primary workspace and
+user that uploaded them. Pass the returned `path` unchanged to OCR, vision,
+ingestion or task attachments. Re-upload legacy shared files through that
+user's authenticated session. The server does not guess ownership of old files
+or conversations. Legacy `/api/chat` now also requires ControlPlane availability
+and a successful governed release.
+
+The [18 October remediation report](docs/PAST_EXPERIMENTS.md#v1-security-and-integration-remediation--18-october-2026)
+records changed files, test results and release blockers. No final release or PR
+merge has been performed.
 
 For the multi-user APEL demonstration, seed explicitly before starting the backend:
 

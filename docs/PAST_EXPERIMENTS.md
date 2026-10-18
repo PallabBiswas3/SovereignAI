@@ -1,5 +1,131 @@
 # Past experiments and results
 
+## V1 security and integration remediation — 18 October 2026
+
+### Scope and preserved work
+
+Base: `480ee767933b91c55f01a3f9aa3ed71ce6380fac`.
+Tested implementation: `d2c7a05adfa16a2e26592bf36732509ba206aa66`.
+Branch/worktree: `security/v1-remediation`, `../SovereignAI_v1_security`.
+The final documentation commit is obtained with `git rev-parse HEAD` in that
+worktree. No PR merge, remote push, tag or release was created.
+
+SHA-256 comparison confirms all eleven original modified/untracked Time-Series
+and documentation files in `1_SIH` are unchanged. Security commits contain none
+of those pending edits. No diagnostic or ControlPlane source/policy was changed.
+
+### Verified findings, fixes and changed files
+
+| Severity / finding | Reproduction and impact | Files / minimal correction |
+|---|---|---|
+| High: approval/audit resource authorization | An org-B approver could read and reject org-A approval and read its audit | `backend/app/api/governance.py`: scope reads/decisions/audit parent before mutation; preserve requester/approver separation and tool-policy revalidation |
+| High: shared uploaded-file namespace | Different principals could list/reuse the same filename and consume foreign files | `api/files.py`, `ocr.py`, `vision.py`, `knowledge.py`, `demo.py`, `tasks.py`; `tools/file_tools.py`, `registry.py`; `workflows/inspection.py`: private principal namespace, unique upload directories, scoped resolution in all consumers/tools, authorization-bound cache key |
+| High: unauthenticated GraphRAG and forged scopes | Anonymous global graph reads/writes/deletion and wildcard retrieval scope reached privileged service-key access | `Graph-RAG/server/serviceAuth.ts`, `server.ts`, server `.env.example`; backend `integrations/clients.py`, `orchestrator.py`, `core/config.py`, root `.env.example`: backend bearer token, separate operator token, explicit bounded scopes and fingerprint consistency |
+| High: legacy chat governance bypass | Scanner-flagged injection reached a provider and raw output returned without ControlPlane | `api/chat.py`, `core/database.py`: existing scanners, precheck/release gate, fixed held response, scoped conversations and idempotent SQLite migration |
+| Related file-consumer gaps | Repeated artifact filenames reused bytes; identical ingestion could rewrite ACL metadata | `tools/application_tools.py`, `rag/ingestion.py`: unique artifact directories and exact existing-ACL match for authenticated duplicate ingestion |
+| Medium: session/stream/error states | Failed logout appeared successful, EventSource CONNECTING could wait indefinitely, denied asset/metrics responses appeared empty or stuck | `frontend/app/page.tsx`, `task-stream.ts`, `assets/page.tsx`, `metrics/page.tsx`: checked statuses, stream cleanup/revocation/disconnect handling, abort stale requests, suppress candidate text, visible accessible loading/errors |
+
+New sanitized negative/positive regressions are in
+`backend/tests/security/test_governance_scope.py`, `test_file_isolation.py`,
+`test_graphrag_service_auth.py`, `test_legacy_chat.py`,
+`test_output_and_ingest_isolation.py`; GraphRAG
+`server/security/serviceAuth.test.cjs`; frontend `tests/task-stream.test.cjs`.
+`local_testing/tests/test_phase1_foundation.py` now checks that unavailable
+ControlPlane holds chat rather than expecting an ungoverned 200 response.
+README and the three maintained documents record configuration and handoff.
+
+### Verification results
+
+| Check | Actual result |
+|---|---|
+| Approval/audit increment and existing authorization checks | 18 passed |
+| File-isolation increment, existing tool/approval checks | 41 passed; separate existing ACL/download checks: 11 passed |
+| GraphRAG credential hop | 4 backend tests passed; 3 Node tests passed, including real HTTP denial and scoped retrieval-handler dispatch with stubbed storage/model |
+| Legacy chat increment | 16 passed; full suite additionally covers legacy schema migration |
+| Artifact collisions and duplicate ingestion scope | 9 passed |
+| Full backend/integration suite | **434 passed, 1 skipped**, 110 warnings, 104.95 s |
+| Existing GraphRAG retrieval/verification/adapter suites | **8 test files passed**; synthetic Supabase endpoint, no live graph writes |
+| Frontend stream regressions | **4 passed** |
+| Frontend TypeScript / production build | `npm run typecheck` and `npm run build -- --webpack` passed; 7 application routes plus not-found generated |
+| GraphRAG TypeScript build | `npm run build --workspace=server` passed |
+| Broader ControlPlane suite, correct service cwd | **212 passed, 10 failed, 7 skipped**, 7.07 s |
+| ControlPlane original-checkout comparison (affected four files) | **32 passed, same 10 failed**, 3.32 s |
+| Diagnostic suite against original pending working tree | **239 passed**, 30.11 s; this includes excluded uncommitted diagnostic code |
+| Diagnostic suite against isolated committed code | **237 passed, 2 failed**, 32.24 s; version assertions expect pending process 3.3 / Wind 1.2 while committed source is 3.0 / 1.1 |
+
+The first broad runs had missing copied local evaluation/upload fixtures and a
+wrong ControlPlane working directory. Those setup errors were corrected before
+the results above. Local ignored fixtures were copied into the isolated worktree;
+the original test/source files were not rewritten. The legacy chat test was
+updated for the intentional fail-closed contract. No failing check was marked
+passed, skipped or xfailed to obtain these results.
+
+The ten remaining ControlPlane failures are pre-existing: three exhausted mocked
+clocks in `test_latency_budget_boundary.py`; one pre-profiling FakeNLI double in
+`test_local_nli_loading.py`; five `__new__` scorer fixtures missing profiling
+attributes in `test_nli_exact_batching.py`; and the `supported` versus
+`undecidable` assertion in the historical-evidence ablation in
+`test_pump102_factuality_regressions.py`. They reproduce against original source.
+Their resolution is a release gate, not grounds to relax safety policy.
+
+### Frontend/backend and live integration evidence
+
+Chrome used a separate synthetic browser context and an explicitly synthetic
+local HTTP fixture with the actual production frontend build. Verified: failed
+logout retains the signed-in state and shows HTTP 503; access_revoked returns to
+sign-in and clears sensitive state; unreleased token text is absent; evaluation
+403 shows an error and resets the run button; an asset subrequest 403 clears the
+previous asset rather than presenting empty-success data. The compact browser
+view had no horizontal document overflow. The fixture and its frontend process
+were stopped after testing. These are UI contract checks, not a live assessment.
+
+Backend/integration tests cover scoped downloads/capsule payloads, approval
+boundaries, auth/CSRF, contradictory/unanswerable evidence, required-service
+outages, diagnostics contracts and release/hold behavior. Existing GraphRAG
+checks confirm retrieval/revision/verification behavior remains intact.
+
+Final TCP availability probe: backend 8000, frontend 3000, GraphRAG 3100,
+ControlPlane 8100, diagnostics 8200 and vLLM 8001 were unreachable; only Ollama
+11434 was reachable. Therefore no fresh all-service Pump-102 response, citations,
+model latency, artifact or capsule identifiers can be reported from this session.
+Historical latency/accuracy results elsewhere in this document are not new
+measurements or guarantees for this branch.
+
+Raw JUnit evidence remains local in `.workspace/v1-regression.xml`,
+`v1-controlplane-correct-cwd.xml`, `v1-controlplane-original-comparison.xml`,
+`v1-diagnostics.xml` and `v1-diagnostics-isolated.xml`.
+
+### Reproduction and verdict
+
+From the isolated worktree, with existing dependencies installed:
+
+```powershell
+$env:PYTHONPATH = 'backend;Controlplane.ai/src;Time-Series-Diagnostic-Agent/src'
+python -m pytest backend/tests/security -q
+Set-Location Graph-RAG
+npm run build --workspace=server
+node --test server/security/serviceAuth.test.cjs
+Set-Location ../frontend
+npm run typecheck
+node --test tests/task-stream.test.cjs
+npm run build -- --webpack
+```
+
+The broader historical suites require the local ignored test helpers/fixtures.
+Run ControlPlane tests from `Controlplane.ai` so `configs/policies` resolves
+correctly. For a fresh live demonstration use README's authenticated service-token
+configuration and NEXT_PLAN's ordered acceptance steps; no seeded or generated
+data should be assumed present on a clean checkout.
+
+**Final research-release readiness: BLOCKED.** The four verified high-severity
+issues and scoped file-consumer gaps are remediated and focused regressions pass.
+The remaining blockers are existing broader-test failures/version alignment and
+an unavailable fresh all-service workflow. Default development authentication,
+operator credentials, legacy data migration, globally unique document checksums
+and internal transport assumptions remain explicit deployment limitations.
+This work does not establish production security accreditation or a new accuracy
+score. Merge and release require the user's explicit approval after acceptance.
+
 Last consolidated: 1 October 2026
 
 This file keeps the project history and measured outcomes in one place. Results are local engineering evidence, usually from synthetic or small fixtures; they are not production accuracy, safety, or performance claims.

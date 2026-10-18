@@ -1,5 +1,56 @@
 # Current features
 
+## V1 security remediation (18 October 2026)
+
+Implemented on `security/v1-remediation` in the isolated
+`SovereignAI_v1_security` worktree. Original Time-Series and documentation edits
+remain in `1_SIH`, byte-for-byte unchanged; they are not in these commits.
+
+- Approval reads, decisions and audit access require an authorized scoped
+  parent. Orphan/unscoped legacy resources are denied in authenticated mode.
+- Raw file access uses an organization/workspace/user namespace throughout
+  upload/list, OCR, vision, ingestion, demo/task attachment resolution and agent
+  file/Python tools. Upload and generated-artifact names cannot overwrite an
+  existing file. Inspection caches include effective authorization identity.
+- Authenticated duplicate ingestion cannot adopt an unscoped legacy document
+  or change its existing owner, classification or ACL metadata.
+- GraphRAG retrieval accepts only an authenticated backend service hop and a
+  bounded explicit principal scope with a matching fingerprint. Global graph
+  operations require a separate operator credential. Retrieval ranking,
+  revision selection and verification logic are unchanged.
+- Legacy chat applies existing PII/injection policy and ControlPlane precheck
+  and release. Only released `final_response` text is returned and persisted;
+  held candidates are replaced with a fixed notice. Conversations require
+  matching organization, owner and workspace. SQLite adds nullable scope columns
+  without assigning guessed ownership to legacy rows.
+- The workbench closes streams and aborts pending requests on logout/unmount,
+  handles access revocation and malformed/disconnected streams, hides candidate
+  tokens, and checks cancellation/logout errors. Metrics recover from denied
+  or failed requests; assets clear stale details and cancel obsolete requests.
+
+Configuration and compatibility boundaries:
+
+- These tenant controls require `SOVEREIGN_AUTH_MODE=local`. Disabled mode is
+  retained for explicit single-user development only.
+- Set matching backend/GraphRAG service tokens as described in README. They
+  authenticate a trusted backend; a scope fingerprint is not a secret or an
+  independent authentication credential. Use a protected internal network and
+  transport security when services are separated across machines.
+- Legacy global GraphRAG browser operations no longer work anonymously. The
+  host's authenticated, scoped integration route is the supported user boundary.
+- Old shared uploads/conversations and orphan audit events require explicit
+  migration or re-upload. File access currently uses the primary workspace.
+- Knowledge content hashes remain globally unique. The same bytes cannot be
+  independently indexed with another scope; requests fail closed. Changing that
+  storage model is deferred rather than folded into this remediation.
+- The ControlPlane 2,000 ms release deadline and existing claim/evidence policy
+  remain unchanged. Passing software tests does not establish model accuracy.
+
+**Release verdict: blocked.** The backend/integration suite passes, but a fresh
+all-service Pump-102 run is unavailable. Broader ControlPlane tests retain ten
+failures reproduced on the original checkout. Two diagnostic version assertions
+expect the user's excluded uncommitted changes. See PAST_EXPERIMENTS for evidence.
+
 ## Versioned diagnostic forms (10 October 2026)
 
 `/integrations` now derives seven task-specific forms from the authoritative
