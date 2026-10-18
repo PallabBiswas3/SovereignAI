@@ -173,3 +173,233 @@ checks passed; TypeScript and production build passed. The active synthetic
 Pump-102 probe was migrated. Tests/raw reports remain ignored under
 `local_testing/`; details: `experiments/results/diagnostic_input_contract_20261010.md`
 inside that directory. No training or fresh all-service/browser run was performed.
+
+## ControlPlane CPU verification study — 17–18 October 2026
+
+This study used an offline cached `cross-encoder/nli-deberta-v3-small` model on
+Windows 11, Intel Family 6 Model 154 (10 physical/12 logical processors), 15.7 GiB
+RAM, PyTorch 2.1.2 CPU and Transformers 4.41.2. A detached worktree at
+`67dd76e` supplied the unchanged baseline. Forty fixed synthetic workloads
+crossed 1/3/5/10/20 claims with short/long, shared/independent, and
+supporting/conflicting evidence; each ran twice in randomized workload order.
+The model was preloaded before timed checker calls. Baseline and candidate
+were initially run in separate blocks; the balanced confirmation below is the
+stronger timing comparison. The fixture contains no
+industrial documents. Its expected labels are diagnostic proxies, not
+adjudicated ground truth or production safety evidence.
+
+| Initial 17 October sweep | Baseline | Candidate before final coverage guards |
+|---|---:|---:|
+| Checker p50 / p95 over 80 runs | 495 / 11,570 ms | 239 / 2,945 ms |
+| Five-claim, long independent support p50 | 2,531 ms | 1,837 ms |
+| Five-claim, long shared support p50 | 684 ms | 204 ms |
+| Requested / actually inferred NLI pairs | 1,176 / 632 | 1,176 / 632 |
+| Synthetic conflicting-case releases (40 runs) | 11 | 0 |
+| Synthetic supported-case holds (40 runs) | 20 | 16 |
+| Claim abstention fraction | 0% | 16.3% |
+| Synthetic case outcome proxy | 60% | 60% |
+
+p99 is omitted because there are fewer than 100 runs. Two repeats per case do
+not establish stable tail latency; the broad p95 also mixes very different
+workloads. Some nominally supported independent-source cases were held because
+similar passages for other assets received conflicting NLI verdicts. The five
+long independent claims completed under 2 seconds in the final candidate but
+were held on factuality. No claim of consistently releasing valid five-claim
+answers follows from these timings.
+
+The root cause is visible in per-stage profiles. In two five-claim long
+independent-support runs, Phase 5 fell from 459/517 ms to 6/9 ms after removing
+unused repeated full-context numeric and date extraction. NLI still took
+1,618/1,996 ms in the final runs, of which model forwards took 1,615/1,992 ms;
+tokenization and retrieval were small. Five already-supported claims were still
+rechecked, with 15 requested and 15 inferred NLI pairs in that case. Across the
+full final workload, the model performed 96 forward passes on 72,680 padded
+tokens; peak observed process RSS was about 1.32 GiB. These counts are now
+recorded per run with model, runtime, device, thread count, batch shape, memory,
+claim outcomes and final action. Top-level wall times and nested inclusive
+times are labeled separately; they must not be summed together.
+
+Request-scoped retrieval reuse now tokenizes each structured passage once and
+reuses a selection only for an identical claim query over the same source bundle.
+Legacy deterministic seed evidence stays claim-specific. Evidence-quality
+ranking likewise reuses text tokens and computes each rank once. Exact NLI pair
+deduplication and length-aware batching were already present. No source text,
+authority result, NLI score or citation is cached across requests. Because
+Phase 5's numeric/date support is based on value and anchor overlap, it was
+not substituted for the semantic recheck of structured evidence.
+
+Changed implementation files under `Controlplane.ai/src/`:
+
+| File | Change |
+|---|---|
+| `adaptivefact/verification/deterministic.py` | Remove unused whole-context parsing; preserve sentence-level checks. |
+| `adaptivefact/verification/nli.py` | Profile existing exact-pair, length-aware model computation; redact local model paths. |
+| `adaptivefact/verification/phase6.py` | Reuse structured tokens/selections per record; expose retrieval and coverage counts; hold omitted relevant evidence. |
+| `controlplane/verification.py` | Aggregate request-local profiles; preserve semantic coverage, citation, asset and conflict holds across support helpers. |
+| `controlplane/evidence_quality.py` | Prepare tokens once and compute each selection rank once. |
+| `controlplane/checker.py`, `schema.py`, `detectors/hallucination.py` | Add sanitized response profiling and stage/risk timers. |
+
+The unchanged-model 40-case NLI comparison had maximum probability delta zero.
+The eight deterministic baseline-parity cases compare all claim fields except
+elapsed time, including wrong asset, range, negation, date and multi-clause
+inputs. Parity preserves baseline behavior; it does not make Phase 5 alone a
+sufficient factuality gate.
+
+The first timing-only candidate was rejected: unchanged factual states plus
+faster execution exposed an additional conflicting-case release previously
+held by the deadline. The baseline's top-three structured retrieval could omit a distinct relevant
+conflicting passage and still release the claim. The final candidate marks
+otherwise supported claims undecidable when relevant distinct passages remain
+unexamined, including for optional support scoring. This preserves the
+consequential hold path. It increases abstention and still does not solve
+semantic retrieval misses below the relevance filter. The benchmark's reduction
+from 11 to 0 conflicting-case releases is a synthetic regression result, not a
+general unsafe-release estimate. The final implementation also abstains for
+structured claims beyond the standard eight/deep twenty claim limit, explicit
+citations absent from the supplied source IDs, and support witnessed only by a
+different explicitly named asset. Numeric support helpers cannot clear the
+semantic coverage hold. These are conservative guards, not new meanings for
+the claim states. They can increase unnecessary holds. They do not constitute
+a complete semantic asset resolver or prove complete evidence retrieval.
+
+GraphRAG verifies source-linked claims against retrieved chunks before answer
+synthesis. ControlPlane verifies atomic claims extracted from the generated
+answer afterward; the claims have different obligations. A future boundary
+contract may reuse authorized evidence IDs, revision and citation metadata,
+while retaining ControlPlane's own answer-claim and policy checks.
+
+This is a systems optimization, not a demonstrated new verification algorithm.
+Atomic factual evaluation, claim evidence retrieval, adaptive routing and
+alignment scoring are established in [FActScore](https://aclanthology.org/2023.emnlp-main.741/),
+[FEVER](https://aclanthology.org/W18-5501/),
+[Adaptive-RAG](https://aclanthology.org/2024.naacl-long.389/), and
+[AlignScore](https://aclanthology.org/2023.acl-long.634/). The proposed
+dependency-aware scheduler was not implemented because these measurements do
+not establish a safe way to suppress evidence checks. Source-faithful span
+shortening also remains experimental: losing negation, revision, units or
+operating conditions could change the verdict. ONNX Runtime is installed, but
+the ONNX model export package was absent, so ONNX latency is unmeasured.
+The scorer retains its existing 512-token truncation; no new premise shortening
+or dependency scheduling is enabled. Truncation itself remains a limitation for
+long documents with distant qualifications.
+
+The literature also includes independent sampling in
+[SelfCheckGPT](https://arxiv.org/abs/2303.08896), search-based atomic checking in
+[SAFE](https://arxiv.org/abs/2403.18802), and verification questions in
+[Chain-of-Verification](https://arxiv.org/abs/2309.11495). These establish adjacent
+verification/reuse strategies, but do not establish an ACL/revision-aware
+release guarantee for this pipeline. The request-scoped reuse, batching and
+profiling here are established engineering techniques. Latency-bounded
+dependency scheduling needs a reviewed benchmark and a coverage argument before
+it is a research contribution. Alternative runtime work should follow the
+[ONNX Runtime transformer optimization](https://onnxruntime.ai/docs/performance/transformers-optimization.html)
+and [quantization accuracy guidance](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html).
+
+### Balanced confirmation and rejected inference variants — 18 October
+
+Fresh processes ran in baseline/candidate/candidate/baseline order, each with
+two warm repetitions of three fixed five-claim workloads. This was repeated
+with zero and two local arithmetic worker processes. Each table entry has four
+warm samples; p99 is unmeasured. Shared fixtures deliberately repeat one
+proposition, exposing exact-pair reuse, rather than five distinct propositions.
+
+| Workload p50, ms | Baseline idle | Candidate idle | Baseline 2 workers | Candidate 2 workers |
+|---|---:|---:|---:|---:|
+| Long independent support | 3,895 | 2,691 | 5,049 | 2,860 |
+| Long shared support | 1,233 | 390 | 2,098 | 494 |
+| Long shared conflicts | 2,205 | 523 | 3,588 | 525 |
+
+Per condition and implementation, 180 NLI comparisons were requested and 68
+were actually inferred. Candidate forward passes/padded tokens were 12/13,940.
+No new conflicting-case release occurred. All independent-support cases still
+held; the two-second target is not consistently achieved. Fresh-process first
+checker calls (cached weights, OS caches not cleared) took 6.7–12.7 s baseline
+and 6.3–11.1 s candidate while idle, and 15.2–15.9/12.8–14.1 s under contention;
+all held. Preloading/readiness remains necessary. These are a small local
+confirmation with substantial variance, not production p95/p99 estimates.
+
+Six fixed five-claim NLI cases ran five repetitions per setting. Default ten
+threads/batch sixteen was faster in this sweep than four threads/batch sixteen
+or ten threads/batch four. For long independent support their p50s were
+380/651/793 ms respectively. Four-thread scores were identical; batch-four
+maximum score difference was 1.2e-7, with no 0.72 threshold crossings. The
+configuration runs were sequential rather than balanced, so these are tuning
+observations, not a general hardware optimum. Production defaults are unchanged.
+
+Experimental PyTorch dynamic INT8 Linear quantization reduced one measured long
+independent-support call from 927 to 585 ms, but over 30 pairs changed nine class
+labels and crossed entailment/contradiction thresholds on eleven pairs; maximum
+score change was 0.867. It was rejected before release-action validation and is
+available only as an offline experiment. It is not a deployable speedup.
+
+Twelve real-model adversarial cases used identical input hashes across baseline
+and candidate. Baseline released two invalid cases (wrong asset and fabricated
+citation); candidate released neither. Supported/contradicted/missing/conflicting,
+superseded revision, wrong range, negation, multi-clause and retrieved instruction
+cases otherwise preserved expected states/holds. Unauthorized perfect-match
+evidence is covered by the backend retrieval ACL suite, because ControlPlane's
+input contract accepts evidence already authorized by its caller. NLI failure,
+deadline expiration, source changes and support-helper coverage are focused
+regressions. These tests do not prove universal factual correctness.
+
+One accessible fixed five-claim Pump-102 review trace was replayed locally,
+without generation or external services: baseline 2,054 ms/review, candidate
+1,786 ms/allow, all five claims supported and NLI score delta exactly zero.
+The changed action follows the unchanged 2,000-ms deadline. This single replay
+has no independent adjudication and is not a live plant or end-to-end result.
+
+After all coverage/citation/asset guards, the full 40-case matrix was rerun twice
+on 18 October. Compared with the original 80 baseline runs, pooled p50/p95 were
+495/11,570 ms versus 556/5,406 ms. Median latency did not improve in this later
+unbalanced comparison; mean fell from 2,300 to 1,187 ms. Environmental variance
+is why the balanced confirmation and stage measurements matter more than a
+single pooled speedup. Requested/inferred NLI pairs remained 1,176/632, with
+96 candidate forwards, 72,680 padded tokens, aggregate inference throughput
+7.21 pairs/s and peak sampled RSS 1.19 GiB (baseline equivalents uninstrumented).
+The model snapshot was `fa2804872c3b4bd748f38c0185cc85775361e735`.
+
+Final conflicting-case releases were 0/40 versus 11/40 baseline, while nominally
+supported-case holds increased to 24/40 versus 20/40. Claim abstention rose to
+52.2%; synthetic claim outcome accuracy fell from 52.6% to 33.7%, and case
+outcome accuracy from 60% to 50%. These fixture-label proxies count safe
+abstentions as incorrect; they are not adjudicated industrial accuracy. The
+larger hold count is a material cost of closing the claim/top-k coverage gaps,
+particularly for 10/20-claim inputs. There were no new conflicting-case releases.
+Zero observed unsafe releases on this sample does not prove universal safety.
+
+Per-run and aggregate JSON are
+`local_testing/experiments/results/controlplane_validated_20261018.json` and
+`controlplane_final_comparison_20261018.json`; balanced raw runs and their summary
+are in `controlplane_paired_20261018/`. The adversarial/Pump replay reports are
+`verification_adversarial_{baseline,candidate}_20261018.json`. All are local and
+Git-ignored. Baseline forward/token/memory/throughput fields remain null rather
+than estimated. Each condition includes fewer than 100 samples, so p99 is null.
+
+Reproduce from the repository root with the cached model and local dependencies:
+
+```powershell
+git worktree add ../.baseline_sovereign 67dd76e
+python Controlplane.ai/tools/benchmark_controlplane.py --source ../.baseline_sovereign/Controlplane.ai --repetitions 2 --output local_testing/experiments/results/controlplane_baseline.json
+python Controlplane.ai/tools/benchmark_controlplane.py --source Controlplane.ai --repetitions 2 --output local_testing/experiments/results/controlplane_candidate.json
+python Controlplane.ai/tools/compare_controlplane_runs.py local_testing/experiments/results/controlplane_baseline.json local_testing/experiments/results/controlplane_candidate.json --output local_testing/experiments/results/controlplane_comparison.json
+python Controlplane.ai/tools/benchmark_nli_cpu.py --repetitions 2 --output local_testing/experiments/results/nli_cpu.json
+python Controlplane.ai/tools/benchmark_paired.py --baseline ../.baseline_sovereign/Controlplane.ai --output-dir local_testing/experiments/results/controlplane_paired
+python Controlplane.ai/tools/benchmark_nli_cpu.py --repetitions 5 --cpu-threads 4 --batch-size 16 --case 5_long_independent_supported --output local_testing/experiments/results/nli_threads4.json
+python Controlplane.ai/tools/compare_nli_int8.py --cpu-threads 10 --output local_testing/experiments/results/nli_int8.json
+python Controlplane.ai/tools/evaluate_verification.py --source Controlplane.ai --output local_testing/experiments/results/adversarial_candidate.json
+$env:CONTROLPLANE_BASELINE_SOURCE='../.baseline_sovereign/Controlplane.ai'
+$env:PYTHONPATH='Controlplane.ai/src'
+python -m pytest Controlplane.ai/tests/test_verification_profiling.py -q
+$env:PYTHONPATH='.workspace/test_deps;Controlplane.ai/src;Time-Series-Diagnostic-Agent/src;backend;local_testing'
+python -m pytest local_testing/tests -q
+```
+
+All raw timing JSON remains Git-ignored in `local_testing/experiments/results/`.
+The final focused suite passed 27 regressions with the cached model and unchanged
+baseline source. The complete backend suite passed 367 tests with one skip;
+the combined run before the final conflict-preservation regression was
+393 passed/one skipped. `pint==0.25.3` was installed into `.workspace/test_deps`
+(no global installation). The final focused rerun took 11.29 s and the combined
+run 135.76 s. An older separate ControlPlane test checkout is not the test
+source for this repository and contains absent local data/config fixtures;
+its results are not used as a release gate.

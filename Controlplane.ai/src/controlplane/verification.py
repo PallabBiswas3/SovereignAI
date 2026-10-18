@@ -17,7 +17,7 @@ from adaptivefact.extraction.claim_extractor import ClaimExtractionConfig
 from adaptivefact.pipeline.aggregation import aggregate_claims
 from adaptivefact.verification.deterministic import DeterministicVerifierConfig
 from adaptivefact.verification.evidence import EvidenceRetrieverConfig
-from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer
+from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer, profile_model_identity
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
 from controlplane.detectors.privacy import mask_privacy_values
@@ -32,6 +32,7 @@ from controlplane.support_scorers import AlignScoreSupportScorer, MiniCheckSuppo
 
 
 _SOURCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
+_ASSET_ID = re.compile(r"\b[A-Za-z]+-\d+\b", re.IGNORECASE)
 
 
 class VerificationService(Protocol):
@@ -41,6 +42,7 @@ class VerificationService(Protocol):
 class LazyTransformersNLIScorer(NLIScorer):
     def __init__(self, model_name: str, *, device: str | None = None, local_files_only: bool = True, batch_size: int = 16) -> None:
         self.model_name = model_name
+        self.profile_model = profile_model_identity(model_name)
         self.device = device
         self.local_files_only = local_files_only
         if not 1 <= batch_size <= 64:
@@ -48,11 +50,15 @@ class LazyTransformersNLIScorer(NLIScorer):
         self.batch_size = batch_size
         self._delegate: TransformersNLIScorer | None = None
         self._request_scores: ContextVar[dict | None] = ContextVar("nli_request_scores", default=None)
+        self._last_profile: ContextVar[dict] = ContextVar("nli_last_profile", default={})
 
     @contextmanager
     def request_scope(self):
         """Reuse identical NLI computations only within this verification call."""
-        state = {"scores": {}, "requested_pairs": 0, "inferred_pairs": 0, "calls": 0}
+        state = {"scores": {}, "requested_pairs": 0, "inferred_pairs": 0, "calls": 0,
+                 "forward_passes": 0, "tokens_processed": 0, "tokenization_ms": 0.0,
+                 "padding_ms": 0.0, "forward_ms": 0.0, "inference_total_ms": 0.0,
+                 "batch_sizes": [], "padded_lengths": []}
         token = self._request_scores.set(state)
         try:
             yield state
@@ -64,6 +70,9 @@ class LazyTransformersNLIScorer(NLIScorer):
         # files can exist in the cache while the runtime still cannot use them.
         self.score(["The pump is operating."], ["The pump is operating."])
 
+    def last_call_profile(self) -> dict:
+        return dict(self._last_profile.get())
+
     def score(self, premises: list[str], hypotheses: list[str]):
         if len(premises) != len(hypotheses):
             raise ValueError("premises and hypotheses must have the same length")
@@ -74,18 +83,30 @@ class LazyTransformersNLIScorer(NLIScorer):
             )
         state = self._request_scores.get()
         if state is None:
-            return self._delegate.score(premises, hypotheses)
+            scores, profile = self._delegate.score_profiled(premises, hypotheses)
+            self._last_profile.set(profile)
+            return scores
         pairs = list(zip(premises, hypotheses))
         cache = state["scores"]
         missing = [pair for pair in dict.fromkeys(pairs) if pair not in cache]
         state["requested_pairs"] += len(pairs)
+        profile = {"requested_pairs": len(pairs), "unique_pairs": len(missing),
+                   "forward_passes": 0, "batch_sizes": [], "padded_lengths": [],
+                   "tokens_processed": 0, "tokenization_ms": 0.0, "padding_ms": 0.0,
+                   "forward_ms": 0.0}
         if missing:
-            scores = self._delegate.score([p for p, _ in missing], [h for _, h in missing])
+            scores, profile = self._delegate.score_profiled([p for p, _ in missing], [h for _, h in missing])
             if len(scores) != len(missing):
                 raise RuntimeError("NLI returned an incomplete score batch")
             cache.update(zip(missing, scores))
             state["inferred_pairs"] += len(missing)
             state["calls"] += 1
+            for key in ("forward_passes", "tokens_processed", "tokenization_ms", "padding_ms", "forward_ms"):
+                state[key] += profile[key]
+            state["inference_total_ms"] += profile["total_ms"]
+            state["batch_sizes"].extend(profile["batch_sizes"])
+            state["padded_lengths"].extend(profile["padded_lengths"])
+        self._last_profile.set(profile)
         return [type(cache[pair])(**vars(cache[pair])) for pair in pairs]
 
 
@@ -145,9 +166,21 @@ class AdaptiveFactVerificationService:
             with scorer.request_scope() as computation:
                 result = self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
                 result.metadata["nli_computation"] = {
-                    key: computation[key] for key in ("requested_pairs", "inferred_pairs", "calls")
+                    key: computation[key] for key in ("requested_pairs", "inferred_pairs", "calls",
+                                                       "forward_passes", "tokens_processed", "tokenization_ms",
+                                                       "padding_ms", "forward_ms", "batch_sizes", "padded_lengths")
                 }
                 result.metadata["nli_computation"]["reused_pairs"] = computation["requested_pairs"] - computation["inferred_pairs"]
+                result.metadata["nli_computation"]["inference_total_ms"] = computation["inference_total_ms"]
+                result.metadata["nli_computation"]["throughput_pairs_per_second"] = (
+                    1000.0 * computation["inferred_pairs"] / computation["inference_total_ms"]
+                    if computation["inference_total_ms"] else None
+                )
+                result.metadata["nli_computation"].update({"model": scorer.profile_model,
+                                                           "model_revision": getattr(scorer._delegate.model.config, "_commit_hash", None) if scorer._delegate else None,
+                                                           "device": str(scorer._delegate.device) if scorer._delegate else None,
+                                                           "runtime": f"torch {scorer._delegate.torch.__version__}" if scorer._delegate else None,
+                                                           "cpu_threads": scorer._delegate.torch.get_num_threads() if scorer._delegate else None})
                 return result
         return self._verify(interaction, depth, prepared, evidence_authority_enabled=evidence_authority_enabled)
 
@@ -166,6 +199,7 @@ class AdaptiveFactVerificationService:
             phase5_reused = True
 
         phase6_runtime: dict = {}
+        coverage_guards: dict[str, str] = {}
         agent_runtime = {"claims": 0, "search_calls": 0, "nli_pairs": 0, "cost": 0.0, "latency_ms": 0.0}
 
         if depth in {VerificationDepth.STANDARD, VerificationDepth.DEEP}:
@@ -189,6 +223,23 @@ class AdaptiveFactVerificationService:
                 claim_ids={claim.id for claim in selected},
                 recheck_supported=recheck_supported,
             )
+            # The claim limit bounds computation, not the evidence obligation.
+            # An earlier lexical/numeric match cannot stand in for an omitted
+            # structured-source contradiction check.
+            omitted = eligible[max(0, limit):] if recheck_supported else []
+            for claim in omitted:
+                claim.status = VerificationStatus.UNKNOWN
+                claim.verifier_used = "phase6_claim_limit"
+                claim.verification_metadata["support_guard_reason"] = "structured_claim_not_examined"
+            phase6_runtime["claim_limit_abstentions"] = len(omitted)
+            coverage_guards = {
+                claim.id: claim.verification_metadata["support_guard_reason"]
+                for claim in record.atomic_claims
+                if claim.verification_metadata.get("support_guard_reason") in {
+                    "structured_claim_not_examined", "structured_evidence_not_examined",
+                    "unexamined_relevant_structured_evidence",
+                }
+            }
 
         if depth == VerificationDepth.DEEP:
             if self.agent is None:
@@ -215,6 +266,26 @@ class AdaptiveFactVerificationService:
         range_facts_supported = apply_cited_range_facts(interaction, record.atomic_claims)
         review_events_supported = apply_cited_review_events(interaction, record.atomic_claims)
         compound_ms = (perf_counter() - compound_started) * 1000.0
+        source_ids = {
+            identifier for item in interaction.grounding_evidence
+            for identifier in (item.evidence_id, item.document_id, item.chunk_id) if identifier
+        }
+        for claim in record.atomic_claims:
+            if interaction.grounding_evidence and set(_SOURCE_CITATION.findall(claim.verification_text)) - source_ids:
+                coverage_guards[claim.id] = "citation_not_in_supplied_evidence"
+            if claim.status == VerificationStatus.SUPPORTED and claim.evidence:
+                assets = {value.casefold() for value in _ASSET_ID.findall(_SOURCE_CITATION.sub("", claim.verification_text))}
+                source_assets = [{value.casefold() for value in _ASSET_ID.findall(text)} for text in claim.evidence]
+                if assets and all(named and assets.isdisjoint(named) for named in source_assets):
+                    coverage_guards[claim.id] = "support_names_different_asset"
+        # Narrow support helpers may resolve a numeric relation, but cannot
+        # discharge a source/claim coverage obligation or clear its hold.
+        for claim in record.atomic_claims:
+            if claim.id in coverage_guards and claim.status not in {
+                VerificationStatus.CONTRADICTED, VerificationStatus.CONFLICTING,
+            }:
+                claim.status = VerificationStatus.UNKNOWN
+                claim.verification_metadata["support_guard_reason"] = coverage_guards[claim.id]
 
         # Reuse the entailment already computed by phase 6 for auditability.
         # This is a signal, not a calibrated support probability or release
@@ -226,11 +297,16 @@ class AdaptiveFactVerificationService:
                 claim.verification_metadata["support_score_basis"] = "phase6_nli_entailment_signal"
 
         support_started = perf_counter()
-        assessments = {claim.id: self.evidence_gate.assess(interaction, claim) for claim in record.atomic_claims}
+        quality_started = perf_counter()
+        prepared_evidence_tokens = [set(self.evidence_gate._tokens(item.text)) for item in interaction.grounding_evidence]
+        assessments = {claim.id: self.evidence_gate.assess(interaction, claim, prepared_tokens=prepared_evidence_tokens)
+                       for claim in record.atomic_claims}
+        quality_ms = (perf_counter() - quality_started) * 1000.0
         support_runtime = self._finalize_claim_states(
             record.atomic_claims, assessments, depth=depth, interaction=interaction,
         )
         support_runtime["latency_ms"] = (perf_counter() - support_started) * 1000.0
+        support_runtime["evidence_quality_ms"] = quality_ms
         support_runtime["deterministic_compound_supported"] = compound_supported
         support_runtime["exact_cited_range_facts"] = range_facts_supported
         support_runtime["exact_cited_review_events"] = review_events_supported
@@ -259,6 +335,8 @@ class AdaptiveFactVerificationService:
                     "agent": agent_runtime["latency_ms"],
                     "compound": compound_ms,
                     "support": support_runtime["latency_ms"],
+                    "evidence_quality": quality_ms,
+                    "support_scorer": support_runtime["scorer_ms"],
                     "authority": authority_ms,
                 },
                 "phase6": phase6_runtime,
@@ -310,13 +388,15 @@ class AdaptiveFactVerificationService:
 
         for claim in claims:
             assessment = assessments[claim.id]
-            if claim.verification_metadata.get("support_guard_reason"):
+            if claim.verification_metadata.get("support_guard_reason") and claim.status not in {
+                VerificationStatus.CONTRADICTED, VerificationStatus.CONFLICTING,
+            }:
                 self._mark_undecidable(claim, assessment, claim.verifier_used or "support_guard")
                 continue
             if claim.status in {VerificationStatus.SUPPORTED, VerificationStatus.CONTRADICTED}:
                 continue
             method = claim.verifier_used or ""
-            if method == "nli_conflicting_evidence" or method == "agent:conflicting_evidence":
+            if claim.status == VerificationStatus.CONFLICTING or method in {"nli_conflicting_evidence", "agent:conflicting_evidence"}:
                 claim.status = VerificationStatus.CONFLICTING
                 claim.verifier_used = f"{method}:v3"
                 claim.verification_metadata["evidence_quality"] = assessment.quality
@@ -350,8 +430,11 @@ class AdaptiveFactVerificationService:
             self._mark_undecidable(claim, assessment, method or "phase5_unresolved")
 
         scores: list[float] = []
+        scorer_ms = 0.0
         if batch_claims:
+            scorer_started = perf_counter()
             scores = [float(value) for value in self.support_scorer.score(batch_documents, batch_texts)]  # type: ignore[union-attr]
+            scorer_ms = (perf_counter() - scorer_started) * 1000.0
             if len(scores) != len(batch_claims):
                 raise RuntimeError("support scorer returned a different number of scores than requested claims")
             for claim, score, source_ids, can_promote in zip(batch_claims, scores, batch_ids, batch_can_promote):
@@ -380,6 +463,7 @@ class AdaptiveFactVerificationService:
             "claims": len(batch_claims),
             "calls": 1 if batch_claims else 0,
             "scores": scores,
+            "scorer_ms": scorer_ms,
         }
 
     @staticmethod

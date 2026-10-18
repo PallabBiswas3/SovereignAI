@@ -85,6 +85,7 @@ class ControlPlane:
 
     def check(self, interaction: Interaction, profile: PolicyProfile | None = None) -> CheckReport:
         started = perf_counter()
+        stage_ms: dict[str, float] = {}
         inferred_action = infer_consequential_action(interaction.prompt, interaction.response)
         inferred_work_record = infer_consequential_work_record(interaction.response)
         if not interaction.consequential and (inferred_action or inferred_work_record):
@@ -94,22 +95,27 @@ class ControlPlane:
                     "physical_action_instruction" if inferred_action else "physical_work_record"
                 )},
             })
+        stage_started = perf_counter()
         profile = profile or self.policy_repository.load(interaction.profile)
+        stage_ms["policy_load"] = (perf_counter() - stage_started) * 1000.0
         enabled = {name: detector for name, detector in self.detectors.items() if name in profile.checks and profile.checks[name].enabled}
         results: dict[str, DetectorResult] = {}
         prepared_factuality: PreparedFactuality | None = None
 
         hallucination_detector = enabled.get("hallucination")
         if isinstance(hallucination_detector, HallucinationDetector) and interaction.response.strip():
+            stage_started = perf_counter()
             try:
                 settings = profile.checks["hallucination"].settings
                 prepared_factuality = hallucination_detector.prepare(interaction, settings)
                 results["hallucination"] = hallucination_detector.detect_prepared(interaction, settings, prepared_factuality)
             except Exception as exc:
                 results["hallucination"] = DetectorResult(detector="hallucination", error=f"{type(exc).__name__}: {exc}")
+            stage_ms["hallucination_inclusive"] = (perf_counter() - stage_started) * 1000.0
 
         parallel_enabled = {name: detector for name, detector in enabled.items() if name != "hallucination" or name not in results}
         if parallel_enabled:
+            stage_started = perf_counter()
             with ThreadPoolExecutor(max_workers=len(parallel_enabled), thread_name_prefix="controlplane") as executor:
                 futures = {executor.submit(detector.run, interaction, profile.checks[name].settings): name for name, detector in parallel_enabled.items()}
                 for future in as_completed(futures):
@@ -118,10 +124,12 @@ class ControlPlane:
                         results[name] = future.result()
                     except Exception as exc:
                         results[name] = DetectorResult(detector=name, error=f"{type(exc).__name__}: {exc}")
+            stage_ms["parallel_detectors_wall"] = (perf_counter() - stage_started) * 1000.0
 
         ordered_results = [results[name] for name in enabled]
         depth = self._hallucination_depth(profile, interaction, results.get("hallucination"))
         if interaction.response.strip():
+            stage_started = perf_counter()
             if self.verification_service is not None:
                 try:
                     verify_parameters = signature(self.verification_service.verify).parameters
@@ -143,6 +151,7 @@ class ControlPlane:
                         },
                     )
                 )
+            stage_ms["adaptive_verification_inclusive"] = (perf_counter() - stage_started) * 1000.0
 
         findings = [finding for result in ordered_results for finding in result.findings]
         if inferred_action:
@@ -176,9 +185,43 @@ class ControlPlane:
 
         elapsed_before_policy = (perf_counter() - started) * 1000.0
         budget_exceeded = elapsed_before_policy > profile.latency_budget_ms
+        stage_started = perf_counter()
         decision = self.policy_engine.decide(interaction, findings, profile, latency_budget_exceeded=budget_exceeded, verification_depth=depth)
+        stage_ms["policy_evaluation"] = (perf_counter() - stage_started) * 1000.0
+        stage_started = perf_counter()
         final_response = transform_response(interaction.response, decision.action, findings, profile)
-        report = CheckReport(interaction_id=interaction.id, policy_id=profile.id, policy_version=profile.version, original_response=interaction.response, final_response=final_response, decision=decision, findings=findings, detector_results=ordered_results, total_latency_ms=(perf_counter() - started) * 1000.0)
+        stage_ms["response_transform"] = (perf_counter() - stage_started) * 1000.0
+        verification = next((result for result in ordered_results if result.detector == "adaptivefact"), None)
+        hallucination = results.get("hallucination")
+        nli = verification.metadata.get("nli_computation", {}) if verification else {}
+        phase6 = verification.metadata.get("phase6", {}) if verification else {}
+        try:
+            import psutil
+            memory_bytes = psutil.Process().memory_info().rss
+        except (ImportError, OSError):
+            memory_bytes = None
+        report = CheckReport(
+            interaction_id=interaction.id, policy_id=profile.id, policy_version=profile.version,
+            original_response=interaction.response, final_response=final_response, decision=decision,
+            findings=findings, detector_results=ordered_results,
+            total_latency_ms=(perf_counter() - started) * 1000.0,
+            profiling={
+                "schema_version": 1,
+                "timing_semantics": "Top-level stages are sequential wall times; nested phase timings are inclusive and must not be summed with parents. Audit writing is excluded.",
+                "stage_ms": stage_ms,
+                "pre_policy_ms": elapsed_before_policy,
+                "phase5_ms": (hallucination.metadata.get("phase5", {}) if hallucination else {}),
+                "risk_model_ms": (hallucination.metadata.get("risk_model_ms") if hallucination else None),
+                "phase6_ms": {key: phase6.get(key) for key in ("index_total_ms", "retrieval_total_ms", "nli_batch_latency_ms", "decision_total_ms", "phase6_total_ms")},
+                "phase6_counts": {key: phase6.get(key) for key in ("eligible_claims", "supported_rechecks", "nli_claims", "nli_pairs", "nli_unique_pairs", "retrieval_cache_hits", "unexamined_relevant_claims", "claim_limit_abstentions", "no_evidence_claims")},
+                "verification_stages_ms": (verification.metadata.get("stage_latency_ms", {}) if verification else {}),
+                "nli": nli,
+                "claim_outcomes": (verification.metadata.get("status_counts", {}) if verification else {}),
+                "action": decision.action.value,
+                "process_rss_bytes": memory_bytes,
+            },
+        )
+        report.total_latency_ms = (perf_counter() - started) * 1000.0
         if self.audit_enabled:
             self.audit_store.write(report, profile)
         return report

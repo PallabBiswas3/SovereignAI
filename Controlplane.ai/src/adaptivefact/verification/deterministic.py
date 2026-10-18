@@ -75,17 +75,15 @@ class DeterministicVerifier:
         claim_dates = extract_dates(claim.text)
         claim_entities = claim.entities or self.entities.extract(claim.text)
 
-        context_numbers = extract_numbers(context)
-        context_dates = extract_dates(context)
         context_casefold = context.casefold()
 
         if claim_dates:
             status, confidence, evidence, method = self._verify_dates(
-                claim.text, claim_dates, context, context_dates
+                claim.text, claim_dates, context
             )
         elif claim_numbers:
             status, confidence, evidence, method = self._verify_numbers(
-                claim.text, claim_numbers, context, context_numbers
+                claim.text, claim_numbers, context
             )
         elif claim_entities:
             supported_entities = [e for e in claim_entities if e.casefold() in context_casefold]
@@ -102,7 +100,6 @@ class DeterministicVerifier:
         claim_text: str,
         claim_values: list[NumberValue],
         context: str,
-        context_values: list[NumberValue],
     ):
         claim_keys = {(v.normalized, v.kind, v.unit) for v in claim_values}
         exact_evidence = self._find_exact_value_sentence(claim_text, claim_values, context, value_type="number")
@@ -130,7 +127,6 @@ class DeterministicVerifier:
         claim_text: str,
         claim_values: list[DateValue],
         context: str,
-        context_values: list[DateValue],
     ):
         claim_keys = {v.normalized for v in claim_values}
         exact_evidence = self._find_exact_value_sentence(claim_text, claim_values, context, value_type="date")

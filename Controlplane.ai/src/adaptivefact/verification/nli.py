@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
+from time import perf_counter
 
 import numpy as np
+
+
+def profile_model_identity(model_name: str) -> str:
+    """Keep local model paths (which may contain personal data) out of profiles."""
+    if Path(model_name).is_absolute() or "\\" in model_name or Path(model_name).exists():
+        return f"local-model-sha256:{sha256(model_name.encode()).hexdigest()[:16]}"
+    return model_name
 
 
 @dataclass
@@ -42,6 +52,7 @@ class TransformersNLIScorer(NLIScorer):
             ) from exc
 
         self.torch = torch
+        self.profile_model = profile_model_identity(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=local_files_only)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name, local_files_only=local_files_only)
         self.model.eval()
@@ -68,22 +79,35 @@ class TransformersNLIScorer(NLIScorer):
         self.label_map = normalized
 
     def score(self, premises: list[str], hypotheses: list[str]) -> list[NLIScores]:
+        scores, _ = self.score_profiled(premises, hypotheses)
+        return scores
+
+    def score_profiled(self, premises: list[str], hypotheses: list[str]) -> tuple[list[NLIScores], dict]:
         if len(premises) != len(hypotheses):
             raise ValueError("premises and hypotheses must have the same length")
         if not premises:
-            return []
+            return [], {"requested_pairs": 0, "unique_pairs": 0, "forward_passes": 0,
+                        "batch_sizes": [], "padded_lengths": [], "tokens_processed": 0,
+                        "tokenization_ms": 0.0, "padding_ms": 0.0, "forward_ms": 0.0, "total_ms": 0.0}
 
+        total_started = perf_counter()
         # Share only byte-identical pair computations within this call. Source
         # identity/authority and each original evidence position remain separate
         # in Phase6; no scores or source text are cached across requests.
         unique = list(dict.fromkeys(zip(premises, hypotheses)))
         positions = {pair: index for index, pair in enumerate(unique)}
+        tokenize_started = perf_counter()
         encoded = self.tokenizer(
             [pair[0] for pair in unique], [pair[1] for pair in unique],
             padding=False, truncation=True, max_length=self.max_length,
         )
+        tokenization_ms = (perf_counter() - tokenize_started) * 1000.0
         order = sorted(range(len(unique)), key=lambda index: len(encoded["input_ids"][index]))
         outputs: dict[int, NLIScores] = {}
+        padding_ms = 0.0
+        forward_ms = 0.0
+        batch_sizes: list[int] = []
+        padded_lengths: list[int] = []
         start = 0
         while start < len(order):
             end = start + 1
@@ -96,14 +120,20 @@ class TransformersNLIScorer(NLIScorer):
                 end += 1
             indices = order[start:end]
             start = end
+            pad_started = perf_counter()
             tokens = self.tokenizer.pad(
                 {key: [value[index] for index in indices] for key, value in encoded.items()},
                 padding=True, return_tensors="pt",
             )
             tokens = {k: v.to(self.device) for k, v in tokens.items()}
+            padding_ms += (perf_counter() - pad_started) * 1000.0
+            batch_sizes.append(len(indices))
+            padded_lengths.append(int(tokens["input_ids"].shape[1]))
+            forward_started = perf_counter()
             with self.torch.inference_mode():
                 logits = self.model(**tokens).logits
                 probs = self.torch.softmax(logits, dim=-1).cpu().numpy()
+            forward_ms += (perf_counter() - forward_started) * 1000.0
 
             for index, row in zip(indices, probs):
                 values = {"entailment": 0.0, "contradiction": 0.0, "neutral": 0.0}
@@ -114,4 +144,16 @@ class TransformersNLIScorer(NLIScorer):
                 outputs[index] = NLIScores(**values)
 
         # Return independent score objects in the caller's original order.
-        return [NLIScores(**vars(outputs[positions[pair]])) for pair in zip(premises, hypotheses)]
+        scores = [NLIScores(**vars(outputs[positions[pair]])) for pair in zip(premises, hypotheses)]
+        return scores, {
+            "requested_pairs": len(premises), "unique_pairs": len(unique),
+            "forward_passes": len(batch_sizes), "batch_sizes": batch_sizes,
+            "padded_lengths": padded_lengths,
+            "tokens_processed": sum(size * length for size, length in zip(batch_sizes, padded_lengths)),
+            "tokenization_ms": tokenization_ms, "padding_ms": padding_ms,
+            "forward_ms": forward_ms, "total_ms": (perf_counter() - total_started) * 1000.0,
+            "device": str(self.device), "cpu_threads": self.torch.get_num_threads(),
+            "model": self.profile_model,
+            "model_revision": getattr(self.model.config, "_commit_hash", None),
+            "runtime": f"torch {self.torch.__version__}",
+        }

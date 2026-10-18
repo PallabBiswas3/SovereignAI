@@ -170,3 +170,18 @@ evidence-selection quality. See `NEXT_PLAN.md` for commands and remaining gates.
 - Plant writes and autonomous maintenance execution are intentionally absent.
 
 See [Past experiments](PAST_EXPERIMENTS.md) for evidence and [Next plan](NEXT_PLAN.md) for priorities.
+
+## ControlPlane verification profiling — 17–18 October 2026
+
+ControlPlane reports sanitized per-run stage timings, NLI pair/forward counts,
+batch shapes, model/runtime/device identity, process memory and final action.
+Phase 5 no longer repeats unused full-context numeric/date extraction for every
+claim. Request-scoped structured evidence tokens and identical claim selections
+are reused without crossing source or request boundaries. A distinct relevant
+structured passage omitted by the top-k NLI limit prevents an otherwise
+supported claim from being released until it is examined. The existing policy
+deadline, evidence authority checks and human-review actions remain in force.
+Unexamined claims beyond the NLI claim limit, fabricated structured citations,
+and support naming only a different asset also abstain. Narrow numeric helpers
+cannot clear a semantic coverage hold. No alternative NLI backend or selective
+scheduler is enabled; CPU thread/batch defaults are unchanged.

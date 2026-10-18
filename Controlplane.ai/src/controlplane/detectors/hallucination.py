@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from adaptivefact.data.schema import ResponseRecord, VerificationStatus
@@ -98,7 +99,9 @@ class HallucinationDetector(Detector):
                         )
                     )
 
+        risk_started = perf_counter()
         risk = self._trained_risk(record, settings)
+        risk_model_ms = (perf_counter() - risk_started) * 1000.0
         risk_source = "trained_model" if risk is not None else "deterministic_fallback"
         if risk is None:
             unresolved = max(0, len(record.atomic_claims) - supported)
@@ -134,6 +137,7 @@ class HallucinationDetector(Detector):
                 "unsupported_entity_findings_enabled": emit_unsupported_entities,
                 "evidence_available": bool(record.context),
                 "phase5": prepared.phase5_runtime,
+                "risk_model_ms": risk_model_ms,
                 "factuality_artifact_source": prepared.source,
             },
         )

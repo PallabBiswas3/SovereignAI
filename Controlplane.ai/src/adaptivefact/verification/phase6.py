@@ -41,6 +41,7 @@ class PendingClaim:
     evidence_texts: list[str]
     evidence_scores: list[float]
     retrieval_ms: float
+    unexamined_relevant_count: int = 0
 
 
 class Phase6Pipeline:
@@ -69,12 +70,24 @@ class Phase6Pipeline:
         pending: list[PendingClaim] = []
         retrieval_latencies: list[float] = []
         no_evidence_claims = 0
+        index_total_ms = 0.0
+        retrieval_total_ms = 0.0
+        eligible_claims = 0
+        supported_rechecks = 0
+        retrieval_cache_hits = 0
+        unexamined_relevant_claims = 0
+        decision_ms = 0.0
 
         for record_index, record in enumerate(records):
-            structured_items = self._structured_items(record)
             index_started = perf_counter()
+            structured_items = self._structured_items(record)
+            # Source text and authorization are immutable for this record. Build
+            # lexical tokens once, then reuse them for each claim in this call.
+            structured_tokens = [(item, self._tokens(str(item.get("text") or ""))) for item in structured_items]
             evidence_index = None if structured_items else ContextTfidfIndex(record.context, self.retrieval_config)
             index_ms = (perf_counter() - index_started) * 1000.0
+            index_total_ms += index_ms
+            retrieval_cache: dict[str, tuple[list[str], list[float], int]] = {}
             eligible_statuses = {VerificationStatus.UNKNOWN}
             if recheck_supported or not self.nli_config.preserve_phase5_supported:
                 eligible_statuses.add(VerificationStatus.SUPPORTED)
@@ -85,24 +98,37 @@ class Phase6Pipeline:
             ]
             if candidate_claims:
                 retrieval_latencies.append(index_ms)
+            eligible_claims += len(candidate_claims)
+            supported_rechecks += sum(claim.status == VerificationStatus.SUPPORTED for _, claim in candidate_claims)
 
             for claim_index, claim in candidate_claims:
                 retrieval_started = perf_counter()
                 query = claim.verification_text
-                if structured_items:
-                    evidence_texts, evidence_scores = self._retrieve_structured(structured_items, query)
+                unexamined_count = 0
+                if structured_items and query in retrieval_cache:
+                    evidence_texts, evidence_scores, unexamined_count = retrieval_cache[query]
+                    retrieval_cache_hits += 1
+                elif structured_items:
+                    evidence_texts, evidence_scores, unexamined_count = self._retrieve_structured(
+                        structured_items, query, tokenized_items=structured_tokens, include_coverage=True,
+                    )
                 else:
                     retrieved = evidence_index.retrieve(query, top_k=self.retrieval_config.top_k) if evidence_index is not None else []
                     seed = self._seed_evidence(claim)
                     evidence = merge_seed_evidence(seed, retrieved, top_k=self.retrieval_config.top_k)
                     evidence_texts = [item.text for item in evidence]
                     evidence_scores = [float(item.score) for item in evidence]
+                if structured_items and query not in retrieval_cache:
+                    retrieval_cache[query] = (evidence_texts, evidence_scores, unexamined_count)
                 retrieval_ms = (perf_counter() - retrieval_started) * 1000.0
+                retrieval_total_ms += retrieval_ms
                 retrieval_latencies.append(retrieval_ms)
 
                 if not evidence_texts:
-                    if claim.status != VerificationStatus.SUPPORTED:
-                        claim.verifier_used = "phase6_no_evidence"
+                    if structured_items:
+                        claim.status = VerificationStatus.UNKNOWN
+                        claim.verification_metadata["support_guard_reason"] = "structured_evidence_not_examined"
+                    claim.verifier_used = "phase6_no_evidence"
                     no_evidence_claims += 1
                     continue
 
@@ -112,12 +138,17 @@ class Phase6Pipeline:
                     premises.append(text)
                     hypotheses.append(hypothesis)
                 pair_end = len(premises)
-                pending.append(PendingClaim(record_index, claim_index, pair_start, pair_end, evidence_texts, evidence_scores, retrieval_ms))
+                if unexamined_count:
+                    unexamined_relevant_claims += 1
+                pending.append(PendingClaim(record_index, claim_index, pair_start, pair_end, evidence_texts,
+                                            evidence_scores, retrieval_ms, unexamined_count))
 
         nli_started = perf_counter()
         scores = self.nli.score(premises, hypotheses) if premises else []
         nli_ms = (perf_counter() - nli_started) * 1000.0
+        nli_profile = self.nli.last_call_profile() if premises and hasattr(self.nli, "last_call_profile") else {}
         resolution_counts = Counter()
+        decision_started = perf_counter()
         for item in pending:
             claim = records[item.record_index].atomic_claims[item.claim_index]
             prior_status = claim.status
@@ -132,7 +163,7 @@ class Phase6Pipeline:
             # Preserve a deterministic exact support only when semantic checking is
             # genuinely inconclusive. Explicit contradiction and CONFLICTING states
             # must always override the earlier Phase-5 support decision.
-            if prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN:
+            if prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN and not item.unexamined_relevant_count:
                 claim.status = prior_status
                 claim.confidence = prior_confidence
                 claim.evidence = prior_evidence
@@ -144,16 +175,34 @@ class Phase6Pipeline:
                 claim.evidence = best_evidence
                 claim.verifier_used = method
                 claim.verification_scores = verification_scores
+            if item.unexamined_relevant_count and claim.status not in {VerificationStatus.CONTRADICTED, VerificationStatus.CONFLICTING}:
+                # Top-k is a compute limit, not proof that omitted authorized
+                # passages agree. A distinct relevant premise must be examined
+                # before a consequential claim can retain support.
+                claim.status = VerificationStatus.UNKNOWN
+                claim.verifier_used = "nli_unexamined_structured_evidence"
+                claim.verification_metadata["support_guard_reason"] = "unexamined_relevant_structured_evidence"
+                claim.verification_metadata["unexamined_relevant_count"] = item.unexamined_relevant_count
             claim.latency_ms = (claim.latency_ms or 0.0) + item.retrieval_ms
             resolution_counts[claim.status.value] += 1
+        decision_ms = (perf_counter() - decision_started) * 1000.0
 
         return records, {
             "nli_pairs": len(premises),
+            "nli_unique_pairs": len(set(zip(premises, hypotheses))),
             "nli_claims": len(pending),
+            "eligible_claims": eligible_claims,
+            "supported_rechecks": supported_rechecks,
+            "retrieval_cache_hits": retrieval_cache_hits,
+            "unexamined_relevant_claims": unexamined_relevant_claims,
             "no_evidence_claims": no_evidence_claims,
             "nli_resolution_counts": dict(resolution_counts),
             "retrieval_latency_ms": _percentiles(retrieval_latencies),
+            "index_total_ms": index_total_ms,
+            "retrieval_total_ms": retrieval_total_ms,
             "nli_batch_latency_ms": nli_ms,
+            "nli_profile": nli_profile,
+            "decision_total_ms": decision_ms,
             "phase6_total_ms": (perf_counter() - started) * 1000.0,
         }
 
@@ -164,15 +213,16 @@ class Phase6Pipeline:
             return []
         return [item for item in raw if isinstance(item, dict) and str(item.get("text") or "").strip()]
 
-    def _retrieve_structured(self, items: list[dict], query: str) -> tuple[list[str], list[float]]:
+    def _retrieve_structured(self, items: list[dict], query: str, *, tokenized_items: list[tuple[dict, set[str]]] | None = None,
+                             include_coverage: bool = False):
         cited_ids = set(_EVIDENCE_CITATION.findall(query))
         query_tokens = self._tokens(_EVIDENCE_CITATION.sub(" ", query))
         ranked: list[tuple[bool, float, float, str]] = []
-        for item in items:
+        for item, item_tokens in (tokenized_items if tokenized_items is not None else [(item, self._tokens(str(item.get("text") or ""))) for item in items]):
             text = str(item.get("text") or "").strip()
             supplied = item.get("retrieval_score")
             supplied_score = float(supplied) if isinstance(supplied, (int, float)) else 0.0
-            shared_terms = query_tokens & self._tokens(text)
+            shared_terms = query_tokens & item_tokens
             lexical = len(shared_terms) / max(1, len(query_tokens))
             cited = bool(cited_ids.intersection(
                 str(item.get(key) or "") for key in ("evidence_id", "chunk_id", "document_id")
@@ -193,9 +243,13 @@ class Phase6Pipeline:
             ranked.append((cited, lexical, supplied_score, text))
         ranked.sort(key=lambda pair: (pair[0], pair[1], pair[2]), reverse=True)
         selected = ranked[: max(1, self.retrieval_config.top_k)]
+        selected_texts = {text for _, _, _, text in selected}
+        omitted_distinct = {text for _, _, _, text in ranked[len(selected):] if text not in selected_texts}
         # 1.0 means a deliberate citation. Exact lexical overlap across a whole
         # chunk must not grant an uncited source the same contradiction authority.
-        return [text for _, _, _, text in selected], [1.0 if cited else min(0.99, float(lexical)) for cited, lexical, _, _ in selected]
+        result = ([text for _, _, _, text in selected],
+                  [1.0 if cited else min(0.99, float(lexical)) for cited, lexical, _, _ in selected])
+        return (*result, len(omitted_distinct)) if include_coverage else result
 
     @staticmethod
     def _tokens(text: str) -> set[str]:

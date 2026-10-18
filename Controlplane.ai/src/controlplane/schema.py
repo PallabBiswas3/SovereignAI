@@ -175,6 +175,7 @@ class CheckReport(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     detector_results: list[DetectorResult] = Field(default_factory=list)
     total_latency_ms: float
+    profiling: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     audit_event_id: str | None = None
 

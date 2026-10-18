@@ -353,3 +353,27 @@ Exit condition: an auditable, read-only, supervised pilot package with explicit 
 - Fine-tuning, larger models, or new factuality thresholds without a measured gap.
 
 See [Current features](CURRENT_FEATURES.md) for the implemented baseline and [Past experiments](PAST_EXPERIMENTS.md) for measured evidence.
+
+## ControlPlane verification follow-up — 17–18 October 2026
+
+The offline CPU study in [Past experiments](PAST_EXPERIMENTS.md) removed a
+large Phase 5 parsing cost and added fail-closed handling for distinct relevant
+structured passages left outside the NLI top-k. The unchanged 2,000-ms
+consequential policy budget still governs release. Balanced confirmation put
+five long independent claims at 2,691 ms idle and 2,860 ms under contention, so
+the target is not consistently met. In addition,
+some nominally supported answers remain held because similarly worded evidence
+for different assets produces conservative conflicts.
+
+Next, freeze a reviewed set of authorized multi-source five-claim answers and
+their expected claim/action labels. On that set, profile actual NLI forward
+time under controlled CPU thread and batch-size sweeps, then investigate
+source-faithful premise spans with full-context fallback. Require score,
+threshold, claim-state and release-action parity, with no new unsafe releases,
+before changing the default inference path. Evaluate ONNX and INT8 only after
+export dependencies and model-version identity are reproducible. Dynamic INT8
+was rejected for score/label regressions; thread/batch variants did not justify
+changing defaults. Fix retrieval's remaining asset ambiguity and long-context
+truncation on reviewed fixtures before testing semantic shortcuts. A selective
+dependency-aware verifier remains a research candidate until it can show that
+all relevant contradictions and authority checks remain discoverable.

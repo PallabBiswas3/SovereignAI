@@ -38,7 +38,7 @@ class EvidenceQualityGate:
     def __init__(self, config: EvidenceQualityConfig | None = None) -> None:
         self.config = config or EvidenceQualityConfig()
 
-    def assess(self, interaction: Interaction, claim: Claim) -> EvidenceAssessment:
+    def assess(self, interaction: Interaction, claim: Claim, *, prepared_tokens: list[set[str]] | None = None) -> EvidenceAssessment:
         if not interaction.grounding_evidence:
             if interaction.context and interaction.context.strip():
                 return EvidenceAssessment(
@@ -58,12 +58,14 @@ class EvidenceQualityGate:
                 reason="No grounding evidence was supplied.",
             )
 
+        claim_tokens = set(self._tokens(claim.verification_text))
         ranked = sorted(
-            interaction.grounding_evidence,
-            key=lambda item: self._rank(item, claim),
-            reverse=True,
+            ((self._rank(item, claim, text_tokens=(prepared_tokens[index] if prepared_tokens is not None else None),
+                         claim_tokens=claim_tokens), item)
+             for index, item in enumerate(interaction.grounding_evidence)),
+            key=lambda pair: pair[0], reverse=True,
         )[: max(1, self.config.top_k)]
-        selected = [item for item in ranked if self._rank(item, claim) > 0]
+        selected = [item for rank, item in ranked if rank > 0]
         if not selected:
             return EvidenceAssessment(
                 quality="irrelevant_evidence",
@@ -101,9 +103,10 @@ class EvidenceQualityGate:
             ),
         )
 
-    def _rank(self, evidence: GroundingEvidence, claim: Claim) -> float:
-        text_tokens = set(self._tokens(evidence.text))
-        claim_tokens = set(self._tokens(claim.verification_text))
+    def _rank(self, evidence: GroundingEvidence, claim: Claim, *, text_tokens: set[str] | None = None,
+              claim_tokens: set[str] | None = None) -> float:
+        text_tokens = text_tokens if text_tokens is not None else set(self._tokens(evidence.text))
+        claim_tokens = claim_tokens if claim_tokens is not None else set(self._tokens(claim.verification_text))
         overlap = len(text_tokens & claim_tokens)
         lexical = overlap / max(1, len(claim_tokens))
         supplied = min(1.0, max(0.0, float(evidence.retrieval_score or 0.0)))
