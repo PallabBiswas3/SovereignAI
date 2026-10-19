@@ -7,6 +7,7 @@ from app.sandbox.executor import DockerSandboxExecutor
 from app.tools.base import Tool
 from app.tools.file_tools import FileMetadataTool, ListFilesTool, ReadFileTool, SafeWorkspace, SearchFilesTool, WriteFileTool
 from app.tools.python_tool import PythonSandboxTool
+from app.tools.simple_tools import CalculateTool, ConvertUnitsTool, SummarizeNumbersTool
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -62,7 +63,16 @@ def create_default_registry(workspace_root: Path) -> ToolRegistry:
         ListFilesTool(workspace), ReadFileTool(workspace), WriteFileTool(workspace),
         SearchFilesTool(workspace), FileMetadataTool(workspace),
         PythonSandboxTool(DockerSandboxExecutor(workspace_root / "sandbox"), workspace),
+        CalculateTool(), SummarizeNumbersTool(), ConvertUnitsTool(),
     ):
+        registry.register(tool)
+    return registry
+
+
+def create_numeric_registry() -> ToolRegistry:
+    """A restricted catalogue for simple examples; the same agent/policies apply."""
+    registry = ToolRegistry()
+    for tool in (CalculateTool(), SummarizeNumbersTool(), ConvertUnitsTool()):
         registry.register(tool)
     return registry
 

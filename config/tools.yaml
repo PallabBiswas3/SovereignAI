@@ -1,4 +1,7 @@
 tools:
+  calculate: {risk: LOW, enabled: true}
+  summarize_numbers: {risk: LOW, enabled: true}
+  convert_units: {risk: LOW, enabled: true}
   list_files: {risk: LOW, enabled: true}
   read_file: {risk: LOW, enabled: true}
   search_files: {risk: LOW, enabled: true}

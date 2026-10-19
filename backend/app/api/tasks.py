@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.agent.orchestrator import AgentOrchestrator
@@ -38,6 +38,7 @@ from app.tools.file_tools import SafeWorkspace
 from app.workflows.coding import CodingWorkflow
 from app.workflows.inspection import InspectionWorkflow
 from pathlib import Path
+from typing import Literal
 from app.llm.factory import configured_local_provider
 from app.llm.base import ModelGenerationCancelled
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
@@ -70,6 +71,7 @@ from app.integrations.routing import IntegrationRoutePlan, IntegrationRoutePlann
 from app.integrations.task_adapter import (
     integrated_result_state, integration_unavailable_state, missing_input_state,
 )
+from app.tools.registry import create_numeric_registry
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -84,6 +86,15 @@ class CreateTaskRequest(BaseModel):
     execution_mode: ExecutionMode = ExecutionMode.automatic
     chat_mode: ChatMode = ChatMode.automatic
     workcell_id: str | None = Field(default=None, max_length=100)
+    tool_scope: Literal["ALL", "NUMERIC"] = "ALL"
+
+    @model_validator(mode="after")
+    def validate_numeric_scope(self):
+        if self.tool_scope == "NUMERIC" and (
+            self.attachments or self.workcell_id or self.chat_mode not in {ChatMode.automatic, ChatMode.controlled}
+        ):
+            raise ValueError("Numeric tool scope requires Automatic/Controlled mode without attachments or a Workcell")
+        return self
 
 
 class StartTaskResponse(BaseModel):
@@ -101,6 +112,9 @@ def _mode_selection(payload: CreateTaskRequest, routing):
 
 
 def _chat_mode_selection(payload: CreateTaskRequest) -> ChatModeSelection:
+    if payload.tool_scope == "NUMERIC":
+        return ChatModeSelection(requested=payload.chat_mode, selected=ChatMode.controlled,
+                                 reason="The user restricted this task to the numeric tool catalogue.")
     return ChatModeSelector().select(
         payload.chat_mode,
         payload.request,
@@ -731,13 +745,14 @@ def _requires_tool_agent(payload: CreateTaskRequest) -> bool:
         return True
     request = payload.request.lower()
     return any(phrase in request for phrase in (
+        "calculate", "summarize_numbers", "convert_units", "convert units", "summarize numbers",
         "read file", "list file", "search file", "knowledge base", "search knowledge",
         "internal document", "ocr", "analyze image", "create report", "generate report",
         "spreadsheet", "presentation", "powerpoint", "word document",
     ))
 
 
-async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal) -> AgentRunState:
+async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal, event_callback: EventCallback | None = None) -> AgentRunState:
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
@@ -756,9 +771,10 @@ async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, prin
     completed = await BoundedToolAgent(
         runtime.provider,
         runtime.model,
-        create_agent_registry(settings, db, principal, AuthorizationService.owned_scope(principal)),
+        create_numeric_registry() if payload.tool_scope == "NUMERIC" else create_agent_registry(settings, db, principal, AuthorizationService.owned_scope(principal)),
         ActionGuard(settings.tools_config),
         principal=principal,
+        event_callback=event_callback,
     ).execute(state, payload.attachments)
     waiting = next((item for item in completed.tool_records if item.get("waiting_for_approval")), None)
     if waiting:
@@ -815,6 +831,8 @@ async def _execute_task(
                 chat_mode=chat_selection.selected.value,
                 chat_mode_reason=chat_selection.reason,
             )
+        elif payload.tool_scope == "NUMERIC":
+            state = await _run_tool_task(payload, settings, db, principal, event_callback)
         elif (
             payload.chat_mode == ChatMode.automatic
             and not payload.workcell_id
@@ -933,7 +951,7 @@ async def _execute_task(
                 raise HTTPException(status_code=403, detail={"code": access.reason_code})
             state = await _run_coding_task(payload, settings, db, principal)
         elif chat_selection.selected == ChatMode.controlled and _requires_tool_agent(payload):
-            state = await _run_tool_task(payload, settings, db, principal)
+            state = await _run_tool_task(payload, settings, db, principal, event_callback)
         elif chat_selection.selected == ChatMode.authorized or (
             chat_selection.selected == ChatMode.controlled and extract_asset_references(payload.request)
         ):
@@ -1147,6 +1165,8 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, pri
             db.commit()
         await _publish_event(db, tracking_id, "step_completed", {"id": 0, "status": result.status.value, "observation": "Workflow returned a persisted run state."})
         for step in result.plan.steps:
+            if result.runtime_metrics.get("live_tool_events"):
+                continue  # BoundedToolAgent published the actual execution, not a replay.
             await _publish_event(db, tracking_id, "step_started", {"id": step.id, "action": step.action, "title": step.title})
             matching = [item for item in result.tool_records if item.get("tool") == step.action]
             for tool_call in matching:

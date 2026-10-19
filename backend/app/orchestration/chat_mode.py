@@ -26,6 +26,7 @@ _AUTHORIZED_SIGNALS = (
     "inspection record", "telemetry", "sensor reading", "according to the sop",
 )
 _CONTROLLED_SIGNALS = (
+    "calculate", "summarize_numbers", "convert_units", "convert units", "summarize numbers",
     "create report", "generate report", "management package", "approval note",
     "maintenance report", "maintenance draft", "work order", "run python", "execute code",
     "spreadsheet", "presentation", "powerpoint", "word document",

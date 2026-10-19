@@ -446,3 +446,115 @@ Implementation files: `backend/app/api/voice.py`, `backend/app/multimodal/speech
 `frontend/voice-tests/recorder.test.cjs`, `frontend/package.json`,
 `tests/voice/test_speech.py`, `scripts/{download_voice_model,benchmark_voice}.py`,
 `.env.example`, `.gitignore`, and `pyproject.toml`.
+
+## Simple tools and visible agent workflows — 20 October 2026
+
+The workbench now offers **Calculator**, **Unit conversion**, and **Three-step
+workflow** examples below the empty conversation. Choosing one fills the editable
+composer and selects Controlled Agent mode; press **Run task** to execute it.
+Examples also select the **Arithmetic tools only** catalogue to keep CPU model
+selection focused. **Use all tools** restores the usual catalogue. This is the
+existing bounded agent with a smaller registry, not a separate execution path.
+The API's `tool_scope` defaults to `ALL`; `NUMERIC` restricts the available tools
+to the three read-only numerical tools and requires Automatic/Controlled mode
+without attachments or a Workcell. Numeric scope cannot launch specialist-service
+or file/code workflows. A normal typed request keeps the full catalogue.
+The examples require `tool.execute` permission, a running configured local LLM,
+and no attachments or selected Workcell. They work with the same reviewed text
+submission used by microphone input. No GraphRAG server, diagnostic data, Docker,
+new package, or cloud service is needed for these numerical examples.
+
+| Tool | Example input | Expected observation |
+| --- | --- | --- |
+| `calculate` | `(125 * 8) + 50` | `1050` |
+| `summarize_numbers` | `[10, 20, 30]` | count `3`, total `60`, mean/median `20`, minimum `10`, maximum `30` |
+| `convert_units` | `250 kPa` to `bar` | `2.5 bar` |
+
+The three-step example asks the model to summarize `[10, 20, 30]`, multiply the
+**observed mean** by eight, and convert that result from kPa to bar. Check the
+actual calls for **20 → 160 → 1.6 bar**. Expected results on the example buttons
+are reference answers, not evidence that anything ran. The local model still
+selects every call using the existing bounded agent; no canned tool responses or
+separate demo agent were added.
+
+An **Agent workflow** panel appears in the conversation as tools execute, including
+on narrow/mobile layouts. It shows the proposed tool, permission/policy gate,
+actual start, observed output or failure, input arguments, execution time, and
+numeric validation. Final tool records remain inspectable after the answer arrives.
+The existing agent-execution sidebar still shows the plan and the final safety
+decision. Tool events are now published during execution and are not replayed
+after completion. A failed/denied call never receives a successful label, and a
+held call displays its approval requirement without executing.
+
+The completion check requires successful observations for simple tools explicitly
+named in the request; the model cannot simply claim they ran. Incomplete named-tool
+workflows fail visibly, retaining partial observations. This verifies that requested
+tool steps ran; it does **not** independently verify the model's interpretation of
+the request or final prose. Existing grounding, authorization, audit and approval
+checks still apply to the final task. Evidence from these tools is clearly labeled
+as a local computation using user-supplied numbers, never a real plant measurement.
+
+Arithmetic uses an AST interpreter with numeric literals and a small operator
+allowlist, never `eval`, shell access, Python sandbox execution, or function calls.
+Expressions are limited to 200 characters/64 AST nodes, finite intermediate values
+of magnitude at most `1e15`, and exponent magnitude at most 12. Number summaries
+accept 1–256 finite numeric values, each at most `1e12` in magnitude. Unit conversion
+reuses the existing Pint-backed `UnitService` with its supported unit aliases and
+dimension checks, returning up to eight decimal places. All three tools are local,
+read-only, schema-validated and enabled as LOW-risk tools in `config/tools.yaml`.
+Their normal permission and policy gates remain active even for these examples.
+
+To try it, start the backend and frontend with the launch commands above, sign in
+as a task/tool-enabled user (e.g. an engineer), choose **Three-step workflow**, and
+send. To type it directly:
+
+```text
+Use summarize_numbers on [10, 20, 30]. Then use calculate to multiply the observed
+mean by 8. Then use convert_units to convert that calculated value from kPa to bar.
+Report the actual results from all three tools. These are example numbers, not
+plant measurements.
+```
+
+CPU model selection/synthesis can take much longer than the arithmetic itself;
+the agent retains its existing limits of six tool calls, eight decisions and
+180 seconds. An unavailable model or execution bound is reported rather than
+replaced with a scripted successful demonstration. The trace makes actual
+intermediate results available even if final model synthesis cannot finish.
+
+Verification commands from `1_SIH`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\agent_tools -o addopts="" -q
+.\.venv\Scripts\python.exe -m pytest local_testing\tests tests\voice -o addopts="" -q
+Set-Location frontend
+npm run test:agent-tools
+npm run test:voice
+npm run typecheck
+npm run build
+```
+
+Validated: **51 new backend tests**, **7 new UI tests**, **392 existing backend/voice
+tests passed with 1 skipped**, **13 recorder tests**, and **9 existing frontend
+contract tests passed**. Production compilation and type checking passed. Tests
+exercise real numerical tools in the existing agent with scripted model decisions,
+chained observations, authorization denial, approval holds, refusal of fabricated
+completion, failed/partial workflows, grounding evidence, and actual task/SSE routing
+without duplicate execution events. No model or microphone download is needed for
+these automated tests.
+
+Live validation used the installed local `qwen3:4b-instruct` model on CPU and
+Chromium's production UI: the model selected all three tools, consumed mean `20`
+in `calculate`, supplied result `160` to `convert_units`, received `1.6 bar`, and
+returned the correct final summary. The warm CPU browser run took **89.8 seconds**
+from task acceptance to completion. The existing final grounding check reported
+**REWRITE (72% grounding)** for the answer wording; it was not suppressed or
+treated as an approved release. Initial live attempts exposed omitted tool names;
+the numeric decision schema now requires a tool name and schema-valid arguments
+for a tool action, and the trace exposes rejected decisions. A completion action
+has its own required final-response schema. No test was weakened to obtain success.
+
+Files: `backend/app/tools/simple_tools.py`, existing tool registry/policy,
+`backend/app/agent/tool_agent.py`, task routing and chat-mode selection,
+`frontend/app/agent-tools/{AgentExamples,AgentTrace}.tsx`, composer/CSS,
+`tests/agent_tools/test_simple_tools.py`, frontend component tests and package script,
+`.gitignore`, `pyproject.toml`, and this maintained feature document.
