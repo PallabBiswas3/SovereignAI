@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import VoiceInput from "./voice/VoiceInput";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 type TaskResult = {
@@ -150,6 +151,8 @@ export default function Home() {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const messageInput = useRef<HTMLTextAreaElement>(null);
   const [result, setResult] = useState<TaskResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -195,7 +198,7 @@ export default function Home() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (loading || !message.trim()) return;
+    if (loading || voiceBusy || !message.trim()) return;
     const submittedMessage = message.trim();
     const submittedAttachments = attachments.map((item) => item.name);
     const assistantEntryId = `assistant-${Date.now()}`;
@@ -328,7 +331,7 @@ export default function Home() {
 
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
-    setPrincipal(null); setChatEntries([]); setResult(null);
+    setPrincipal(null); setVoiceBusy(false); setChatEntries([]); setResult(null);
   }
 
   if (!authChecked) return <main className="loginShell"><div className="loginCard"><div className="mark">S</div><p>Checking local session…</p></div></main>;
@@ -340,7 +343,7 @@ export default function Home() {
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
-      <button className="newTask" onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
+      <button className="newTask" disabled={voiceBusy} onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
       <nav><a className="active">Workbench</a><Link href="/integrations">Integrated analysis</Link><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
@@ -359,9 +362,9 @@ export default function Home() {
         {error && !chatEntries.length && <p className="error">{error}</p>}
       </div>
       <form onSubmit={submit} className="composer">
-        <textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message SovereignAI…" />
+        <textarea ref={messageInput} aria-label="Message SovereignAI" disabled={voiceBusy} value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message SovereignAI…" />
         {attachments.map((attachment) => <div className="attachment" key={attachment.path}>File: {attachment.name}<button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.path !== attachment.path))}>x</button></div>)}
-        <div><label className="attachButton" title="Attach files">+<input multiple type="file" accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.tif,.tiff" onChange={(event) => { Array.from(event.target.files ?? []).forEach((file) => void upload(file)); }} /></label><span>Enter to send · Shift+Enter for a new line</span>{loading && <button type="button" className="send" onClick={() => void cancelActiveTask()}>Cancel</button>}<button className="send" disabled={loading || !message.trim()}>{loading ? "Waiting…" : "Run task →"}</button></div>
+        <div><label className="attachButton" title="Attach files">+<input multiple type="file" accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.tif,.tiff" onChange={(event) => { Array.from(event.target.files ?? []).forEach((file) => void upload(file)); }} /></label><VoiceInput key={principal.user_id} disabled={loading} apiFetch={apiFetch} onBusy={setVoiceBusy} onTranscript={(text) => { setMessage((draft) => draft.trim() ? `${draft.trimEnd()} ${text}` : text); requestAnimationFrame(() => messageInput.current?.focus()); }} /><span>Enter to send · Shift+Enter for a new line</span>{loading && <button type="button" className="send" onClick={() => void cancelActiveTask()}>Cancel</button>}<button className="send" disabled={loading || voiceBusy || !message.trim()}>{loading ? "Waiting…" : "Run task →"}</button></div>
       </form>
     </section>
     <aside className="inspector">
