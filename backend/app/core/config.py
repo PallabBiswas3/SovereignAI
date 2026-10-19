@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -45,6 +46,13 @@ class Settings(BaseSettings):
     vllm_max_tokens: int = 1280
     allow_deterministic_fallback: bool = True
     max_upload_mb: int = 25
+    voice_model_path: Path = PROJECT_DIR / "models" / "faster-whisper-tiny.en"
+    voice_language: str = Field(default="en", pattern=r"^[a-z]{2,3}$")
+    voice_cpu_threads: int = Field(default=2, ge=1, le=16)
+    voice_max_duration_seconds: int = Field(default=30, ge=1, le=120)
+    voice_max_upload_bytes: int = Field(default=8 * 1024 * 1024, ge=1024, le=16 * 1024 * 1024)
+    voice_upload_timeout_seconds: float = Field(default=15.0, gt=0, le=60)
+    voice_timeout_seconds: float = Field(default=90.0, gt=0, le=600)
     embedding_provider: str = "semantic"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_local_files_only: bool = True

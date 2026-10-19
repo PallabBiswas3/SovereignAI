@@ -185,3 +185,211 @@ Unexamined claims beyond the NLI claim limit, fabricated structured citations,
 and support naming only a different asset also abstain. Narrow numeric helpers
 cannot clear a semantic coverage hold. No alternative NLI backend or selective
 scheduler is enabled; CPU thread/batch defaults are unchanged.
+
+## CPU-only microphone input — 19 October 2026
+
+The workbench microphone is an additional input to the existing task composer.
+Click the microphone, grant permission, speak, and click **Stop**. The UI shows
+recording time, local processing, errors, and a transcription-ready message.
+**Cancel voice** discards the recording or ignores a pending result. The recognized
+text is appended to any existing draft. Review asset identifiers and other wording,
+edit the message, then click **Run task** (or Enter). Nothing is submitted automatically.
+The microphone is never activated on page load. New task and Send are blocked
+while recording or processing; navigation/logout releases the microphone.
+
+```mermaid
+flowchart LR
+  M[Explicit microphone click] --> R[Browser MediaRecorder]
+  R --> A[Authenticated bounded audio upload]
+  A --> W[Local CPU INT8 speech worker]
+  W --> E[Editable existing message field]
+  E --> S[Explicit existing Send]
+  S --> T[Existing authorized task route]
+  T --> G[Existing retrieval / diagnostics / local LLM / verification / approval policies]
+```
+
+The transcription endpoint cannot create tasks, retrieve documents, execute tools,
+approve actions, or call the LLM. Submitted text uses the existing
+`/api/tasks/start` workflow and its current routing and policy decisions; voice
+does not change when that workflow chooses GraphRAG, diagnostics, or ControlPlane.
+An unsupported or ambiguous question therefore has exactly the same limitations
+as its typed equivalent. Diagnostic requests still need validated measurements.
+
+### Runtime choice and installation
+
+The default model is **faster-whisper tiny.en**, loaded with `device="cpu"` and
+`compute_type="int8"`. It fits the existing Python/FastAPI backend and avoids a
+separate executable build. Its PyAV dependency bundles FFmpeg decoding libraries:
+no system FFmpeg, CUDA, GPU, cloud speech API, or additional PyTorch install is
+needed for speech. [faster-whisper upstream](https://github.com/SYSTRAN/faster-whisper)
+documents CPU INT8 and local model directories. The evaluated alternative,
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp), supports quantized CPU models
+and Windows, but adds native binary/build and model-format maintenance here.
+
+From the `1_SIH` root, with the existing backend dependencies already installed:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements-voice.txt
+.\.venv\Scripts\python.exe scripts\download_voice_model.py
+Set-Location frontend
+npm ci
+Set-Location ..
+```
+
+The download command is the only online provisioning step. It downloads the
+CTranslate2-format `Systran/faster-whisper-tiny.en` model to
+`models/faster-whisper-tiny.en`. Copy this complete directory and the installed
+packages to an offline machine if needed. Upstream weights are third-party assets;
+retain their license when distributing them. Model binaries are Git-ignored.
+The application forces offline loading and never downloads a missing model.
+Missing packages, missing files, or incompatible model files return
+`ASR_MODEL_UNAVAILABLE`. The first valid recording starts a separate worker and
+loads the model once; later requests reuse it. Restarting or timing out a worker
+causes the next request to initialize again.
+
+Start the backend from the project root so `.env` relative paths resolve there:
+
+```powershell
+$env:SOVEREIGN_AUTH_MODE = "local"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+In a second terminal, from `1_SIH`:
+
+```powershell
+Set-Location frontend
+$env:NEXT_PUBLIC_API_URL = "http://localhost:8000"
+npm run dev
+```
+
+Open **http://localhost:3000** and sign in with an existing task-enabled account.
+Use `localhost` consistently for UI and API so the existing Strict session and
+CSRF cookies share a host. For a new synthetic APEL installation, use the seed
+instructions in the repository README first. Keep the existing industrial
+services and local LLM running for the same governed answers available to typed
+questions. Remote browsers require HTTPS and the existing approved deployment
+origin configuration; microphone APIs require a secure context or localhost.
+
+Try “What is the current condition of Pump-102?”, stop, correct the asset spelling
+if necessary, and send. Try “Retrieve the maintenance history of Pump-102.” and
+“Explain the anomaly detected in Pump-102.” in the same way. Voice does not invent
+missing evidence or measurements, or override a held/blocked response.
+
+### Configuration and security boundaries
+
+All settings use the `SOVEREIGN_` prefix and are listed in `.env.example`.
+
+| Setting suffix | Default | Purpose |
+| --- | --- | --- |
+| `VOICE_MODEL_PATH` | Absolute project `models/faster-whisper-tiny.en` directory | Local CTranslate2 model files |
+| `VOICE_LANGUAGE` | `en` | Explicit recognition language; English is the validated initial mode |
+| `VOICE_CPU_THREADS` | `2` | CPU inference threads per backend worker |
+| `VOICE_MAX_DURATION_SECONDS` | `30` | Hard decoded PCM duration limit; browser auto-stops slightly earlier |
+| `VOICE_MAX_UPLOAD_BYTES` | `8388608` | 8 MiB encoded audio limit, including chunked uploads |
+| `VOICE_UPLOAD_TIMEOUT_SECONDS` | `15` | Maximum upload wait |
+| `VOICE_TIMEOUT_SECONDS` | `90` | Worker response deadline, including decoding and initialization |
+
+For base English, provision `--model base.en` and set `VOICE_MODEL_PATH` to that
+complete directory (prefer an absolute path). The language/model seams can support
+multilingual models later. VAD, hands-free capture, streaming and spoken responses
+are intentionally absent; the recorder and speech service are separate extension
+points for those features. No agent logic is duplicated.
+
+`GET /api/voice/config` and `POST /api/voice/transcribe` require the existing
+`task.create` permission. POST uses the existing session cookie, credentials and
+CSRF mechanism. Sessions and permissions are revalidated after upload and before
+returning a transcript. Development auth-disabled behavior remains the same as
+typed input; production still forbids disabled auth. Configuration and successful
+transcript responses use `Cache-Control: no-store`.
+
+POST accepts a **raw audio body**, not a multipart file. WebM/Opus, Ogg/Opus, MP4
+audio, and WAV are allowlisted; declared MIME type and container signatures must
+agree. A fixed container decoder reads in-memory bytes and resamples to 16 kHz
+mono. Decoded sample counting enforces duration even without metadata. Invalid,
+silent, empty, overlong, oversized, and non-audio inputs fail safely. There are no
+audio filenames, shell commands, external URLs, multipart disk spools, or temporary
+recordings to clean up. Request audio buffers are released; the worker retains
+model weights, not a recording history. ASR logs/errors omit audio and transcripts.
+After explicit Send, the existing text-task audit and retention rules apply.
+
+One speech job runs per backend process, with no inference queue; overlapping jobs
+receive `429 VOICE_BUSY`. Native inference runs outside the API event loop. A hard
+response timeout terminates the worker, releases capacity, and returns 504. Cancel
+stops the browser microphone/upload and suppresses late results; work already sent
+to the server may finish until its deadline. Capacity remains occupied until that
+work ends. Use one Uvicorn worker on the target laptop; multiple server workers
+would each load a model. Configure normal reverse-proxy connection/body limits for
+larger deployments; this prototype does not add a distributed per-user rate limiter.
+
+### Verification and measured performance
+
+Run from `1_SIH`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\voice -o addopts="" -q
+.\.venv\Scripts\python.exe -m pytest local_testing\tests -o addopts="" -q
+Set-Location frontend
+npm run test:voice
+npm run typecheck
+npm run build
+Set-Location ..
+node --test local_testing\frontend_diagnostic_contract.test.cjs
+```
+
+The new tests are tracked under `tests/voice` and `frontend/voice-tests`; existing
+local regression tests remain in their original ignored locations. Automated tests
+use mocked recognition and synthetic PCM, with no model download or real microphone.
+Decoder/missing-model subprocess tests skip when optional PyAV is not installed.
+Backend tests use an isolated temporary database. Coverage includes authentication,
+CSRF, permission denial, expiry/revocation during ASR, upload byte/duration/time
+limits, bad formats, unavailable models, repeat requests, hard termination, model
+reuse, explicit reviewed submission, existing release/human-review decisions, and
+prompt-injection blocking. Recorder tests cover start/stop/cancel, late permission
+and response races, disconnects, format support, empty/large recordings, timeout,
+auto-stop, and no automatic task submission.
+
+Verified on 19 October 2026: **25 new backend tests passed; 13 recorder tests
+passed; 367 existing backend tests passed and 1 skipped; 9 existing frontend
+contract tests passed**. Type checking, production build, and `pip check` passed.
+Existing suites emitted deprecation/statistical warnings; no failures were observed.
+
+A Windows offline synthetic voice fixture asked two Pump-102 questions in
+**7.613 seconds**. Intel Family 6 Model 154, 12 logical CPUs, tiny.en CPU INT8,
+2 inference threads, three consecutive local-service runs:
+
+| Run | Model initialization | Transcription | Service voice-to-transcript |
+| --- | ---: | ---: | ---: |
+| Cold | 0.696 s | 0.718 s | 3.013 s |
+| Warm 1 | 0 s | 1.143 s | 1.160 s |
+| Warm 2 | 0 s | 1.494 s | 1.523 s |
+
+Peak sampled speech-worker resident memory was **223.8 MiB** at 20 ms intervals;
+this excludes the API, browser, LLM and other services and is a sampled peak, not
+an allocator high-water mark. Service latency includes spawn/IPC but excludes
+microphone capture, permission interaction, and HTTP transport. To reproduce with
+a supplied short local recording (the command never prints the transcript):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\benchmark_voice.py C:\recordings\question.wav --runs 3
+```
+
+A real Chromium MediaRecorder encoded a synthetic microphone stream as WebM/Opus;
+the real backend recognized it, populated the editable composer and waited for
+explicit Send. Its measured stop/upload-to-response request took **1.570 s**.
+The recognized text used “pump 102”; asset spelling remains reviewable. The browser
+then submitted through `/api/tasks/start`. Editing the transcript to include an
+instruction-bypass attempt and sending it again produced the existing policy block.
+Physical microphone hardware/permission
+prompts and Safari/Firefox were not exercised. External GraphRAG, ControlPlane,
+and diagnostics services were unavailable locally; full live multi-service release
+was not verified. Their authorization/release integration was verified with mocks
+and the existing security regressions. Tiny-model recognition quality, noisy rooms,
+industrial abbreviations, and accent coverage need representative human audio
+evaluation before broader deployment.
+
+Implementation files: `backend/app/api/voice.py`, `backend/app/multimodal/speech.py`,
+`backend/app/main.py`, `backend/app/core/config.py`, `backend/requirements-voice.txt`,
+`frontend/app/voice/{VoiceInput.tsx,recorder.ts}`, the existing composer/CSS,
+`frontend/voice-tests/recorder.test.cjs`, `frontend/package.json`,
+`tests/voice/test_speech.py`, `scripts/{download_voice_model,benchmark_voice}.py`,
+`.env.example`, `.gitignore`, and `pyproject.toml`.

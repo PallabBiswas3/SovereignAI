@@ -14,6 +14,8 @@ from app.api.artifacts import router as artifacts_router
 from app.api.demo import router as demo_router
 from app.api.ocr import router as ocr_router
 from app.api.vision import router as vision_router
+from app.api.voice import router as voice_router
+from app.multimodal.speech import get_speech_service
 from app.api.governance import router as governance_router
 from app.api.monitoring import router as monitoring_router
 from app.api.evaluation import router as evaluation_router
@@ -36,6 +38,9 @@ from app.core.database import init_db
 async def lifespan(_: FastAPI):
     init_db()
     yield
+    if get_speech_service.cache_info().currsize:
+        get_speech_service().close()
+        get_speech_service.cache_clear()
 
 
 settings = get_settings()
@@ -56,6 +61,7 @@ app.include_router(artifacts_router)
 app.include_router(demo_router)
 app.include_router(ocr_router)
 app.include_router(vision_router)
+app.include_router(voice_router)
 app.include_router(governance_router)
 app.include_router(monitoring_router)
 app.include_router(evaluation_router)
