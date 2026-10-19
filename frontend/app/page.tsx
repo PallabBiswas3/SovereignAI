@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import VoiceInput from "./voice/VoiceInput";
+import AgentExamples from "./agent-tools/AgentExamples";
+import AgentTrace, { type ToolRecord } from "./agent-tools/AgentTrace";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 type TaskResult = {
@@ -21,6 +23,7 @@ type TaskResult = {
   chat_mode: string;
   chat_mode_reason: string;
   runtime_metrics: Record<string, unknown>;
+  tool_records?: ToolRecord[];
   measurements: Array<{ id: string; asset_id?: string | null; metric: string; original_value: number; original_unit?: string | null; normalized_value?: number | null; normalized_unit?: string | null; source_id: string; status: string }>;
   rules: Array<{ id: string; metric: string; operator: string; threshold?: number | null; lower_bound?: number | null; upper_bound?: number | null; unit?: string | null; rule_type: string; source: { source_id: string; section?: string | null; revision?: string | null } }>;
   calculations: Array<{ id: string; expression: string; inputs: string[]; result: boolean | number | string; verified: boolean }>;
@@ -99,6 +102,9 @@ const eventLabels: Record<string, string> = {
   tool_proposed: "Preparing a controlled tool",
   tool_started: "Running a local tool",
   tool_completed: "Local tool completed",
+  tool_approval_required: "Tool is waiting for human approval",
+  agent_verified: "Requested tool steps checked",
+  agent_decision_rejected: "Invalid tool decision rejected; asking the model to retry",
   source_retrieved: "Source evidence retrieved",
   artifact_created: "Artifact created",
   warning: "Reviewing a warning",
@@ -159,6 +165,7 @@ export default function Home() {
   const [modelOverride, setModelOverride] = useState("");
   const [executionMode, setExecutionMode] = useState("AUTOMATIC");
   const [chatMode, setChatMode] = useState("AUTOMATIC");
+  const [toolScope, setToolScope] = useState<"ALL" | "NUMERIC">("ALL");
   const [activeTaskId, setActiveTaskId] = useState("");
   const [attachments, setAttachments] = useState<Array<{ name: string; path: string }>>([]);
   const [models, setModels] = useState<ModelStatus[]>([]);
@@ -218,6 +225,7 @@ export default function Home() {
           model_override: modelOverride || null,
           execution_mode: executionMode,
           chat_mode: chatMode,
+          tool_scope: toolScope,
           attachments: attachments.map((item) => item.path),
           use_case: submittedMessage.toLowerCase().includes("inspection") ? "engineering" : "internal_assistant",
           workcell_id: workcellId || null,
@@ -228,7 +236,7 @@ export default function Home() {
       setActiveTaskId(started.task_id);
       const stream = new EventSource(`${api}/api/tasks/${started.task_id}/events`, { withCredentials: true });
       let finished = false;
-      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
+      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "tool_approval_required", "agent_verified", "agent_decision_rejected", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
       const receive = (event: MessageEvent) => {
         const item = JSON.parse(event.data) as LiveEvent;
         setLiveEvents((current) => [...current, item]);
@@ -343,7 +351,7 @@ export default function Home() {
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
-      <button className="newTask" disabled={voiceBusy} onClick={() => { setResult(null); setMessage(""); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
+      <button className="newTask" disabled={voiceBusy} onClick={() => { setResult(null); setMessage(""); setToolScope("ALL"); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
       <nav><a className="active">Workbench</a><Link href="/integrations">Integrated analysis</Link><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
@@ -357,11 +365,14 @@ export default function Home() {
             : <article className="messageRow assistantMessage" key={entry.id}><span className="avatar">S</span><div className="messageBubble"><b>SovereignAI</b>{entry.waiting
               ? <div className="waitingResponse">{entry.content && <p>{entry.content}</p>}<span className="waitingDots"><i/><i/><i/></span><p>{eventLabels[liveEvents.at(-1)?.type ?? ""] ?? "Waiting for the local model…"}</p><small>Local CPU inference can take a few minutes.</small></div>
               : <><p>{entry.content}</p>{entry.warnings?.map((warning) => <em key={warning}>{warning}</em>)}</>}</div></article>)}
-          <div ref={conversationEnd}/>
         </div> : <div className="empty"><div className="mark">S</div><h2>Confidential work stays here.</h2><p>Analyze industrial documents, search internal knowledge, execute controlled tools, and generate finished deliverables—all inside your infrastructure.</p></div>}
+        {!chatEntries.length && <AgentExamples disabled={loading || voiceBusy || attachments.length > 0 || !!workcellId || !principal.permissions.includes("tool.execute")} onChoose={(prompt) => { setMessage(prompt); setChatMode("CONTROLLED"); setToolScope("NUMERIC"); messageInput.current?.focus(); }} />}
+        <AgentTrace events={liveEvents} records={result?.tool_records ?? []} status={result?.status} />
+        {chatEntries.length > 0 && <div ref={conversationEnd} />}
         {error && !chatEntries.length && <p className="error">{error}</p>}
       </div>
       <form onSubmit={submit} className="composer">
+        {toolScope === "NUMERIC" && <div><span>Arithmetic tools only</span><button type="button" disabled={loading || voiceBusy} onClick={() => setToolScope("ALL")}>Use all tools</button></div>}
         <textarea ref={messageInput} aria-label="Message SovereignAI" disabled={voiceBusy} value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message SovereignAI…" />
         {attachments.map((attachment) => <div className="attachment" key={attachment.path}>File: {attachment.name}<button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.path !== attachment.path))}>x</button></div>)}
         <div><label className="attachButton" title="Attach files">+<input multiple type="file" accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.tif,.tiff" onChange={(event) => { Array.from(event.target.files ?? []).forEach((file) => void upload(file)); }} /></label><VoiceInput key={principal.user_id} disabled={loading} apiFetch={apiFetch} onBusy={setVoiceBusy} onTranscript={(text) => { setMessage((draft) => draft.trim() ? `${draft.trimEnd()} ${text}` : text); requestAnimationFrame(() => messageInput.current?.focus()); }} /><span>Enter to send · Shift+Enter for a new line</span>{loading && <button type="button" className="send" onClick={() => void cancelActiveTask()}>Cancel</button>}<button className="send" disabled={loading || voiceBusy || !message.trim()}>{loading ? "Waiting…" : "Run task →"}</button></div>

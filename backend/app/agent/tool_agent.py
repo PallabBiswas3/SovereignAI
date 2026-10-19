@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from app.agent.state import AgentPlan, AgentRunState, AgentStep, RunStatus, StepStatus
 from app.governance.action_guard import ActionGuard
@@ -13,6 +14,8 @@ from app.llm.base import LocalModelProvider
 from app.tools.registry import ToolRegistry
 from app.identity.authorization import AuthorizationService
 from app.identity.models import Principal
+from app.tools.base import ToolResult
+from app.tools.simple_tools import SIMPLE_TOOL_NAMES
 
 
 class BoundedToolAgent:
@@ -30,6 +33,7 @@ class BoundedToolAgent:
         max_seconds: int = 180,
         tool_timeout: int = 60,
         principal: Principal | None = None,
+        event_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.provider = provider
         self.model_tag = model_tag
@@ -41,11 +45,24 @@ class BoundedToolAgent:
         self.tool_timeout = max(2, min(tool_timeout, 120))
         self.principal = principal
         self.authorization = AuthorizationService()
+        self.event_callback = event_callback
+
+    async def _emit(self, event: str, payload: dict[str, Any]) -> None:
+        if self.event_callback:
+            await self.event_callback(event, payload)
+
+    @staticmethod
+    def _missing_tools(state: AgentRunState) -> list[str]:
+        required = {name for name in SIMPLE_TOOL_NAMES if re.search(rf"\b{name}\b", state.request, re.I)}
+        completed = {record["tool"] for record in state.tool_records if record.get("success")}
+        return sorted(required - completed)
 
     async def execute(self, state: AgentRunState, attachments: list[str]) -> AgentRunState:
         state.plan = AgentPlan(goal=state.request, steps=[
             AgentStep(id=1, action="understand_task", title="Classify task and establish bounded tool plan", status=StepStatus.completed, observation=f"Classified as {state.routing.task_profile.task_type}."),
         ])
+        state.runtime_metrics["live_tool_events"] = self.event_callback is not None
+        await self._emit("plan_created", {"goal": state.request, "summary": "Select a registered tool, check permissions, execute, observe the result, and check completion."})
         observations: list[dict[str, Any]] = []
         deadline = time.monotonic() + self.max_seconds
         tool_calls = 0
@@ -74,6 +91,11 @@ class BoundedToolAgent:
                 action = str(data.get("action", "")).lower()
                 reason = str(data.get("reason_summary", "No decision summary supplied."))[:500]
                 if action == "complete":
+                    missing = self._missing_tools(state)
+                    if missing:
+                        observations.append({"error": "Completion rejected: first successfully call explicitly requested tools: " + ", ".join(missing)})
+                        await self._emit("agent_decision_rejected", {"tool": "completion", "error": observations[-1]["error"]})
+                        continue
                     state.final_response = str(data.get("final_response", "Task completed."))
                     state.plan.steps.append(AgentStep(
                         id=len(state.plan.steps) + 1, action="complete", title="Verify and complete task",
@@ -84,6 +106,7 @@ class BoundedToolAgent:
                     break
                 if action != "tool":
                     observations.append({"error": "Invalid action. Use tool or complete."})
+                    await self._emit("agent_decision_rejected", {"error": observations[-1]["error"]})
                     invalid_decisions += 1
                     if invalid_decisions >= 2 and successful_calls and await self._synthesize(state, observations, deadline):
                         break
@@ -94,11 +117,13 @@ class BoundedToolAgent:
                 arguments = data.get("arguments", {})
                 if not isinstance(arguments, dict):
                     observations.append({"tool": tool_name, "error": "Tool arguments must be an object."})
+                    await self._emit("agent_decision_rejected", observations[-1])
                     continue
                 try:
                     tool = self.tools.get(tool_name)
                 except KeyError as exc:
                     observations.append({"tool": tool_name, "error": str(exc)})
+                    await self._emit("agent_decision_rejected", observations[-1])
                     invalid_decisions += 1
                     if invalid_decisions >= 2 and successful_calls and await self._synthesize(state, observations, deadline):
                         break
@@ -106,6 +131,7 @@ class BoundedToolAgent:
                 argument_errors = self.tools.validate_arguments(tool_name, arguments)
                 if argument_errors:
                     observations.append({"tool": tool_name, "error": "; ".join(argument_errors)})
+                    await self._emit("agent_decision_rejected", observations[-1])
                     invalid_decisions += 1
                     if invalid_decisions >= 2 and successful_calls and await self._synthesize(state, observations, deadline):
                         break
@@ -124,10 +150,12 @@ class BoundedToolAgent:
                     "reason_summary": reason, "risk": policy.risk,
                     "governance_decision": policy.decision.value,
                 }
+                await self._emit("tool_proposed", {**record, "call_id": decision_number})
                 if access and not access.allowed:
                     record.update({"success": False, "error": access.reason_code,
                                    "authorization_decision": access.reason_code})
                     state.tool_records.append(record)
+                    await self._emit("tool_completed", {**record, "call_id": decision_number})
                     observations.append({"tool": tool_name, "error": access.reason_code})
                     continue
                 if policy.decision == GovernanceDecision.require_human_approval:
@@ -139,12 +167,14 @@ class BoundedToolAgent:
                         status=StepStatus.waiting_for_approval, args=arguments, observation=policy.reason,
                     ))
                     state.status = RunStatus.waiting_for_approval
+                    await self._emit("tool_approval_required", {**record, "call_id": decision_number})
                     state.final_response = f"The proposed {tool_name} action requires human approval."
                     break
                 if policy.decision != GovernanceDecision.allow:
                     record.update({"success": False, "error": policy.reason})
                     state.tool_records.append(record)
                     observations.append(record)
+                    await self._emit("tool_completed", {**record, "call_id": decision_number})
                     continue
                 if tool_name.startswith("generate_"):
                     arguments = {**arguments, "run_id": state.id}
@@ -154,18 +184,27 @@ class BoundedToolAgent:
                     title=f"Run tool: {tool_name}", status=StepStatus.running, args=arguments,
                 )
                 state.plan.steps.append(step)
+                await self._emit("tool_started", {"tool": tool_name, "arguments": arguments, "call_id": decision_number})
                 started = time.perf_counter()
-                result = await asyncio.wait_for(tool.execute(arguments), timeout=min(self.tool_timeout, max(1, deadline - time.monotonic())))
+                try:
+                    result = await asyncio.wait_for(tool.execute(arguments), timeout=min(self.tool_timeout, max(1, deadline - time.monotonic())))
+                except asyncio.TimeoutError:
+                    result = ToolResult(success=False, error="Tool execution timed out.")
+                except Exception:
+                    result = ToolResult(success=False, error="Tool execution failed safely.")
                 tool_calls += 1
                 record.update({
                     "success": result.success, "error": result.error,
                     "duration_ms": round((time.perf_counter() - started) * 1000, 1),
                     "output_summary": self._summarize(result.output),
+                    "validation": str(result.output.get("validation", "")) if isinstance(result.output, dict) else "",
                 })
                 state.tool_records.append(record)
+                await self._emit("tool_completed", {**record, "call_id": decision_number})
                 step.status = StepStatus.completed if result.success else StepStatus.failed
                 step.observation = record["output_summary"] if result.success else result.error
                 step.error = result.error
+                step.verification = record["validation"] or ("Tool returned a successful observation." if result.success else "Tool failed; no successful result accepted.")
                 self._collect_result(state, result.output)
                 observations.append({
                     "tool": tool_name, "success": result.success,
@@ -181,7 +220,7 @@ class BoundedToolAgent:
         except (asyncio.TimeoutError, TimeoutError, RuntimeError) as exc:
             if successful_calls and observations:
                 verified = [item for item in observations if item.get("success")]
-                state.status = RunStatus.completed
+                state.status = RunStatus.failed if self._missing_tools(state) else RunStatus.completed
                 state.final_response = "Verified local tool results:\n" + json.dumps(verified, ensure_ascii=False, default=str)[:8_000]
                 state.warnings.append("Local-model synthesis reached its execution bound; verified tool output was returned directly.")
                 state.plan.steps.append(AgentStep(
@@ -194,9 +233,21 @@ class BoundedToolAgent:
                 state.final_response = "The bounded agent stopped before completion."
                 state.warnings.append(str(exc) or type(exc).__name__)
         state.updated_at = datetime.now(timezone.utc)
+        missing = self._missing_tools(state)
+        if missing and state.status != RunStatus.waiting_for_approval:
+            state.status = RunStatus.failed
+            state.warnings.append("Requested tool steps did not complete: " + ", ".join(missing))
+        await self._emit("agent_verified", {
+            "completed": state.status == RunStatus.completed,
+            "successful_tool_calls": sum(bool(record.get("success")) for record in state.tool_records),
+            "missing_tools": missing,
+            "summary": "Requested tool steps checked against actual successful observations. Final response still passes the existing grounding and governance checks.",
+        })
         return state
 
     async def _synthesize(self, state: AgentRunState, observations: list[dict[str, Any]], deadline: float) -> bool:
+        if self._missing_tools(state):
+            return False
         remaining = deadline - time.monotonic()
         if remaining <= 1:
             return False
@@ -231,17 +282,36 @@ class BoundedToolAgent:
             f"REGISTERED TOOLS:\n{json.dumps(self.tools.discover(), ensure_ascii=False)}\n\n"
             f"PRIOR OBSERVATIONS:\n{json.dumps(observations[-6:], ensure_ascii=False, default=str)[:30_000]}\n\n"
             "Choose exactly one next action. Use only a registered tool with schema-valid arguments, or complete with a grounded final response. "
+            "When the goal explicitly names tools, successfully call each requested tool before completing. "
+            "Use observed numeric values in later calls, not variable names or placeholders. "
             "Do not repeat a successful tool call. Do not request shell access. Give only a concise reason_summary."
         )
 
-    @staticmethod
-    def _decision_schema() -> dict[str, Any]:
+    def _decision_schema(self) -> dict[str, Any]:
+        tools = self.tools.discover()
+        names = [str(tool["name"]) for tool in tools]
+        arguments = {"type": "object"}
+        if names and set(names).issubset(SIMPLE_TOOL_NAMES):
+            arguments = {"anyOf": [tool["input_schema"] for tool in tools]}
+            # Tool decisions must carry a name and arguments. Optional fields let
+            # small local models repeatedly choose "tool" without naming one.
+            return {"oneOf": [
+                {"type": "object", "properties": {
+                    "action": {"type": "string", "enum": ["tool"]},
+                    "tool_name": {"type": "string", "enum": names},
+                    "arguments": arguments, "reason_summary": {"type": "string"},
+                }, "required": ["action", "tool_name", "arguments", "reason_summary"], "additionalProperties": False},
+                {"type": "object", "properties": {
+                    "action": {"type": "string", "enum": ["complete"]},
+                    "final_response": {"type": "string"}, "reason_summary": {"type": "string"},
+                }, "required": ["action", "final_response", "reason_summary"], "additionalProperties": False},
+            ]}
         return {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["tool", "complete"]},
-                "tool_name": {"type": "string"},
-                "arguments": {"type": "object"},
+                "tool_name": {"type": "string", "enum": names} if names else {"type": "string"},
+                "arguments": arguments,
                 "reason_summary": {"type": "string"},
                 "final_response": {"type": "string"},
             },
@@ -252,6 +322,8 @@ class BoundedToolAgent:
     def _summarize(output: Any) -> str:
         if output is None:
             return "Tool completed without output."
+        if isinstance(output, dict) and "validation" in output:
+            output = {key: value for key, value in output.items() if key not in {"validation", "results"}}
         text = json.dumps(output, ensure_ascii=False, default=str) if not isinstance(output, str) else output
         return text[:1_000]
 

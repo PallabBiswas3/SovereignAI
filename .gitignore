@@ -32,6 +32,8 @@ tests/
 tests/*
 !tests/voice/
 !tests/voice/**
+!tests/agent_tools/
+!tests/agent_tools/**
 models/faster-whisper-*/
 backend/tests/
 Controlplane.ai/tests/
