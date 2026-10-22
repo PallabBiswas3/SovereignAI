@@ -192,7 +192,17 @@ class _ArtifactTool(Tool):
 class GenerateDocxTool(_ArtifactTool):
     name = "generate_docx"
     description = "Generate and register a Word report from titled sections"
-    input_schema = {"type": "object", "properties": {"filename": {"type": "string"}, "title": {"type": "string"}, "sections": {"type": "array"}, "sources": {"type": "array"}, "run_id": {"type": "string"}}, "required": ["title", "sections"]}
+    input_schema = {"type": "object", "properties": {
+        "filename": {"type": "string"}, "title": {"type": "string"},
+        "sections": {"type": "array", "items": {"type": "object", "properties": {
+            "heading": {"type": "string"}, "content": {"anyOf": [{"type": "string"}, {"type": "array"}]}},
+            "required": ["heading", "content"]}},
+        "sources": {"type": "array", "items": {"type": "object", "properties": {
+            "file": {"type": "string"}, "source_id": {"type": "string"},
+            "page": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "section": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+            "required": ["file"], "additionalProperties": True}},
+        "run_id": {"type": "string"}}, "required": ["title", "sections"]}
 
     async def execute(self, args: dict[str, Any]) -> ToolResult:
         filename = _filename(str(args.get("filename", "report.docx")), ".docx")

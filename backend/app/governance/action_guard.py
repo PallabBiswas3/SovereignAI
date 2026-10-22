@@ -17,6 +17,7 @@ class ActionDecision(BaseModel):
 
 class ActionGuard:
     def __init__(self, tools_config: Path) -> None:
+        self.config_path = tools_config
         raw = yaml.safe_load(tools_config.read_text(encoding="utf-8")) or {}
         self.tools = raw.get("tools", {})
 

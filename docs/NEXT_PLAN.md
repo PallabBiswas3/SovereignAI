@@ -1,5 +1,18 @@
 # Next implementation plan
 
+## Task continuity follow-up - 22 October 2026
+
+Step 4 now accepts typed clarification answers and task-bound uploads for the
+same saved task; see CURRENT_FEATURES for supported paths and validation.
+Step 5 completed a live labelled synthetic Pump-102 diagnostic/SOP/report task;
+see CURRENT_FEATURES for timing, acceptance checks and limits. Next: add a
+validated continuation adapter for partial specialist-service execution, then
+Workcell and sandbox workflows. Preserve current permission, evidence-access,
+receipt, approval and release checks. Also repair the legacy ControlPlane test
+harness failures reproduced with the pre-change verifier; do not relax runtime
+policy to satisfy outdated tests. Browser file-picker automation needs its
+workspace-root configuration repaired for a full browser-only upload test.
+
 ## Disposition of pending diagnostic work — 18 October 2026
 
 All eleven pending files (eight diagnostic source files and these three maintained

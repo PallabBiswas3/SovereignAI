@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from time import monotonic
 from typing import Any
 from uuid import uuid4
@@ -89,6 +90,8 @@ class IndustrialIntegrationOrchestrator:
         principal_id: str | None = None,
         organization_id: str | None = None,
     ) -> IntegratedAnalysisResponse:
+        # Routing imports this package while AgentRunState is being defined.
+        from app.agent.checkpoints import checkpoint_data, operation_started, operation_finished
         total_started = monotonic()
         # Keep identifiers compatible with the persisted AgentRunRecord String(36)
         # column while retaining globally unique correlation across services.
@@ -102,6 +105,7 @@ class IndustrialIntegrationOrchestrator:
             "authorization_scope_fingerprint": scope.fingerprint,
         }
         precheck_started = monotonic()
+        await operation_started("integration:precheck", {"query": request.query, "profile": request.policy_profile})
         precheck = await self.controlplane.precheck({
             "id": f"{run_id}-precheck",
             "profile": request.policy_profile,
@@ -111,6 +115,7 @@ class IndustrialIntegrationOrchestrator:
             "metadata": metadata,
         })
         precheck_ms = (monotonic() - precheck_started) * 1000
+        await operation_finished("integration:precheck", precheck)
         precheck_action = self._action(precheck)
         if precheck_action in HOLD_ACTIONS:
             return IntegratedAnalysisResponse(
@@ -134,7 +139,7 @@ class IndustrialIntegrationOrchestrator:
                 **scope.model_dump(mode="json"),
                 "fingerprint": scope.fingerprint,
             }
-            calls.append(("graph-rag", self.graph.retrieve(
+            calls.append(("graph-rag", lambda: self._retrieve_graph(
                 request.query,
                 request.assurance_level.value,
                 serialized_scope,
@@ -149,10 +154,25 @@ class IndustrialIntegrationOrchestrator:
             if context_metadata:
                 context["metadata"] = context_metadata
             diagnostic_payload["run_context"] = context
-            calls.append(("diagnostics", self.diagnostics.diagnose(diagnostic_payload)))
+            calls.append(("diagnostics", lambda: self.diagnostics.diagnose(diagnostic_payload)))
 
         evidence_started = monotonic()
-        call_results = await asyncio.gather(*(call for _, call in calls), return_exceptions=True)
+        await operation_started("integration:evidence", {"services": [name for name, _ in calls]})
+        async def collect_service(name, call):
+            key = f"service:{name}"
+            started = monotonic()
+            await operation_started(key, {"service": name})
+            try:
+                output = await call()
+            except Exception as exc:
+                await operation_finished(key, {"error": str(exc), "success": False})
+                raise
+            finally:
+                service_timings[name] = round((monotonic() - started) * 1000, 3)
+            await operation_finished(key, output)
+            return output
+        service_timings: dict[str, float] = {}
+        call_results = await asyncio.gather(*(collect_service(name, call) for name, call in calls), return_exceptions=True)
         evidence_ms = (monotonic() - evidence_started) * 1000
         evidence: dict[str, dict[str, Any] | None] = {"graph-rag": None, "diagnostics": None}
         service_status = {
@@ -167,6 +187,9 @@ class IndustrialIntegrationOrchestrator:
             else:
                 service_status[name] = "available"
                 evidence[name] = result
+
+        await operation_finished("integration:evidence", {"results": evidence, "service_status": service_status,
+                                                        "errors": [name for name, _ in failures]})
 
         if failures and self.settings.integration_fail_closed:
             if len(failures) == 1:
@@ -201,6 +224,7 @@ class IndustrialIntegrationOrchestrator:
                     else "linked" if diagnostic_linked else "unlinked"
                 ),
             }
+        synthesis_started = monotonic()
         if request.candidate_response:
             candidate = request.candidate_response
             service_status["model"] = "not_requested"
@@ -294,6 +318,8 @@ class IndustrialIntegrationOrchestrator:
                 )
             candidate = generated.text
             service_status["model"] = "available"
+        await checkpoint_data("integration_candidate_saved", integration_candidate=candidate, model_runtime=model_runtime)
+        synthesis_ms = (monotonic() - synthesis_started) * 1000
         context = json.dumps(
             {"graph_evidence": evidence["graph-rag"],
              "diagnostic": diagnostic_result if diagnostic_usable else {"document_linkage": "unlinked"}},
@@ -308,6 +334,7 @@ class IndustrialIntegrationOrchestrator:
             if items
         ]
         release_started = monotonic()
+        await operation_started("integration:release_check", {"candidate": candidate})
         report = await self.controlplane.check({
             "id": f"{run_id}-release",
             "profile": request.policy_profile,
@@ -324,6 +351,7 @@ class IndustrialIntegrationOrchestrator:
             },
         })
         release_ms = (monotonic() - release_started) * 1000
+        await operation_finished("integration:release_check", report)
         action = self._action(report)
         released = action in RELEASE_ACTIONS
         return IntegratedAnalysisResponse(
@@ -340,10 +368,34 @@ class IndustrialIntegrationOrchestrator:
             timings_ms={
                 "precheck": round(precheck_ms, 3),
                 "evidence": round(evidence_ms, 3),
+                **{f"service_{name}": duration for name, duration in service_timings.items()},
+                "synthesis": round(synthesis_ms, 3),
                 "release_check": round(release_ms, 3),
                 "total": round((monotonic() - total_started) * 1000, 3),
             },
         )
+
+    async def _retrieve_graph(self, query, assurance, scope):
+        """One bounded procedure lookup when the requested report lacks its SOP."""
+        from .maintenance_report import report_requested
+        graph = await self.graph.retrieve(query, assurance, scope)
+        chunks = graph.get("chunks") or []
+        def current_sop(chunk):
+            info = chunk.get("metadata") or {}
+            return info.get("document_status") == "current" and info.get("document_type") in {"sop", "maintenance_sop"}
+        assets = set(re.findall(r"(?<![\w-])[A-Za-z]+-\d+\b", query))
+        if (not report_requested(query) or not re.search(r"\bSOP\b", query, re.I) or len(assets) != 1):
+            return graph
+        asset = next(iter(assets))
+        if any(current_sop(c) and re.search(rf"\b{re.escape(asset)}\b", str(c.get("content") or ""), re.I) for c in chunks):
+            return graph
+        procedure = await self.graph.retrieve(f"{asset} current maintenance SOP investigation threshold isolation authorization", assurance, scope)
+        additions = [c for c in procedure.get("chunks") or [] if current_sop(c)
+                     and re.search(rf"\b{re.escape(asset)}\b", str(c.get("content") or ""), re.I)]
+        ids = {c.get("id") for c in chunks}
+        return {**graph, "chunks": chunks + [c for c in additions if c.get("id") not in ids],
+                "procedure_retrieval": {"status": procedure.get("status"), "matched_current_sops": len(additions),
+                                        "timings_ms": procedure.get("timings_ms")}}
 
     @staticmethod
     def _authorization_scope(

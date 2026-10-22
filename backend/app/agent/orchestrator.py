@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from app.agent.executor import AgentExecutor
 from app.agent.planner import AgentPlanner
 from app.agent.state import AgentRunState, RunStatus, StepStatus
+from app.agent.checkpoints import checkpoint, execution_id, ensure_active
 from app.core.config import Settings
 from app.llm.factory import configured_local_provider
 from app.llm.base import ModelGenerationCancelled
@@ -37,14 +37,15 @@ class AgentOrchestrator:
         chat_mode: ChatMode = ChatMode.general,
         chat_mode_reason: str = "No organizational evidence or governed action was requested.",
         generation_prompt: str | None = None,
+        resume_state: AgentRunState | None = None,
     ) -> AgentRunState:
-        routing = self.router.route(request, model_override)
+        routing = resume_state.routing if resume_state else self.router.route(request, model_override)
         selection = ExecutionModeSelector().select(
             execution_mode, request, routing.task_profile, attachment_count
         )
         plan = self.planner.create_plan(request, routing.task_profile, selection.selected)
-        state = AgentRunState(
-            id=str(uuid4()), request=request, status=RunStatus.running, plan=plan, routing=routing,
+        state = resume_state or AgentRunState(
+            id=execution_id(), request=request, status=RunStatus.running, plan=plan, routing=routing,
             requested_execution_mode=selection.requested.value,
             execution_mode=selection.selected.value,
             execution_mode_reason=selection.reason,
@@ -52,6 +53,7 @@ class AgentOrchestrator:
             chat_mode=chat_mode.value,
             chat_mode_reason=chat_mode_reason,
         )
+        await checkpoint(state, "agent_plan_created")
         selected = self.registry.get(routing.model_id)
         runtime = configured_local_provider(
             self.settings,
@@ -66,10 +68,16 @@ class AgentOrchestrator:
         )
         try:
             for step in state.plan.steps:
+                if resume_state and step.status == StepStatus.completed:
+                    continue
+                ensure_active()
                 step.status = StepStatus.running
+                step.error = None
+                await checkpoint(state, "agent_step_started")
                 step.observation = await executor.execute_step(state, step)
                 step.status = StepStatus.completed
                 state.updated_at = datetime.now(timezone.utc)
+                await checkpoint(state, "agent_step_completed")
             state.status = RunStatus.completed
         except ModelGenerationCancelled:
             raise

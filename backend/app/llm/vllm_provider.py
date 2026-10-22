@@ -17,6 +17,7 @@ from app.llm.base import (
 )
 from app.monitoring.network import LocalNetworkPolicy
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
+from app.monitoring.timing import measure_generation, measure_stream
 from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_scheduler
 
 
@@ -107,6 +108,7 @@ class VLLMProvider(LocalModelProvider):
             runtime_stats=final.runtime_stats if final else {},
         )
 
+    @measure_stream
     async def stream(
         self,
         prompt: str,
@@ -193,6 +195,7 @@ class VLLMProvider(LocalModelProvider):
             if owns_client:
                 await client.aclose()
 
+    @measure_generation
     async def generate_json(
         self, prompt: str, model: str, schema: dict[str, Any], system: str | None = None
     ) -> StructuredGenerationResult:
@@ -370,8 +373,8 @@ class VLLMProvider(LocalModelProvider):
         was_loaded: bool | None,
     ) -> dict[str, object]:
         finished = monotonic()
-        completion_tokens = int(usage.get("completion_tokens") or 0)
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage["completion_tokens"]) if isinstance(usage.get("completion_tokens"), (int, float)) else None
+        prompt_tokens = int(usage["prompt_tokens"]) if isinstance(usage.get("prompt_tokens"), (int, float)) else None
         decode_seconds = finished - first_token_at if first_token_at else None
         return {
             "available": True,

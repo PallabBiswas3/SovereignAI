@@ -5,6 +5,8 @@ from typing import Any
 
 from app.workcells.handlers import WorkcellHandlerContext, WorkcellHandlerRegistry
 from app.workcells.models import WorkcellDefinition, WorkcellExecutionState
+from app.agent.checkpoints import checkpoint_data, operation_started, operation_finished
+from app.agent.state import AgentRunState
 
 
 WorkcellEventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -55,14 +57,17 @@ class WorkcellExecutor:
                 await event_callback(name, payload)
 
         await emit("workcell_loaded", {"workcell_id": state.workcell_id, "version": state.workcell_version, "hash": state.workcell_hash})
+        await checkpoint_data("workcell_loaded", workcell=state.model_dump(mode="json"))
         for step in self._ordered_steps(definition):
             state.current_step = step.id
             if step.condition == "input_present" and not context.inputs.get(step.condition_input or ""):
                 state.completed_steps.append(step.id)
                 state.step_outputs[step.id] = {"skipped": True}
+                await checkpoint_data("workcell_step_skipped", workcell=state.model_dump(mode="json"))
                 continue
             resolved_inputs = {name: context.accumulated.get(reference, context.inputs.get(reference)) for name, reference in step.inputs.items()}
             state.step_inputs[step.id] = resolved_inputs
+            await operation_started(f"workcell:{step.id}", {"handler": step.handler, "inputs": resolved_inputs})
             await emit("workcell_step_started", {"step_id": step.id, "handler": step.handler})
             try:
                 output = await self.handlers.get(step.handler)(context, step, resolved_inputs)
@@ -74,6 +79,12 @@ class WorkcellExecutor:
                         raise WorkcellExecutionError(f"Handler {step.handler} omitted declared output {name}")
                     context.accumulated[name] = output[name]
                 state.completed_steps.append(step.id)
+                # Store a value snapshot, never a reference to the live run that
+                # will later inherit this checkpoint's metadata.
+                saved_output = {key: value.model_dump(mode="json", exclude={"checkpoint"})
+                                if isinstance(value, AgentRunState) else value for key, value in output.items()}
+                await operation_finished(f"workcell:{step.id}", saved_output)
+                await checkpoint_data("workcell_step_completed", workcell=state.model_dump(mode="json"))
                 await emit("workcell_step_completed", {"step_id": step.id, "outputs": sorted(output)})
             except Exception as exc:
                 state.failed_steps.append(step.id)

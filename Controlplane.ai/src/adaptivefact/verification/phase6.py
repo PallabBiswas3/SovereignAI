@@ -216,6 +216,17 @@ class Phase6Pipeline:
     def _retrieve_structured(self, items: list[dict], query: str, *, tokenized_items: list[tuple[dict, set[str]]] | None = None,
                              include_coverage: bool = False):
         cited_ids = set(_EVIDENCE_CITATION.findall(query))
+        # A literal normal-range assertion has a narrower evidence obligation
+        # than an assessment of safety, compliance or actual operating state.
+        # Keep all current potentially conflicting ranges, including negations
+        # and changed units; scalar readings are a different relation.
+        literal_range = re.fullmatch(
+            r"[A-Za-z]+-\d+\s+(?:current\s+)?normal\s+"
+            r"(?P<metric>discharge\s+pressure|pressure|vibration|temperature|speed|load)\s+"
+            r"(?:is|was)\s+\d+(?:\.\d+)?\s+to\s+\d+(?:\.\d+)?\s*"
+            r"(?:bar|mm/s(?:\s+RMS)?|rpm|percent|%|°?C)\.?",
+            _EVIDENCE_CITATION.sub("", query).strip().rstrip(".").strip(), re.I,
+        )
         query_tokens = self._tokens(_EVIDENCE_CITATION.sub(" ", query))
         ranked: list[tuple[bool, float, float, str]] = []
         for item, item_tokens in (tokenized_items if tokenized_items is not None else [(item, self._tokens(str(item.get("text") or ""))) for item in items]):
@@ -235,6 +246,14 @@ class Phase6Pipeline:
             historical = bool(re.search(r"\b(?:historical|superseded|archived|formerly|previous|obsolete)\b", query, re.IGNORECASE))
             if str(metadata.get("document_status", "")).casefold() == "superseded" and not cited and not historical:
                 continue
+            if literal_range and not cited:
+                if str(metadata.get("document_status", "")).casefold() in {"draft", "unverified"}:
+                    continue
+                metric = literal_range["metric"].split()[-1]
+                if not re.search(rf"\b{re.escape(metric)}\b", text, re.I):
+                    continue
+                if not self._compatible_numeric_relation(query, text):
+                    continue
             # The supplied score ranks the original user query, not this atomic
             # claim. It may break ties but cannot make an unrelated chunk relevant.
             min_shared_terms = 1 if len(query_tokens) <= 2 else 2

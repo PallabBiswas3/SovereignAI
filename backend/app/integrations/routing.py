@@ -33,6 +33,7 @@ class IntegrationRoutePlanner:
         "document evidence", "source evidence", "cite the sources",
         "according to our", "according to the manual", "according to the sop",
         "find the procedure", "find the policy", "find the standard",
+        "compare with the sop", "compare with sop", "current sop", "maintenance sop",
         "relationship between", "what do our documents",
     )
     DIAGNOSTIC_PHRASES = (

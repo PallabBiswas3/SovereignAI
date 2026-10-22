@@ -6,6 +6,11 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 
+TASK_OUTCOME_EVENTS = frozenset({
+    "task_completed", "task_paused", "task_failed", "task_cancelled", "task_blocked", "task_interrupted", "task_snapshot",
+})
+
+
 @dataclass
 class TaskChannel:
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -70,6 +75,13 @@ class TaskEventBroker:
             if channel is None:
                 raise KeyError(task_id)
             history = list(channel.events)
+            # A paused task can later be cancelled. Replaying the old pause must
+            # not make a client close its stream before the current outcome.
+            last_outcome = next((index for index in range(len(history) - 1, -1, -1)
+                                 if history[index]["type"] in TASK_OUTCOME_EVENTS), None)
+            if last_outcome is not None:
+                history = [event for index, event in enumerate(history)
+                           if event["type"] not in TASK_OUTCOME_EVENTS or index == last_outcome]
             completed = channel.completed
             if not completed:
                 channel.subscribers.add(queue)

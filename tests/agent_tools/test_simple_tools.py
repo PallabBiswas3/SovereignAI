@@ -203,7 +203,7 @@ def test_task_api_and_sse_use_existing_governed_path_without_replayed_tool_event
     app.dependency_overrides[get_db] = database
     try:
         with TestClient(app) as client:
-            started = client.post("/api/tasks/start", json={"request": GOAL, "chat_mode": "CONTROLLED", "tool_scope": "NUMERIC"})
+            started = client.post("/api/tasks/start", json={"request": "Investigate the example. " + GOAL, "chat_mode": "CONTROLLED", "tool_scope": "NUMERIC"})
             assert started.status_code == 202
             response = client.get(f"/api/tasks/{started.json()['task_id']}/events")
             events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.router.schemas import RoutingDecision
+from app.orchestration.workflow_selector import WorkflowSelection
 
 
 class StepStatus(str, Enum):
@@ -15,6 +16,10 @@ class StepStatus(str, Enum):
     completed = "completed"
     failed = "failed"
     waiting_for_approval = "waiting_for_approval"
+    waiting_for_input = "waiting_for_input"
+    cancelled = "cancelled"
+    blocked = "blocked"
+    interrupted = "interrupted"
 
 
 class RunStatus(str, Enum):
@@ -23,6 +28,57 @@ class RunStatus(str, Enum):
     completed = "completed"
     failed = "failed"
     waiting_for_approval = "waiting_for_approval"
+    waiting_for_input = "waiting_for_input"
+    cancelled = "cancelled"
+    blocked = "blocked"
+    interrupted = "interrupted"
+
+
+class ExecutionCheckpoint(BaseModel):
+    schema_version: int = 1
+    revision: int = 0
+    boundary: str = "accepted"
+    phase: Literal["pending", "active", "paused", "finished", "interrupted"] = "pending"
+    saved_at: datetime | None = None
+    requires_reconciliation: bool = False
+    interruption_reason: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class RequiredTaskInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    prompt: str = Field(min_length=1, max_length=1000)
+    kind: Literal["text", "attachment"] = "text"
+
+
+class CompletionCheck(BaseModel):
+    code: str
+    passed: bool
+    detail: str
+
+
+class TaskLifecycle(BaseModel):
+    """Execution outcome, distinct from the response's release decision.
+
+    This is persisted task metadata, not a resumable execution checkpoint.
+    Step IDs belong to step_source (structured_plan or agent_plan).
+    """
+
+    schema_version: int = 1
+    status: RunStatus
+    terminal: bool = False
+    execution_complete: bool = False
+    step_source: Literal["agent_plan", "structured_plan"] = "agent_plan"
+    current_step_id: str | None = None
+    completed_step_ids: list[str] = Field(default_factory=list)
+    remaining_step_ids: list[str] = Field(default_factory=list)
+    failure_reason: str | None = None
+    waiting_reason: str | None = None
+    required_inputs: list[RequiredTaskInput] = Field(default_factory=list)
+    approval_ids: list[str] = Field(default_factory=list)
+    response_release: Literal["not_evaluated", "allowed", "allowed_with_warning", "needs_revision", "waiting_for_approval", "blocked"] = "not_evaluated"
+    completion_checks: list[CompletionCheck] = Field(default_factory=list)
 
 
 class AgentStep(BaseModel):
@@ -54,6 +110,10 @@ class AgentRunState(BaseModel):
     chat_mode: str = "GENERAL"
     chat_mode_reason: str = "No organizational evidence or governed action was requested."
     runtime_metrics: dict[str, Any] = Field(default_factory=dict)
+    workflow_selection: WorkflowSelection | None = None
+    structured_plan: dict[str, Any] = Field(default_factory=dict)
+    lifecycle: TaskLifecycle | None = None
+    checkpoint: ExecutionCheckpoint | None = None
     final_response: str | None = None
     warnings: list[str] = Field(default_factory=list)
     artifacts: list[dict[str, str]] = Field(default_factory=list)

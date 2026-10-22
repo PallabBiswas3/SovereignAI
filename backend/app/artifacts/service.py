@@ -58,6 +58,8 @@ class ArtifactService:
             allowed_users_json=json.dumps(scope.allowed_users if scope else []),
         )
         self.session.add(record)
+        from app.agent.receipts import artifact_receipt
+        artifact_receipt(record)
         self.session.commit()
         return record
 

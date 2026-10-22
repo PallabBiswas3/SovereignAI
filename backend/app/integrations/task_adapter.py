@@ -4,6 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.agent.state import AgentPlan, AgentRunState, AgentStep, RunStatus, StepStatus
+from app.agent.checkpoints import execution_id
 from app.integrations.models import IntegratedAnalysisResponse
 from app.integrations.routing import IntegrationRoutePlan
 
@@ -11,15 +12,19 @@ from app.integrations.routing import IntegrationRoutePlan
 def missing_input_state(*, request: str, routing: Any, selection: Any, plan: IntegrationRoutePlan) -> AgentRunState:
     domain = plan.diagnostic_domain or "industrial"
     return AgentRunState(
-        id=str(uuid4()), request=request, status=RunStatus.completed, routing=routing,
+        id=execution_id(), request=request, status=RunStatus.waiting_for_input, routing=routing,
         plan=AgentPlan(goal=request, steps=[AgentStep(
             id=1, action="select_services", title="Select specialist services",
             status=StepStatus.completed, observation=plan.reason,
             verification="No diagnostic service was called without validated measurements.",
+        ), AgentStep(
+            id=2, action="diagnose_time_series", title="Supply measured time-series input",
+            status=StepStatus.waiting_for_input,
+            observation="The diagnostic service has not run; measured input is required.",
         )]),
         final_response=(
             f"I selected the {domain} diagnostic workflow, but it needs measured time-series data before it can run. "
-            "Attach a JSON file containing `domain` and `inputs` in the Time-Series Diagnostic Agent request format. "
+            "Supply a JSON file with `contract_version`, `domain`, `inputs` and `run_context` in the Time-Series Diagnostic Agent request format using the missing-input form. "
             "No diagnosis was fabricated and no plant action was taken."
         ),
         warnings=["Diagnostic execution was withheld because validated time-series input was not supplied."],
@@ -35,7 +40,7 @@ def integration_unavailable_state(
     *, request: str, routing: Any, selection: Any, plan: IntegrationRoutePlan, error: str,
 ) -> AgentRunState:
     return AgentRunState(
-        id=str(uuid4()), request=request, status=RunStatus.completed, routing=routing,
+        id=execution_id(), request=request, status=RunStatus.failed, routing=routing,
         plan=AgentPlan(goal=request, steps=[
             AgentStep(
                 id=1, action="select_services", title="Select specialist services",
@@ -138,16 +143,25 @@ def integrated_result_state(
         ),
         verification="Only evidence supplied by the authorized retrieval and diagnostic stages entered the prompt.",
     ))
+    release_status = (
+        RunStatus.completed if result.released
+        else RunStatus.failed if any(value == "unavailable" for value in result.service_status.values())
+        else RunStatus.waiting_for_approval if "human_review" in result.status
+        else RunStatus.blocked
+    )
     steps.append(AgentStep(
         id=len(steps) + 1, action="controlplane_release", title="Verify and release the response",
-        status=StepStatus.completed if result.released else StepStatus.waiting_for_approval,
+        status=StepStatus(release_status.value),
         observation=_decision(result.controlplane or result.precheck),
         verification="The response was released only when the final ControlPlane decision allowed it.",
     ))
 
     warnings: list[str] = []
     if not result.released:
-        warnings.append("ControlPlane withheld automatic release; human review is required.")
+        warnings.append("ControlPlane withheld automatic release; " + (
+            "human review is required." if release_status == RunStatus.waiting_for_approval
+            else "the workflow did not complete successfully."
+        ))
     if plan.use_graph and result.service_status.get("graph-rag") == "unavailable":
         warnings.append("Graph-RAG was unavailable; no graph evidence was claimed as retrieved.")
     if plan.diagnostic is not None and result.service_status.get("diagnostics") == "unavailable":
@@ -160,8 +174,8 @@ def integrated_result_state(
         warnings.append("The diagnostic result was not linked to the retrieved asset and time; its claims were not merged.")
 
     return AgentRunState(
-        id=str(uuid4()), request=request,
-        status=RunStatus.completed if result.released else RunStatus.waiting_for_approval,
+        id=execution_id(), request=request,
+        status=release_status,
         routing=routing, plan=AgentPlan(goal=request, steps=steps),
         final_response=result.final_response, warnings=warnings, sources=sources, claims=claims,
         evidence_records=[*chunks, *diagnostic_evidence],
@@ -193,7 +207,7 @@ def _graph_source(chunk: dict[str, Any]) -> dict[str, Any]:
     metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
     return {
         "chunk_id": chunk.get("id"),
-        "file": metadata.get("file") or metadata.get("sourceDocId") or metadata.get("source_doc_id") or "Graph-RAG knowledge base",
+        "file": metadata.get("file") or metadata.get("source_document_id") or metadata.get("document_id") or metadata.get("sourceDocId") or metadata.get("source_doc_id") or "Graph-RAG knowledge base",
         "page": metadata.get("page") or metadata.get("page_start"),
         "section": metadata.get("section") or "Graph-linked document evidence",
         "text": chunk.get("content"), "score": chunk.get("similarity"), "source_system": "graph-rag",

@@ -243,6 +243,55 @@ class AgentRunRecord(Base):
     classification: Mapped[str] = mapped_column(String(30), default="INTERNAL")
 
 
+class TaskExecutionRecord(Base):
+    __tablename__ = "task_executions"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), primary_key=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    phase: Mapped[str] = mapped_column(String(30), index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    owner_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ToolReceiptRecord(Base):
+    __tablename__ = "tool_execution_receipts"
+
+    operation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    tool: Mapped[str] = mapped_column(String(100))
+    action_hash: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[str] = mapped_column(Text)
+    result_sha256: Mapped[str] = mapped_column(String(64))
+    files_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class TaskInputUploadRecord(Base):
+    __tablename__ = "task_input_uploads"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    owner_id: Mapped[str] = mapped_column(String(100))
+    input_key: Mapped[str] = mapped_column(String(64))
+    path: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+
+
+class TaskCheckpointRecord(Base):
+    __tablename__ = "task_checkpoints"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    boundary: Mapped[str] = mapped_column(String(100))
+    phase: Mapped[str] = mapped_column(String(30))
+    state_json: Mapped[str] = mapped_column(Text)
+    state_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class KnowledgeDocument(Base):
     __tablename__ = "knowledge_documents"
 

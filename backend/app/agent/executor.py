@@ -57,7 +57,7 @@ class AgentExecutor:
                     pieces.append(chunk.text)
                     await self._emit("model_token", {"text": chunk.text, "model": self.model})
                 if chunk.done:
-                    run.runtime_metrics = dict(chunk.runtime_stats)
+                    run.runtime_metrics.update(chunk.runtime_stats)
                     if run.runtime_metrics.get("output_truncated"):
                         run.warnings.append(
                             "Local model reached its bounded output limit; the response may be incomplete."
@@ -71,6 +71,7 @@ class AgentExecutor:
             )
             if fallback:
                 run.warnings.append("Local model unavailable; no synthetic model answer was generated.")
+                raise RuntimeError("The local model was unavailable; no model answer was generated.")
             return f"Response produced by {provider_name}."
         if step.action == "review_response":
             if not run.final_response:
