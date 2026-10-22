@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.llm.base import LocalModelProvider
 from app.sandbox.executor import DockerSandboxExecutor, SandboxResult
+from app.agent.checkpoints import checkpoint_data, operation_started, operation_finished
 
 
 MAX_CODE_REPAIR_ATTEMPTS = 3
@@ -101,6 +102,7 @@ class CodingWorkflow:
         self, csv_path: Path, artifact_root: Path, request: str = "Analyze anomalies", run_id: str | None = None
     ) -> CodingWorkflowResult:
         profile = self.profile_csv(csv_path)
+        await checkpoint_data("coding_input_profiled", dataset_profile=profile.model_dump(mode="json"))
         run_root = artifact_root / (run_id or "coding-run")
         run_root.mkdir(parents=True, exist_ok=True)
         warnings: list[str] = []
@@ -125,7 +127,9 @@ class CodingWorkflow:
         for attempt_number in range(1, total_attempts + 1):
             version_name = f"pump_anomaly_detector_v{attempt_number}.py"
             (run_root / version_name).write_text(code, encoding="utf-8")
+            await operation_started(f"sandbox:{attempt_number}", {"code": code, "input_paths": [str(csv_path)], "version": version_name})
             execution = await self.executor.execute(code, [str(csv_path)])
+            await operation_finished(f"sandbox:{attempt_number}", execution.model_dump(mode="json"))
             verified = bool(execution.executed and execution.exit_code == 0)
             attempts.append(CodeAttempt(
                 attempt=attempt_number, version=version_name, model_used=self.model_tag if not used_fallback else "deterministic-fallback",

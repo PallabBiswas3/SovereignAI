@@ -4,10 +4,12 @@ from datetime import datetime, timezone
 import asyncio
 import json
 import re
+from time import perf_counter
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
@@ -15,9 +17,14 @@ from sqlalchemy.orm import Session
 from app.agent.orchestrator import AgentOrchestrator
 from app.agent.tool_agent import BoundedToolAgent
 from app.agent.state import AgentPlan, AgentRunState, AgentStep, RunStatus, StepStatus
+from app.agent.lifecycle import assess_lifecycle, outcome_event
+from app.agent.checkpoints import (
+    CheckpointWriter, accept_task, checkpoint_context, checkpoint, checkpoint_data,
+    execution_id, execution_scope, recover_expired_tasks, stop_saved_task,
+)
 from app.core.config import get_settings
-from app.core.database import AgentRunRecord, ArtifactRecord, HumanApprovalRecord, SessionLocal, TaskAccessRecord, TaskEventRecord, get_db
-from app.core.events import task_event_broker
+from app.core.database import AgentRunRecord, ArtifactRecord, AuditEventRecord, HumanApprovalRecord, SessionLocal, TaskAccessRecord, TaskEventRecord, TaskCheckpointRecord, TaskExecutionRecord, ToolReceiptRecord, TaskInputUploadRecord, get_db
+from app.core.events import task_event_broker, TASK_OUTCOME_EVENTS
 from app.audit.logger import AuditLogger
 from app.governance.injection import PromptInjectionScanner
 from app.governance.pii import PIIDetector
@@ -43,7 +50,7 @@ from app.llm.factory import configured_local_provider
 from app.llm.base import ModelGenerationCancelled
 from app.orchestration.execution_mode import ExecutionMode, ExecutionModeSelector
 from app.orchestration.chat_mode import (
-    ChatMode, ChatModeSelection, ChatModeSelector, extract_asset_references,
+    ChatMode, ChatModeSelection, extract_asset_references,
     requires_structured_asset_assessment,
 )
 from app.governance.action_guard import ActionGuard
@@ -67,11 +74,14 @@ from app.identity import ContentIdentityService
 from app.integrations.models import AssuranceLevel, IntegratedAnalysisRequest
 from app.integrations.clients import IntegrationServiceError
 from app.integrations.orchestrator import IndustrialIntegrationOrchestrator
-from app.integrations.routing import IntegrationRoutePlan, IntegrationRoutePlanner
+from app.integrations.routing import IntegrationRoutePlan
 from app.integrations.task_adapter import (
     integrated_result_state, integration_unavailable_state, missing_input_state,
 )
 from app.tools.registry import create_numeric_registry
+from app.monitoring.timing import capture_task_timing, record_stage, timing_snapshot
+from app.orchestration.workflow_selector import WorkflowHandler, WorkflowSelector, WorkflowStrategy, requires_tool_agent, select_chat_mode
+from app.agent.planned_agent import PlannedToolAgent
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -102,6 +112,24 @@ class StartTaskResponse(BaseModel):
     status: str = "accepted"
 
 
+class ResumeTaskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checkpoint_revision: int = Field(ge=1, strict=True)
+
+
+class TaskInputReply(ResumeTaskRequest):
+    answers: dict[str, str] = Field(default_factory=dict, max_length=3)
+    attachments: dict[str, str] = Field(default_factory=dict, max_length=3)
+
+    @model_validator(mode="after")
+    def bounded_answers(self):
+        if any(len(key) > 64 or len(value) > 4000 for key, value in self.answers.items()):
+            raise ValueError("Each answer must be at most 4000 characters")
+        if any(len(key) > 64 or len(value) > 36 for key, value in self.attachments.items()):
+            raise ValueError("Use an upload reference returned for this task")
+        return self
+
+
 EventCallback = Callable[[str, dict[str, object]], Awaitable[None]]
 
 
@@ -112,15 +140,8 @@ def _mode_selection(payload: CreateTaskRequest, routing):
 
 
 def _chat_mode_selection(payload: CreateTaskRequest) -> ChatModeSelection:
-    if payload.tool_scope == "NUMERIC":
-        return ChatModeSelection(requested=payload.chat_mode, selected=ChatMode.controlled,
-                                 reason="The user restricted this task to the numeric tool catalogue.")
-    return ChatModeSelector().select(
-        payload.chat_mode,
-        payload.request,
-        attachment_count=len(payload.attachments),
-        workcell_id=payload.workcell_id,
-    )
+    return select_chat_mode(payload.request, payload.chat_mode, payload.attachments,
+                            payload.workcell_id, payload.tool_scope)
 
 
 def _integration_assurance_level(
@@ -410,7 +431,7 @@ async def _run_authorized_task(
         )
         execution = _mode_selection(payload, routing)
         state = AgentRunState(
-            id=str(uuid4()), request=payload.request, status=RunStatus.completed,
+            id=execution_id(), request=payload.request, status=RunStatus.completed,
             routing=routing,
             plan=AgentPlan(goal=payload.request, steps=[
                 _completed_step(1, "resolve_asset", "Resolve authorized asset", f"Resolved {asset_id} within the authenticated principal's scope."),
@@ -479,7 +500,7 @@ async def _run_inspection_task_implementation(
     payload: CreateTaskRequest, settings, db: Session, principal: Principal, *,
     workcell_identity: str | None = None, event_callback: EventCallback | None = None,
 ) -> AgentRunState:
-    run_id = str(uuid4())
+    run_id = execution_id()
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
@@ -496,7 +517,7 @@ async def _run_inspection_task_implementation(
         sop = SafeWorkspace(settings.knowledge_root).resolve(sop_name, must_exist=True)
     embeddings = configured_embedding_provider()
     cache = get_cache_backend() if settings.cache_enabled else None
-    scope = AuthorizationService.owned_scope(principal)
+    scope = execution_scope(principal)
     secure_acl = DocumentACL(**scope.model_dump(exclude={"resource_id"})) if settings.auth_mode.lower() == "local" else None
     document = None
     if sop is not None:
@@ -661,7 +682,7 @@ async def _run_inspection_workcell(
         )
 
     context = WorkcellHandlerContext(
-        task_id="pending",
+        task_id=execution_id(),
         request=payload.request,
         definition=definition,
         inputs={
@@ -693,7 +714,7 @@ async def _run_inspection_workcell(
 
 
 async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal) -> AgentRunState:
-    run_id = str(uuid4())
+    run_id = execution_id()
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
@@ -716,7 +737,7 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, pr
     ).run(csv_path, artifact_root, payload.request, run_id)
     service = ArtifactService(db, artifact_root)
     paths = [result.source_path, result.report_path, *result.result_paths]
-    scope = AuthorizationService.owned_scope(principal)
+    scope = execution_scope(principal)
     records = [service.register(Path(path), run_id, scope=scope) for path in paths if path]
     executed = bool(result.execution.get("executed"))
     succeeded = executed and result.execution.get("exit_code") == 0
@@ -741,49 +762,52 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, pr
 
 
 def _requires_tool_agent(payload: CreateTaskRequest) -> bool:
-    if payload.attachments:
-        return True
-    request = payload.request.lower()
-    return any(phrase in request for phrase in (
-        "calculate", "summarize_numbers", "convert_units", "convert units", "summarize numbers",
-        "read file", "list file", "search file", "knowledge base", "search knowledge",
-        "internal document", "ocr", "analyze image", "create report", "generate report",
-        "spreadsheet", "presentation", "powerpoint", "word document",
-    ))
+    return requires_tool_agent(payload.request, payload.attachments)
 
 
-async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal, event_callback: EventCallback | None = None) -> AgentRunState:
+async def _run_tool_task(payload: CreateTaskRequest, settings, db: Session, principal: Principal, event_callback: EventCallback | None = None,
+                         *, use_plan: bool = False, cancellation_event: asyncio.Event | None = None,
+                         resume_state: AgentRunState | None = None) -> AgentRunState:
+    from app.agent.resume import task_scope
     registry = ModelRegistry(settings.models_config)
-    routing = ModelRouter(registry).route(payload.request, payload.model_override)
+    routing = resume_state.routing if resume_state else ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
     selected = registry.get(routing.model_id)
     runtime = configured_local_provider(
         settings, model_definition=selected,
         execution_mode=selection.selected.value, priority=selection.priority,
     )
-    state = AgentRunState(
-        id=str(uuid4()), request=payload.request, status=RunStatus.running, routing=routing,
+    state = resume_state or AgentRunState(
+        id=execution_id(), request=payload.request, status=RunStatus.running, routing=routing,
         plan=AgentPlan(goal=payload.request, steps=[]),
         requested_execution_mode=selection.requested.value,
         execution_mode=selection.selected.value,
         execution_mode_reason=selection.reason,
     )
-    completed = await BoundedToolAgent(
+    await checkpoint(state, "tool_agent_started")
+    executor = (PlannedToolAgent if use_plan else BoundedToolAgent)(
         runtime.provider,
         runtime.model,
-        create_numeric_registry() if payload.tool_scope == "NUMERIC" else create_agent_registry(settings, db, principal, AuthorizationService.owned_scope(principal)),
+        create_numeric_registry() if payload.tool_scope == "NUMERIC" else create_agent_registry(settings, db, principal, task_scope(state) if resume_state else execution_scope(principal)),
         ActionGuard(settings.tools_config),
         principal=principal,
         event_callback=event_callback,
-    ).execute(state, payload.attachments)
+    )
+    budget = state.runtime_metrics.setdefault("execution_budget", {"max_tool_calls": executor.max_tool_calls,
+        "max_decisions": executor.max_decisions, "max_seconds": executor.max_seconds})
+    if resume_state:
+        executor.max_tool_calls = min(executor.max_tool_calls, int(budget["max_tool_calls"]))
+        executor.max_decisions = min(executor.max_decisions, int(budget["max_decisions"]))
+        executor.max_seconds = max(.001, min(executor.max_seconds, float(budget["max_seconds"]) - float(state.runtime_metrics.get("active_seconds", 0))))
+    completed = await executor.execute(state, payload.attachments, cancellation_event, resume=resume_state is not None) if use_plan else await executor.execute(state, payload.attachments, resume=resume_state is not None)
     waiting = next((item for item in completed.tool_records if item.get("waiting_for_approval")), None)
-    if waiting:
+    if waiting and not waiting.get("approval_id"):
         approval = HumanApprovalRecord(
             id=str(uuid4()), run_id=completed.id, tool=str(waiting["tool"]),
             args_json=json.dumps(waiting.get("arguments", {})), risk=str(waiting.get("risk", "UNKNOWN")),
             status="pending",
-            requester_id=principal.user_id, organization_id=principal.organization_id,
-            workspace_id=next(iter(principal.workspace_ids), None),
+            requester_id=principal.user_id, organization_id=completed.organization_id or principal.organization_id,
+            workspace_id=completed.workspace_id or next(iter(principal.workspace_ids), None),
             action_hash=ContentIdentityService().hash_json({"tool": waiting["tool"], "arguments": waiting.get("arguments", {})}),
         )
         db.add(approval)
@@ -799,7 +823,133 @@ async def _execute_task(
     principal: Principal,
     event_callback: EventCallback | None = None,
     cancellation_event: asyncio.Event | None = None,
+    *, run_id: str | None = None,
+    resume_owner: str | None = None,
 ) -> AgentRunState:
+    with capture_task_timing() as timing:
+        writer = None
+        execution_task = watcher = heartbeat = None
+        try:
+            # A None payload is used by the isolated timing-wrapper tests.
+            if payload is None:
+                return await _execute_task_measured(payload, db, principal, event_callback, cancellation_event)
+            task_id = run_id or str(uuid4())
+            row = db.get(AgentRunRecord, task_id)
+            if row:
+                state = AgentRunState.model_validate_json(row.state_json)
+            else:
+                state = _accepted_state(payload, task_id)
+                accept_task(db, state, payload.model_dump(mode="json"), principal)
+            writer = CheckpointWriter(db, state, principal)
+            writer.workspace_root = get_settings().workspace_root
+            if resume_owner:
+                from app.agent.resume import revalidate_principal
+                writer.owner_token = resume_owner
+                writer.authorization_check = lambda who, task: revalidate_principal(db, get_settings(), who, task)
+                writer.authorization_check(principal, state)
+            else:
+                writer.claim()
+            state.status = RunStatus.running
+            writer.save(state, "execution_started")
+            cancellation_event = cancellation_event or asyncio.Event()
+            writer.cancellation_event = cancellation_event
+            execution_row = db.get(TaskExecutionRecord, state.id, populate_existing=True)
+            if execution_row.cancel_requested:
+                cancellation_event.set()
+            if cancellation_event.is_set():
+                raise ModelGenerationCancelled("Task execution was cancelled before it started")
+            with checkpoint_context(writer):
+                heartbeat = asyncio.create_task(writer.heartbeat(cancellation_event))
+                runner = _resume_task_measured(payload, db, principal, state, event_callback, cancellation_event) if resume_owner else _execute_task_measured(payload, db, principal, event_callback, cancellation_event)
+                if resume_owner:
+                    remaining_seconds = max(.001, float(state.runtime_metrics.get("execution_budget", {}).get("max_seconds", 180)) - float(state.runtime_metrics.get("active_seconds", 0)))
+                    runner = asyncio.wait_for(runner, remaining_seconds)
+                execution_task = asyncio.create_task(runner)
+                watcher = asyncio.create_task(cancellation_event.wait())
+                done, _ = await asyncio.wait({execution_task, watcher, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
+                if heartbeat in done:
+                    heartbeat.result()
+                    if cancellation_event.is_set():
+                        raise ModelGenerationCancelled("Task execution was cancelled")
+                    raise RuntimeError("Task execution lease was lost")
+                if watcher in done:
+                    raise ModelGenerationCancelled("Task execution was cancelled")
+                result = await execution_task
+                writer.save(result, "task_outcome_saved", final=True)
+                return result
+        except (Exception, asyncio.CancelledError) as exc:
+            if execution_task and not execution_task.done():
+                execution_task.cancel()
+                await asyncio.gather(execution_task, return_exceptions=True)
+            if writer:
+                with suppress(Exception):
+                    writer.state.runtime_metrics["timing"] = {**timing.snapshot(), "partial": True}
+                    writer.stop(RunStatus.cancelled if isinstance(exc, (ModelGenerationCancelled, asyncio.CancelledError)) else RunStatus.failed,
+                                "Task execution was cancelled." if isinstance(exc, (ModelGenerationCancelled, asyncio.CancelledError)) else f"Task execution stopped: {exc}")
+            if event_callback:
+                # Observability must not replace the original task error.
+                with suppress(Exception):
+                    await event_callback("task_timing", {"timing": {
+                        **timing.snapshot(), "partial": True,
+                        "scope": "Partial task handler timings; the task stopped before final persistence.",
+                    }})
+            raise
+        finally:
+            for pending in (execution_task, watcher, heartbeat):
+                if pending and not pending.done():
+                    pending.cancel()
+            await asyncio.gather(*(item for item in (execution_task, watcher, heartbeat) if item), return_exceptions=True)
+
+
+def _accepted_state(payload: CreateTaskRequest, run_id: str) -> AgentRunState:
+    try:
+        routing = ModelRouter(ModelRegistry(get_settings().models_config)).route(payload.request, payload.model_override)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    execution = _mode_selection(payload, routing)
+    chat = _chat_mode_selection(payload)
+    return AgentRunState(id=run_id, request=payload.request, status=RunStatus.planning,
+                         routing=routing, plan=AgentPlan(goal=payload.request, steps=[]),
+                         requested_execution_mode=execution.requested.value,
+                         execution_mode=execution.selected.value, execution_mode_reason=execution.reason,
+                         requested_chat_mode=chat.requested.value, chat_mode=chat.selected.value, chat_mode_reason=chat.reason)
+
+
+async def _resume_task_measured(payload, db, principal, state, event_callback, cancellation_event):
+    from app.agent.resume import revalidate_principal
+    settings = get_settings()
+    revalidate_principal(db, settings, principal, state)
+    handler = state.checkpoint.data["resume_handler"]
+    if event_callback:
+        await event_callback("task_resumed", {"run_id": state.id,
+            "from_revision": state.checkpoint.data["resume_from_revision"],
+            "reconciled_operations": [item["operation_id"] for item in state.tool_records if item.get("reconciliation")]})
+    if handler in {"structured_plan", "tool_agent"}:
+        state = await _run_tool_task(payload, settings, db, principal, event_callback,
+            use_plan=handler == "structured_plan", cancellation_event=cancellation_event, resume_state=state)
+    elif handler == "select_workflow":
+        return await _execute_task_measured(payload, db, principal, event_callback, cancellation_event)
+    elif handler == "diagnostic_input":
+        return await _execute_task_measured(payload, db, principal, event_callback, cancellation_event, continuation_state=state)
+    elif handler == "direct_answer":
+        state = await AgentOrchestrator(settings).run(payload.request, payload.model_override,
+            payload.execution_mode, len(payload.attachments), event_callback, cancellation_event,
+            resume_state=state)
+    else:
+        # Only already-complete composite executions may re-enter finalization.
+        state.status = RunStatus.completed
+    return await _finalize_task(state, payload, db, principal)
+
+
+async def _execute_task_measured(
+    payload: CreateTaskRequest,
+    db: Session,
+    principal: Principal,
+    event_callback: EventCallback | None = None,
+    cancellation_event: asyncio.Event | None = None,
+    *, continuation_state: AgentRunState | None = None,
+) -> AgentRunState:
+    input_started = perf_counter()
     settings = get_settings()
     chat_selection = _chat_mode_selection(payload)
     if event_callback:
@@ -809,13 +959,31 @@ async def _execute_task(
     pii = PIIDetector().detect(payload.request)
     injections = PromptInjectionScanner().scan(payload.request)
     input_decision = policy_engine.decide(policy, pii_count=len(pii), injection_count=len(injections))
+    record_stage("input_checks", input_started)
+    execution_started = perf_counter()
     try:
-        if input_decision == GovernanceDecision.block:
+        workflow = WorkflowSelector().select(
+            payload.request, workspace_root=settings.workspace_root,
+            requested_chat_mode=payload.chat_mode,
+            attachments=[continuation_state.checkpoint.data["diagnostic_attachment"]] if continuation_state else payload.attachments,
+            workcell_id=payload.workcell_id, tool_scope=payload.tool_scope,
+            input_blocked=input_decision == GovernanceDecision.block,
+        )
+        if continuation_state:
+            original = continuation_state.context_metrics.get("integration_route", {})
+            if not workflow.integration or workflow.selection.handler != WorkflowHandler.integration or not workflow.integration.diagnostic:
+                raise ValueError("TASK_INPUT_DIAGNOSTIC_ROUTE_INVALID")
+            if workflow.integration.diagnostic_domain != original.get("diagnostic_domain") or workflow.integration.use_graph != original.get("use_graph"):
+                raise ValueError("TASK_INPUT_DIAGNOSTIC_SCOPE_CHANGED")
+        await checkpoint_data("workflow_selected", workflow_selection=workflow.selection.model_dump(mode="json"))
+        if event_callback:
+            await event_callback("workflow_selected", workflow.selection.model_dump(mode="json"))
+        if workflow.selection.handler == WorkflowHandler.blocked:
             registry = ModelRegistry(settings.models_config)
             routing = ModelRouter(registry).route(payload.request, payload.model_override)
             selection = _mode_selection(payload, routing)
             state = AgentRunState(
-                id=str(uuid4()), request=payload.request, status=RunStatus.completed,
+                id=execution_id(), request=payload.request, status=RunStatus.completed,
                 routing=routing,
                 plan=AgentPlan(goal=payload.request, steps=[AgentStep(
                     id=1, action="governance_check", title="Block unsafe instruction pattern",
@@ -831,49 +999,19 @@ async def _execute_task(
                 chat_mode=chat_selection.selected.value,
                 chat_mode_reason=chat_selection.reason,
             )
-        elif payload.tool_scope == "NUMERIC":
-            state = await _run_tool_task(payload, settings, db, principal, event_callback)
-        elif (
-            payload.chat_mode == ChatMode.automatic
-            and not payload.workcell_id
-            and not (
-                payload.attachments
-                and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop"))
-            )
-            and (integration_plan := IntegrationRoutePlanner().plan(
-                payload.request, payload.attachments, settings.workspace_root,
-            )).handles_request
-        ):
+        elif workflow.selection.handler == WorkflowHandler.integration:
+            integration_plan = workflow.integration
+            if integration_plan is None:
+                raise ValueError("Selected integration workflow is missing its validated service plan")
             registry = ModelRegistry(settings.models_config)
             routing = ModelRouter(registry).route(payload.request, payload.model_override)
             selection = _mode_selection(payload, routing)
             if event_callback:
                 await event_callback("service_plan_selected", integration_plan.model_dump(mode="json"))
             if integration_plan.missing_diagnostic_input:
-                assurance_level = _integration_assurance_level(payload, chat_selection, integration_plan)
-                draft = missing_input_state(
+                state = missing_input_state(
                     request=payload.request, routing=routing, selection=selection, plan=integration_plan,
-                ).final_response
-                try:
-                    result = await IndustrialIntegrationOrchestrator(settings=settings).analyze(
-                        IntegratedAnalysisRequest(
-                            query=payload.request, candidate_response=draft,
-                            include_graph_evidence=integration_plan.use_graph,
-                            policy_profile=payload.use_case, consequential=True,
-                            assurance_level=assurance_level,
-                        ),
-                        principal=principal,
-                    )
-                    state = integrated_result_state(
-                        request=payload.request, routing=routing, selection=selection,
-                        plan=integration_plan, result=result,
-                    )
-                    state.warnings.append("Diagnostic execution was withheld because validated time-series input was not supplied.")
-                except IntegrationServiceError as exc:
-                    state = integration_unavailable_state(
-                        request=payload.request, routing=routing, selection=selection,
-                        plan=integration_plan, error=str(exc),
-                    )
+                )
             else:
                 assurance_level = _integration_assurance_level(payload, chat_selection, integration_plan)
                 try:
@@ -919,10 +1057,7 @@ async def _execute_task(
                         request=payload.request, routing=routing, selection=selection,
                         plan=integration_plan, result=result,
                     )
-        elif chat_selection.selected == ChatMode.controlled and (
-            payload.workcell_id
-            or (payload.attachments and any(word in payload.request.lower() for word in ("inspection", "approval note", "maintenance sop")))
-        ):
+        elif workflow.selection.handler == WorkflowHandler.workcell:
             workcells = configured_workcell_registry(settings)
             if payload.workcell_id:
                 definition = workcells.get(
@@ -945,21 +1080,27 @@ async def _execute_task(
             if not access.allowed:
                 raise HTTPException(status_code=403, detail={"code": access.reason_code})
             state = await _run_inspection_workcell(payload, settings, db, definition, principal, event_callback)
-        elif chat_selection.selected == ChatMode.controlled and payload.attachments and payload.attachments[0].lower().endswith(".csv") and any(word in payload.request.lower() for word in ("code", "python", "anomal")):
+        elif workflow.selection.handler == WorkflowHandler.coding:
             access = AuthorizationService().can_use_tool(principal, "run_python")
             if not access.allowed:
                 raise HTTPException(status_code=403, detail={"code": access.reason_code})
             state = await _run_coding_task(payload, settings, db, principal)
-        elif chat_selection.selected == ChatMode.controlled and _requires_tool_agent(payload):
-            state = await _run_tool_task(payload, settings, db, principal, event_callback)
-        elif chat_selection.selected == ChatMode.authorized or (
-            chat_selection.selected == ChatMode.controlled and extract_asset_references(payload.request)
-        ):
+        elif workflow.selection.handler in {WorkflowHandler.tools, WorkflowHandler.planned}:
+            state = await _run_tool_task(payload, settings, db, principal, event_callback,
+                use_plan=workflow.selection.handler == WorkflowHandler.planned, cancellation_event=cancellation_event)
+            if state.runtime_metrics.get("workflow_fallback"):
+                workflow.selection.strategy = WorkflowStrategy.adaptive
+                workflow.selection.handler = WorkflowHandler.tools
+                workflow.selection.fallback_reason = state.runtime_metrics["workflow_fallback"]
+                workflow.selection.reason = "The plan was deferred or rejected before tool execution; the bounded adaptive agent handled the task."
+                if event_callback:
+                    await event_callback("workflow_selected", workflow.selection.model_dump(mode="json"))
+        elif workflow.selection.handler == WorkflowHandler.retrieval:
             state = await _run_authorized_task(
                 payload, settings, db, principal, chat_selection,
                 event_callback, cancellation_event,
             )
-        else:
+        elif workflow.selection.handler == WorkflowHandler.direct:
             state = await AgentOrchestrator(settings).run(
                 payload.request,
                 payload.model_override,
@@ -973,13 +1114,36 @@ async def _execute_task(
             )
             if chat_selection.selected == ChatMode.general and payload.attachments:
                 state.warnings.append("General Chat does not open attachments; use Automatic, Authorized Knowledge, or Controlled Agent mode.")
+        else:
+            raise ValueError("Selected workflow has no executable handler")
     except (KeyError, ValueError, FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_stage("execution", execution_started)
+    if continuation_state:
+        completed = [step.model_copy(deep=True) for step in continuation_state.plan.steps if step.status == StepStatus.completed]
+        state.plan.steps = completed + state.plan.steps
+        for index, step in enumerate(state.plan.steps, 1):
+            step.id = index
+        state.runtime_metrics = {**continuation_state.runtime_metrics, **state.runtime_metrics}
+    state.workflow_selection = workflow.selection
+    await checkpoint(state, "workflow_execution_returned")
+    return await _finalize_task(state, payload, db, principal)
+
+
+async def _finalize_task(state, payload, db, principal):
+    settings = get_settings()
+    chat_selection = _chat_mode_selection(payload)
+    policy_engine = PolicyEngine(settings.policies_config)
+    policy = policy_engine.get(payload.use_case)
+    pii = PIIDetector().detect(payload.request)
+    injections = PromptInjectionScanner().scan(payload.request)
+    input_decision = policy_engine.decide(policy, pii_count=len(pii), injection_count=len(injections))
+    grounding_started = perf_counter()
     grounding_score = 1.0 if state.sources else None
     claim_results = []
     unsupported_claims: list[str] = []
     final_decision = input_decision
-    if state.tool_records and state.final_response:
+    if state.tool_records and state.final_response and not state.context_metrics.get("controlplane_status"):
         grounding = GroundingChecker(threshold=policy.grounding_threshold).evaluate(state.final_response, state.sources)
         grounding_score = grounding.grounding_confidence
         claim_results = [claim.model_dump(mode="json") for claim in grounding.claims]
@@ -991,7 +1155,7 @@ async def _execute_task(
             final_decision = GovernanceDecision.rewrite
         if unsupported_claims:
             state.warnings.append("Material claims without strong source support were flagged for review.")
-        if final_decision == GovernanceDecision.require_human_approval:
+        if final_decision == GovernanceDecision.require_human_approval and state.status == RunStatus.completed:
             state.status = RunStatus.waiting_for_approval
             state.final_response = "The draft requires human review because its material claims did not meet the engineering grounding threshold."
     controlplane_status = str(state.context_metrics.get("controlplane_status") or "")
@@ -1012,28 +1176,30 @@ async def _execute_task(
         "claim_results": claim_results,
         "unsupported_material_claims": unsupported_claims,
     }
-    scope = AuthorizationService.owned_scope(principal)
-    state.principal_id = principal.user_id
-    state.organization_id = principal.organization_id
+    record_stage("grounding_and_governance", grounding_started)
+    persistence_started = perf_counter()
+    from app.agent.resume import task_scope
+    scope = task_scope(state) if state.organization_id and state.workspace_id else execution_scope(principal)
+    state.principal_id = scope.owner_id
+    state.organization_id = scope.organization_id
     state.workspace_id = scope.workspace_id
     state.department_id = scope.department_id
     state.classification = scope.classification.name.upper()
     state.requested_chat_mode = chat_selection.requested.value
     state.chat_mode = chat_selection.selected.value
     state.chat_mode_reason = chat_selection.reason
-    record = AgentRunRecord(
-        id=state.id,
-        request=state.request,
-        status=state.status.value,
-        state_json=state.model_dump_json(),
-        created_at=state.created_at,
-        updated_at=state.updated_at,
-        organization_id=scope.organization_id, owner_id=scope.owner_id,
-        workspace_id=scope.workspace_id, department_id=scope.department_id,
-        classification=scope.classification.name.upper(),
-    )
-    db.add(record)
-    db.commit()
+    from app.integrations.maintenance_report import create_maintenance_report
+    await create_maintenance_report(state, settings, db, principal, scope)
+    assess_lifecycle(state, touch=True)
+    if not await checkpoint(state, "governance_completed"):
+        record = db.merge(AgentRunRecord(
+            id=state.id, request=state.request, status=state.status.value,
+            state_json=state.model_dump_json(), created_at=state.created_at, updated_at=state.updated_at,
+            organization_id=scope.organization_id, owner_id=scope.owner_id,
+            workspace_id=scope.workspace_id, department_id=scope.department_id,
+            classification=scope.classification.name.upper(),
+        ))
+        db.commit()
     audit = AuditLogger(db, principal)
     audit.log(state.id, "user_request", "Task accepted by the workbench.", {"request": payload.request, "use_case": payload.use_case})
     audit.log(state.id, "model_routing", state.routing.reason, state.routing.model_dump(mode="json"))
@@ -1043,6 +1209,11 @@ async def _execute_task(
     audit.log(state.id, "chat_mode", state.chat_mode_reason, {
         "requested": state.requested_chat_mode, "selected": state.chat_mode,
     })
+    if state.workflow_selection:
+        audit.log(state.id, "workflow_selection", state.workflow_selection.reason, state.workflow_selection.model_dump(mode="json"))
+    audit.log(state.id, "task_lifecycle", f"Task execution status: {state.status.value}", state.lifecycle.model_dump(mode="json"))
+    if state.structured_plan:
+        audit.log(state.id, "structured_plan", "Validated plan execution and completion status.", state.structured_plan)
     audit.log(state.id, "governance", f"Input decision: {input_decision.value}", state.governance)
     if state.workcell_id:
         audit.log(state.id, "workcell_selected", f"Selected {state.workcell_id} {state.workcell_version}", {
@@ -1093,7 +1264,12 @@ async def _execute_task(
         audit.log(state.id, "evidence_conflict", str(conflict.get("summary", "Evidence conflict")), conflict)
     if state.context_metrics:
         audit.log(state.id, "context_compilation", "Compiled bounded evidence context.", state.context_metrics)
-    audit.log(state.id, "final_output", "Agent run completed without hidden reasoning in the audit.", {"response": state.final_response, "warnings": state.warnings})
+    audit.log(state.id, "final_output", f"Agent run returned with status {state.status.value}.", {"response": state.final_response, "warnings": state.warnings})
+    record_stage("persistence_and_audit", persistence_started)
+    state.runtime_metrics["timing"] = timing_snapshot()
+    if not await checkpoint(state, "audit_completed"):
+        record.state_json = state.model_dump_json()
+        db.commit()
     return state
 
 
@@ -1136,36 +1312,38 @@ async def _publish_event(db: Session, task_id: str, event_type: str, payload: di
     db.commit()
 
 
-async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, principal: Principal) -> None:
+async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, principal: Principal,
+                               *, resume_owner: str | None = None) -> None:
     db = SessionLocal()
     try:
-        await _publish_event(db, tracking_id, "task_accepted", {"request": payload.request})
-        policy_engine = PolicyEngine(get_settings().policies_config)
-        policy = policy_engine.get(payload.use_case)
-        pii = PIIDetector().detect(payload.request)
-        injections = PromptInjectionScanner().scan(payload.request)
-        decision = policy_engine.decide(policy, pii_count=len(pii), injection_count=len(injections))
-        await _publish_event(db, tracking_id, "governance_completed", {"decision": decision.value, "policy": policy.name})
-        routing = ModelRouter(ModelRegistry(get_settings().models_config)).route(payload.request, payload.model_override)
-        await _publish_event(db, tracking_id, "task_classified", routing.task_profile.model_dump(mode="json"))
-        await _publish_event(db, tracking_id, "model_selected", {"model_id": routing.model_id, "model": routing.selected_model, "reason": routing.reason})
-        await _publish_event(db, tracking_id, "plan_created", {"workflow": routing.task_profile.task_type})
-        selection = _mode_selection(payload, routing)
-        await _publish_event(db, tracking_id, "execution_mode_selected", selection.model_dump(mode="json"))
-        await _publish_event(db, tracking_id, "step_started", {"id": 0, "action": "execute_workflow", "title": "Execute selected bounded workflow"})
+        if not resume_owner:
+            await _publish_event(db, tracking_id, "task_accepted", {"request": payload.request})
+            policy_engine = PolicyEngine(get_settings().policies_config)
+            policy = policy_engine.get(payload.use_case)
+            pii = PIIDetector().detect(payload.request)
+            injections = PromptInjectionScanner().scan(payload.request)
+            decision = policy_engine.decide(policy, pii_count=len(pii), injection_count=len(injections))
+            await _publish_event(db, tracking_id, "governance_completed", {"decision": decision.value, "policy": policy.name})
+            routing = ModelRouter(ModelRegistry(get_settings().models_config)).route(payload.request, payload.model_override)
+            await _publish_event(db, tracking_id, "task_classified", routing.task_profile.model_dump(mode="json"))
+            await _publish_event(db, tracking_id, "model_selected", {"model_id": routing.model_id, "model": routing.selected_model, "reason": routing.reason})
+            await _publish_event(db, tracking_id, "plan_created", {"workflow": routing.task_profile.task_type})
+            selection = _mode_selection(payload, routing)
+            await _publish_event(db, tracking_id, "execution_mode_selected", selection.model_dump(mode="json"))
+            await _publish_event(db, tracking_id, "step_started", {"id": 0, "action": "execute_workflow", "title": "Execute selected bounded workflow"})
         cancellation_event = await task_event_broker.cancellation_event(tracking_id)
 
         async def publish_live(event_type: str, event_payload: dict[str, object]) -> None:
             await _publish_event(db, tracking_id, event_type, event_payload)
 
-        result = await _execute_task(payload, db, principal, publish_live, cancellation_event)
+        result = await _execute_task(payload, db, principal, publish_live, cancellation_event, run_id=tracking_id, resume_owner=resume_owner)
         access_row = db.get(TaskAccessRecord, tracking_id)
         if access_row:
             access_row.run_id = result.id
             db.commit()
         await _publish_event(db, tracking_id, "step_completed", {"id": 0, "status": result.status.value, "observation": "Workflow returned a persisted run state."})
         for step in result.plan.steps:
-            if result.runtime_metrics.get("live_tool_events"):
+            if resume_owner or result.runtime_metrics.get("live_tool_events"):
                 continue  # BoundedToolAgent published the actual execution, not a replay.
             await _publish_event(db, tracking_id, "step_started", {"id": step.id, "action": step.action, "title": step.title})
             matching = [item for item in result.tool_records if item.get("tool") == step.action]
@@ -1175,6 +1353,8 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, pri
                 await _publish_event(db, tracking_id, "tool_completed", {"tool": step.action, "success": tool_call.get("success"), "duration_ms": tool_call.get("duration_ms")})
             await _publish_event(db, tracking_id, "step_completed", {"id": step.id, "status": step.status.value, "observation": step.observation})
         for artifact in result.artifacts:
+            if resume_owner and artifact["id"] in result.checkpoint.data.get("resume_baseline_artifact_ids", []):
+                continue
             await _publish_event(db, tracking_id, "artifact_created", artifact)
         for source in result.sources:
             await _publish_event(db, tracking_id, "source_retrieved", source)
@@ -1186,11 +1366,19 @@ async def _run_background_task(tracking_id: str, payload: CreateTaskRequest, pri
             await _publish_event(db, tracking_id, "evidence_conflict", conflict)
         for warning in result.warnings:
             await _publish_event(db, tracking_id, "warning", {"summary": warning})
-        await _publish_event(db, tracking_id, "task_completed", {"result": result.model_dump(mode="json")})
-    except ModelGenerationCancelled as exc:
-        await _publish_event(db, tracking_id, "task_cancelled", {"error": str(exc)})
+        event_payload = {"result": result.model_dump(mode="json")}
+        if result.status in {RunStatus.failed, RunStatus.blocked, RunStatus.cancelled}:
+            event_payload["error"] = result.lifecycle.failure_reason
+        await _publish_event(db, tracking_id, outcome_event(result), event_payload)
+    except (ModelGenerationCancelled, asyncio.CancelledError) as exc:
+        result = stop_saved_task(db, tracking_id, principal, RunStatus.cancelled, "Task execution was cancelled.")
+        await _publish_event(db, tracking_id, outcome_event(result) if result else "task_cancelled",
+                             {"error": str(exc), **({"result": result.model_dump(mode="json")} if result else {})})
     except Exception as exc:
-        await _publish_event(db, tracking_id, "task_failed", {"error": str(exc)})
+        db.rollback()
+        result = stop_saved_task(db, tracking_id, principal, RunStatus.failed, f"Task execution stopped: {exc}")
+        await _publish_event(db, tracking_id, outcome_event(result) if result else "task_failed",
+                             {"error": str(exc), **({"result": result.model_dump(mode="json")} if result else {})})
     finally:
         await task_event_broker.complete(tracking_id)
         db.close()
@@ -1203,9 +1391,10 @@ async def start_task(
     db: Session = Depends(get_db),
 ) -> StartTaskResponse:
     tracking_id = str(uuid4())
-    scope = AuthorizationService.owned_scope(principal)
+    accept_task(db, _accepted_state(payload, tracking_id), payload.model_dump(mode="json"), principal)
+    scope = execution_scope(principal)
     db.add(TaskAccessRecord(
-        task_id=tracking_id, organization_id=scope.organization_id,
+        task_id=tracking_id, run_id=tracking_id, organization_id=scope.organization_id,
         owner_id=principal.user_id, workspace_id=scope.workspace_id,
         department_id=scope.department_id, classification=scope.classification.name.upper(),
     ))
@@ -1216,20 +1405,166 @@ async def start_task(
     return StartTaskResponse(task_id=tracking_id)
 
 
+async def schedule_resume(db, principal, state, revision, *, input_reply: TaskInputReply | None = None) -> StartTaskResponse:
+    from app.agent.resume import prepare_resume, task_scope, deny
+    settings = get_settings()
+    execution = db.get(TaskExecutionRecord, state.id, populate_existing=True)
+    if execution is None or state.checkpoint is None:
+        deny("RESUME_CHECKPOINT_REQUIRED")
+    try:
+        original = CreateTaskRequest.model_validate_json(execution.payload_json)
+    except ValueError:
+        deny("RESUME_PAYLOAD_INVALID")
+    tools = create_numeric_registry() if original and original.tool_scope == "NUMERIC" else create_agent_registry(settings, db, principal, task_scope(state))
+    resumed, raw = prepare_resume(db, settings, state, execution, principal, revision, tools, input_reply=input_reply)
+    payload = CreateTaskRequest.model_validate(raw)
+    policy_engine = PolicyEngine(settings.policies_config)
+    decision = policy_engine.decide(policy_engine.get(payload.use_case), pii_count=len(PIIDetector().detect(payload.request)),
+                                   injection_count=len(PromptInjectionScanner().scan(payload.request)))
+    if decision == GovernanceDecision.block:
+        deny("RESUME_INPUT_POLICY_BLOCKED", 403)
+    writer = CheckpointWriter(db, resumed, principal)
+    try:
+        writer.claim_resume(revision)
+        if input_reply is not None:
+            execution = db.get(TaskExecutionRecord, state.id, populate_existing=True)
+            execution.payload_json = payload.model_dump_json()
+            db.add(AuditEventRecord(
+                id=str(uuid4()), run_id=state.id, event_type="task_input_accepted",
+                summary="Validated missing inputs accepted for the original task.",
+                payload_json=json.dumps({"from_revision": revision, "keys": list(input_reply.answers) + list(input_reply.attachments)}),
+                principal_id=principal.user_id, organization_id=state.organization_id))
+            # save() refreshes the execution row while fencing the worker.
+            # Flush the revised payload first so that refresh cannot discard it
+            # (SessionLocal intentionally has autoflush disabled).
+            db.flush()
+        # A crash can leave an approved action marked executing after its tool
+        # committed a receipt. Reconcile that decision in the same transaction.
+        for record in resumed.tool_records:
+            approval_id = record.get("reconciliation", {}).get("approval_id")
+            if approval_id:
+                approval = db.get(HumanApprovalRecord, approval_id, populate_existing=True)
+                approval.status = approval.execution_status = "executed"
+                approval.executed_at = datetime.now(timezone.utc)
+                receipt = db.get(ToolReceiptRecord, record["operation_id"])
+                approval.result_json = receipt.result_json
+        writer.save(resumed, "task_input_accepted" if input_reply is not None else "resume_accepted")
+    except RuntimeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={"code": str(exc)}) from exc
+    if not db.get(TaskAccessRecord, state.id):
+        db.add(TaskAccessRecord(task_id=state.id, run_id=state.id, organization_id=state.organization_id,
+            owner_id=state.principal_id, workspace_id=state.workspace_id, department_id=state.department_id,
+            classification=state.classification))
+        db.commit()
+    await task_event_broker.create(state.id)
+    task = asyncio.create_task(_run_background_task(state.id, payload, principal, resume_owner=writer.owner_token))
+    await task_event_broker.attach_task(state.id, task)
+    return StartTaskResponse(task_id=state.id)
+
+
+def _input_target(db, principal, task_id, revision, key=None):
+    from app.agent.resume import revalidate_principal, deny
+    row = _load_task_record(db, principal, task_id)
+    state = assess_lifecycle(AgentRunState.model_validate_json(row.state_json))
+    revalidate_principal(db, get_settings(), principal, state)
+    execution = db.get(TaskExecutionRecord, state.id, populate_existing=True)
+    if state.status != RunStatus.waiting_for_input or not execution or execution.phase != "paused":
+        deny("TASK_NOT_WAITING_FOR_INPUT")
+    if execution.revision != revision or not state.checkpoint or state.checkpoint.revision != revision:
+        deny("RESUME_STALE_REVISION")
+    if key and not any(item.key == key and item.kind == "attachment" for item in state.lifecycle.required_inputs):
+        deny("TASK_INPUT_FIELDS_MISMATCH", 422)
+    return state
+
+
+@router.post("/{task_id}/inputs/uploads", status_code=201)
+async def upload_task_input(task_id: str, checkpoint_revision: int = Form(..., ge=1), input_key: str = Form(..., max_length=64),
+                            file: UploadFile = File(...),
+                            principal: Principal = Depends(require_permission(Permission.task_create)),
+                            db: Session = Depends(get_db)):
+    from app.api.files import _safe_name
+    from app.agent.receipts import file_proof
+    from app.tools.file_tools import ALLOWED_EXTENSIONS
+    state = _input_target(db, principal, task_id, checkpoint_revision, input_key)
+    settings = get_settings()
+    name = _safe_name(file.filename)
+    if Path(name).suffix.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=415, detail={"code": "TASK_INPUT_FILE_TYPE_UNSUPPORTED"})
+    try:
+        content = await file.read(settings.max_upload_mb * 1024 * 1024 + 1)
+    finally:
+        await file.close()
+    if not content or len(content) > settings.max_upload_mb * 1024 * 1024:
+        raise HTTPException(status_code=413 if content else 422, detail={"code": "TASK_INPUT_FILE_SIZE_INVALID"})
+    # Recheck after awaiting upload; the task may have changed or been cancelled.
+    _input_target(db, principal, task_id, checkpoint_revision, input_key)
+    upload_id = str(uuid4())
+    relative = f"uploads/task_inputs/{state.id}/{upload_id}/{name}"
+    target = SafeWorkspace(settings.workspace_root).resolve(relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("xb") as handle:
+        handle.write(content)
+    proof = file_proof(settings.workspace_root, relative)
+    db.add(TaskInputUploadRecord(id=upload_id, run_id=state.id, owner_id=principal.user_id,
+        input_key=input_key, path=relative, sha256=proof["sha256"], size=proof["size"]))
+    db.commit()
+    return {"upload_id": upload_id, "name": name, "size": len(content)}
+
+
+@router.post("/{task_id}/inputs", response_model=StartTaskResponse, status_code=202)
+async def reply_task_input(task_id: str, payload: TaskInputReply,
+                            principal: Principal = Depends(require_permission(Permission.task_create)),
+                            db: Session = Depends(get_db)) -> StartTaskResponse:
+    state = _input_target(db, principal, task_id, payload.checkpoint_revision)
+    try:
+        return await schedule_resume(db, principal, state, payload.checkpoint_revision, input_reply=payload)
+    except HTTPException as exc:
+        db.rollback()
+        AuditLogger(db, principal).log(state.id, "task_input_denied", "Missing-input reply was rejected.", {"detail": exc.detail})
+        raise
+
+
+@router.post("/{task_id}/resume", response_model=StartTaskResponse, status_code=202)
+async def resume_task(task_id: str, payload: ResumeTaskRequest,
+                      principal: Principal = Depends(require_permission(Permission.task_create)),
+                      db: Session = Depends(get_db)) -> StartTaskResponse:
+    row = _load_task_record(db, principal, task_id)
+    state = AgentRunState.model_validate_json(row.state_json)
+    try:
+        return await schedule_resume(db, principal, state, payload.checkpoint_revision)
+    except HTTPException as exc:
+        db.rollback()
+        AuditLogger(db, principal).log(state.id, "task_resume_denied", "Saved task continuation was denied.", {"detail": exc.detail})
+        raise
+
+
 @router.delete("/{task_id}")
 async def cancel_task(
     task_id: str,
     principal: Principal = Depends(require_permission(Permission.task_read)),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    access_row = db.get(TaskAccessRecord, task_id)
-    if not access_row:
-        raise HTTPException(status_code=404, detail="Task not found")
-    _assert_task_access(principal, access_row)
+    record = _load_task_record(db, principal, task_id)
+    state = assess_lifecycle(AgentRunState.model_validate_json(record.state_json))
+    if state.lifecycle.terminal:
+        return {"task_id": task_id, "status": state.status.value}
+    execution = db.get(TaskExecutionRecord, record.id, populate_existing=True)
+    if execution and execution.phase in {"paused", "interrupted", "pending"}:
+        result = stop_saved_task(db, record.id, principal, RunStatus.cancelled, "Task execution was cancelled.", allow_interrupted=True)
+        if result.status == RunStatus.cancelled:
+            await _publish_event(db, task_id, "task_cancelled", {"result": result.model_dump(mode="json")})
+            await task_event_broker.complete(task_id)
+            return {"task_id": task_id, "status": result.status.value}
+        execution = db.get(TaskExecutionRecord, record.id, populate_existing=True)
+    if execution:
+        execution.cancel_requested = True
+        db.commit()
     try:
         await task_event_broker.cancel(task_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Task not found") from exc
+    except KeyError:
+        if not execution:
+            raise HTTPException(status_code=409, detail="This legacy task has no active execution")
     return {"task_id": task_id, "status": "cancellation_requested"}
 
 
@@ -1245,17 +1580,66 @@ async def task_events(
     _assert_task_access(principal, access_row)
     settings = get_settings()
     token = request.cookies.get(settings.auth_cookie_name)
+
+    def authenticated() -> bool:
+        return settings.auth_mode.lower() != "local" or bool(token and LocalIdentityProvider(db, settings.access_config).resolve_principal(token))
+
     async def generate():
         try:
             async for event in task_event_broker.stream(task_id):
-                if settings.auth_mode.lower() == "local":
-                    if not token or LocalIdentityProvider(db, settings.access_config).resolve_principal(token) is None:
-                        yield f"event: access_revoked\ndata: {json.dumps({'task_id': task_id, 'type': 'access_revoked', 'payload': {'code': 'AUTHENTICATION_REQUIRED'}})}\n\n"
-                        break
+                if not authenticated():
+                    yield f"event: access_revoked\ndata: {json.dumps({'task_id': task_id, 'type': 'access_revoked', 'payload': {'code': 'AUTHENTICATION_REQUIRED'}})}\n\n"
+                    break
                 yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
         except KeyError:
-            yield f"event: task_failed\ndata: {json.dumps({'task_id': task_id, 'type': 'task_failed', 'payload': {'error': 'Unknown or expired task stream'}})}\n\n"
+            # Reconstruct a read-only stream from the database. Never recreate a
+            # worker or invoke tools merely because a client reconnects.
+            if not authenticated():
+                yield f"event: access_revoked\ndata: {json.dumps({'task_id': task_id, 'type': 'access_revoked', 'payload': {'code': 'AUTHENTICATION_REQUIRED'}})}\n\n"
+                return
+            record = _load_task_record(db, principal, task_id)
+            history = db.query(TaskEventRecord).filter_by(task_id=task_id).order_by(TaskEventRecord.created_at, TaskEventRecord.id).all()
+            for saved in history:
+                if not authenticated():
+                    return
+                if saved.event_type in TASK_OUTCOME_EVENTS:
+                    continue
+                event = {"task_id": task_id, "type": saved.event_type, "timestamp": saved.created_at.isoformat(),
+                         "payload": json.loads(saved.payload_json)}
+                yield f"event: {saved.event_type}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+            if not authenticated():
+                return
+            state = assess_lifecycle(AgentRunState.model_validate_json(record.state_json))
+            event_type = "task_snapshot" if state.status in {RunStatus.running, RunStatus.planning} else outcome_event(state)
+            event = {"task_id": task_id, "type": event_type, "timestamp": datetime.now(timezone.utc).isoformat(),
+                     "payload": {"result": state.model_dump(mode="json"), "replayed": True}}
+            yield f"event: {event_type}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
     return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _load_task_record(db: Session, principal: Principal, task_id: str) -> AgentRunRecord:
+    record = db.get(AgentRunRecord, task_id, populate_existing=True)
+    if not record:
+        access = db.get(TaskAccessRecord, task_id)
+        if access:
+            _assert_task_access(principal, access)
+            record = db.get(AgentRunRecord, access.run_id, populate_existing=True) if access.run_id else None
+    if not record:
+        raise HTTPException(status_code=404, detail="Task not found")
+    _assert_task_access(principal, record)
+    recover_expired_tasks(db, record.id)
+    return db.get(AgentRunRecord, record.id, populate_existing=True)
+
+
+@router.get("/{task_id}/checkpoints")
+async def list_checkpoints(
+    task_id: str, principal: Principal = Depends(require_permission(Permission.task_read)),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    record = _load_task_record(db, principal, task_id)
+    checkpoints = db.query(TaskCheckpointRecord).filter_by(run_id=record.id).order_by(TaskCheckpointRecord.revision.desc()).limit(100).all()
+    return [{"revision": row.revision, "boundary": row.boundary, "phase": row.phase,
+             "created_at": row.created_at.isoformat(), "state_sha256": row.state_sha256} for row in checkpoints]
 
 
 @router.get("/{task_id}", response_model=AgentRunState)
@@ -1264,11 +1648,8 @@ async def get_task(
     principal: Principal = Depends(require_permission(Permission.task_read)),
     db: Session = Depends(get_db),
 ) -> AgentRunState:
-    record = db.get(AgentRunRecord, task_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Task not found")
-    _assert_task_access(principal, record)
-    return AgentRunState.model_validate_json(record.state_json)
+    record = _load_task_record(db, principal, task_id)
+    return assess_lifecycle(AgentRunState.model_validate_json(record.state_json))
 
 
 @router.get("")
@@ -1281,7 +1662,12 @@ async def list_tasks(
         records = [row for row in records if _task_scope(row) and AuthorizationService().authorize(
             principal, Permission.task_read, _task_scope(row)
         ).allowed]
+    for row in records:
+        recover_expired_tasks(db, row.id)
+        db.refresh(row)
     return [
-        {"id": row.id, "request": row.request, "status": row.status, "updated_at": row.updated_at.isoformat()}
+        {"id": row.id, "request": row.request,
+         "status": assess_lifecycle(AgentRunState.model_validate_json(row.state_json)).status.value,
+         "updated_at": row.updated_at.isoformat()}
         for row in records
     ]

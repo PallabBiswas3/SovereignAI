@@ -89,7 +89,10 @@ class WriteFileTool(Tool):
             content = str(args.get("content", ""))
             path.write_text(content, encoding="utf-8")
             relative = str(path.relative_to(self.workspace.root)).replace("\\", "/")
-            return ToolResult(success=True, output={"bytes": len(content.encode("utf-8"))}, generated_files=[relative])
+            result = ToolResult(success=True, output={"bytes": len(content.encode("utf-8"))}, generated_files=[relative])
+            from app.agent.receipts import persist_receipt
+            persist_receipt(result)
+            return result
         except (KeyError, ValueError, OSError) as exc:
             return ToolResult(success=False, error=str(exc))
 

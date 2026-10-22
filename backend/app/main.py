@@ -32,11 +32,14 @@ from fastapi.responses import JSONResponse
 from app.core.database import SessionLocal
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.agent.checkpoints import recover_expired_tasks
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    with SessionLocal() as db:
+        recover_expired_tasks(db)
     yield
     if get_speech_service.cache_info().currsize:
         get_speech_service().close()

@@ -4,11 +4,18 @@ import Link from "next/link";
 import VoiceInput from "./voice/VoiceInput";
 import AgentExamples from "./agent-tools/AgentExamples";
 import AgentTrace, { type ToolRecord } from "./agent-tools/AgentTrace";
+import RuntimeTiming from "./agent-tools/RuntimeTiming";
+import WorkflowSelection, { type WorkflowSelectionInfo } from "./agent-tools/WorkflowSelection";
+import StructuredPlan, { type StructuredPlanInfo } from "./agent-tools/StructuredPlan";
+import TaskLifecycle, { taskOutcomeEvents, type TaskLifecycleInfo, type ExecutionCheckpointInfo } from "./agent-tools/TaskLifecycle";
+import TaskInputReply from "./agent-tools/TaskInputReply";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 type TaskResult = {
   id: string;
+  request: string;
   status: string;
+  principal_id?: string | null;
   final_response: string | null;
   warnings: string[];
   governance: { decision?: string; privacy_risk?: string; grounding_score?: number | null };
@@ -23,6 +30,10 @@ type TaskResult = {
   chat_mode: string;
   chat_mode_reason: string;
   runtime_metrics: Record<string, unknown>;
+  workflow_selection?: WorkflowSelectionInfo | null;
+  structured_plan?: StructuredPlanInfo;
+  lifecycle?: TaskLifecycleInfo | null;
+  checkpoint?: ExecutionCheckpointInfo | null;
   tool_records?: ToolRecord[];
   measurements: Array<{ id: string; asset_id?: string | null; metric: string; original_value: number; original_unit?: string | null; normalized_value?: number | null; normalized_unit?: string | null; source_id: string; status: string }>;
   rules: Array<{ id: string; metric: string; operator: string; threshold?: number | null; lower_bound?: number | null; upper_bound?: number | null; unit?: string | null; rule_type: string; source: { source_id: string; section?: string | null; revision?: string | null } }>;
@@ -90,6 +101,11 @@ const eventLabels: Record<string, string> = {
   task_classified: "Task classified",
   model_selected: "Local model selected",
   chat_mode_selected: "Chat access mode selected",
+  workflow_selected: "Execution workflow selected",
+  plan_validated: "Structured plan validated",
+  plan_revision_requested: "Revising remaining plan steps",
+  plan_stopped: "Structured plan stopped",
+  workflow_fallback: "Using adaptive workflow",
   execution_mode_selected: "Execution depth selected",
   generation_started: "Local model started generating",
   model_token: "Local model is responding",
@@ -130,6 +146,10 @@ const eventLabels: Record<string, string> = {
   diagnostic_completed: "Time-series diagnosis completed",
   controlplane_release_decided: "ControlPlane release decision completed",
   integration_unavailable: "Required service unavailable; response withheld",
+  task_paused: "Task is waiting for input or approval",
+  task_blocked: "Task was blocked by policy",
+  task_interrupted: "Saved task was interrupted",
+  task_snapshot: "Saved task progress retrieved",
 };
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -176,6 +196,14 @@ export default function Home() {
   const [workcellId, setWorkcellId] = useState("");
   const [capsule, setCapsule] = useState<Capsule | null>(null);
   const [capsuleBusy, setCapsuleBusy] = useState(false);
+  const [savedTasks, setSavedTasks] = useState<Array<{ id: string; request: string; status: string }>>([]);
+  const [savedTaskBusy, setSavedTaskBusy] = useState(false);
+  const [inputReplyBusy, setInputReplyBusy] = useState(false);
+  const principalKey = `${principal?.organization_id ?? ""}:${principal?.user_id ?? ""}`;
+  const currentPrincipalKey = useRef(principalKey);
+  const activeStream = useRef<EventSource | null>(null);
+  currentPrincipalKey.current = principalKey;
+  useEffect(() => () => activeStream.current?.close(), []);
   const conversationEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -200,12 +228,148 @@ export default function Home() {
   }, [principal]);
 
   useEffect(() => {
+    let active = true;
+    setSavedTasks([]);
+    if (principal) apiFetch("/api/tasks").then(async response => {
+      if (!response.ok) throw new Error("Saved tasks unavailable");
+      const rows = await response.json();
+      if (active) setSavedTasks(rows);
+    }).catch(() => { if (active) setSavedTasks([]); });
+    return () => { active = false; };
+  }, [principal, result?.id, result?.status]);
+
+  async function openSavedTask(taskId: string) {
+    if (!taskId || loading || voiceBusy || savedTaskBusy || inputReplyBusy) return;
+    const readerKey = currentPrincipalKey.current;
+    setSavedTaskBusy(true);
+    try {
+      const response = await apiFetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+      if (!response.ok) throw new Error(`Saved task returned ${response.status}`);
+      const saved = await response.json() as TaskResult;
+      if (readerKey !== currentPrincipalKey.current) return;
+      const content = ["running", "planning"].includes(saved.status)
+        ? "Saved task progress retrieved. Execution may still be running."
+        : saved.status === "interrupted"
+          ? saved.checkpoint?.interruption_reason ?? "Task interrupted; saved progress is retained."
+          : saved.final_response ?? saved.lifecycle?.waiting_reason ?? `Task ${saved.status.replaceAll("_", " ")}.`;
+      setResult(saved); setLiveEvents([]); setCapsule(null); setError("");
+      setChatEntries([{ id: `${saved.id}-request`, role: "user", content: saved.request },
+        { id: `${saved.id}-response`, role: "assistant", content, warnings: saved.warnings }]);
+    } catch (caught) {
+      if (readerKey === currentPrincipalKey.current) setError(caught instanceof Error ? caught.message : "Could not load saved task");
+    } finally {
+      setSavedTaskBusy(false);
+    }
+  }
+
+  useEffect(() => {
     conversationEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chatEntries, liveEvents]);
 
+  function watchTask(taskId: string, assistantEntryId: string) {
+      const readerKey = currentPrincipalKey.current;
+      setActiveTaskId(taskId);
+      const stream = new EventSource(`${api}/api/tasks/${taskId}/events`, { withCredentials: true });
+      activeStream.current?.close();
+      activeStream.current = stream;
+      let finished = false;
+      const eventTypes = ["task_accepted", "task_resumed", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "workflow_selected", "plan_validated", "plan_revision_requested", "plan_stopped", "workflow_fallback", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "tool_approval_required", "agent_verified", "agent_decision_rejected", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_timing", "task_completed", "task_cancelled", "task_failed"];
+      const receive = (event: MessageEvent) => {
+        if (readerKey !== currentPrincipalKey.current) { stream.close(); return; }
+        const item = JSON.parse(event.data) as LiveEvent;
+        if (item.type === "access_revoked") {
+          finished = true; stream.close(); setPrincipal(null); setResult(null); setChatEntries([]);
+          setLoading(false); setActiveTaskId(""); return;
+        }
+        setLiveEvents((current) => [...current, item]);
+        if (item.type === "model_token") {
+          const token = String(item.payload.text ?? "");
+          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
+            ? { ...entry, content: entry.content + token, waiting: true }
+            : entry));
+        } else if (taskOutcomeEvents.includes(item.type) && item.payload.result) {
+          const completed = item.payload.result as TaskResult;
+          finished = true;
+          setResult(completed);
+          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
+            ? { ...entry, content: item.type === "task_snapshot"
+                ? "Saved task progress retrieved. A live stream is unavailable here; execution may still be running."
+                : completed.final_response ?? completed.checkpoint?.interruption_reason ?? `Task ${completed.status.replaceAll("_", " ")}.`, waiting: false, warnings: completed.warnings }
+            : entry));
+          setLoading(false); setActiveTaskId(""); stream.close();
+        } else if (item.type === "task_failed" || item.type === "task_cancelled" || item.type === "task_blocked") {
+          const failure = String(item.payload.error ?? "Task failed");
+          finished = true;
+          setError(failure);
+          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
+            ? { ...entry, content: failure, waiting: false, warnings: ["The task stopped safely."] }
+            : entry));
+          setLoading(false); setActiveTaskId(""); stream.close();
+        }
+      };
+      [...new Set([...eventTypes, ...taskOutcomeEvents, "access_revoked"])].forEach((type) => stream.addEventListener(type, receive as EventListener));
+      stream.onerror = () => {
+        if (readerKey !== currentPrincipalKey.current) { stream.close(); return; }
+        if (!finished && stream.readyState === EventSource.CLOSED) {
+          setLoading(false);
+          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
+            ? { ...entry, content: "The live task connection closed before a final response arrived.", waiting: false }
+            : entry));
+        }
+      };
+  }
+
+  function continueAfterInput(taskId: string) {
+    const assistantEntryId = `input-continuation-${Date.now()}`;
+    setLoading(true); setError(""); setLiveEvents([]);
+    setChatEntries(current => [...current, { id: assistantEntryId, role: "assistant", content: "", waiting: true }]);
+    watchTask(taskId, assistantEntryId);
+  }
+
+  async function resumeSavedTask() {
+    if (!result?.checkpoint || loading || voiceBusy || savedTaskBusy || inputReplyBusy) return;
+    const task = result;
+    const readerKey = currentPrincipalKey.current;
+    const assistantEntryId = `resume-${Date.now()}`;
+    setLoading(true); setError(""); setLiveEvents([]);
+    setChatEntries(current => [...current, { id: assistantEntryId, role: "assistant", content: "Checking saved progress and current access...", waiting: true }]);
+    try {
+      const response = await apiFetch(`/api/tasks/${encodeURIComponent(task.id)}/resume`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkpoint_revision: task.checkpoint!.revision }),
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        const code = String(failure.detail?.code ?? "");
+        const messages: Record<string, string> = {
+          RESUME_STALE_REVISION: "Saved progress changed. Refresh saved progress and try again.",
+          RESUME_APPROVAL_PENDING: "This task is still waiting for approval.",
+          RESUME_HANDLER_REQUIRES_VALIDATED_CONTINUATION: "This workflow does not support safe continuation yet. Its saved progress is preserved.",
+          RESUME_COMPOSITE_OUTCOME_UNRESOLVED: "This workflow has an unresolved operation. Its saved progress is preserved.",
+          RESUME_INPUT_CHANGED: "A saved input has changed. This task cannot safely continue from that checkpoint.",
+          RESUME_OUTPUT_CHANGED: "A saved output has changed. This task cannot safely continue from that checkpoint.",
+          RESUME_ACTION_OUTCOME_UNKNOWN: "An action has no confirmed result. Its outcome must be reconciled before this task can resume.",
+          RESUME_APPROVAL_OUTCOME_UNKNOWN: "The approved action has no confirmed result. Its outcome must be reconciled before this task can resume.",
+        };
+        throw new Error(messages[code] ?? (response.status === 403
+          ? "Your current access or tool policy does not allow this task to resume."
+          : "This task cannot resume from its saved state. Refresh saved progress to review its outcome."));
+      }
+      const started = await response.json();
+      if (readerKey !== currentPrincipalKey.current) return;
+      setChatEntries(current => current.map(entry => entry.id === assistantEntryId ? { ...entry, content: "" } : entry));
+      watchTask(started.task_id, assistantEntryId);
+    } catch (caught) {
+      if (readerKey !== currentPrincipalKey.current) return;
+      const failure = caught instanceof Error ? caught.message : "Could not resume saved task";
+      setError(failure); setLoading(false); setActiveTaskId("");
+      setChatEntries(current => current.map(entry => entry.id === assistantEntryId ? { ...entry, content: failure, waiting: false } : entry));
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (loading || voiceBusy || !message.trim()) return;
+    if (loading || voiceBusy || savedTaskBusy || inputReplyBusy || !message.trim()) return;
     const submittedMessage = message.trim();
     const submittedAttachments = attachments.map((item) => item.name);
     const assistantEntryId = `assistant-${Date.now()}`;
@@ -233,45 +397,7 @@ export default function Home() {
       });
       if (!response.ok) throw new Error(`Backend returned ${response.status}: ${await response.text()}`);
       const started = await response.json();
-      setActiveTaskId(started.task_id);
-      const stream = new EventSource(`${api}/api/tasks/${started.task_id}/events`, { withCredentials: true });
-      let finished = false;
-      const eventTypes = ["task_accepted", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "tool_approval_required", "agent_verified", "agent_decision_rejected", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_completed", "task_cancelled", "task_failed"];
-      const receive = (event: MessageEvent) => {
-        const item = JSON.parse(event.data) as LiveEvent;
-        setLiveEvents((current) => [...current, item]);
-        if (item.type === "model_token") {
-          const token = String(item.payload.text ?? "");
-          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: entry.content + token, waiting: true }
-            : entry));
-        } else if (item.type === "task_completed") {
-          const completed = item.payload.result as TaskResult;
-          finished = true;
-          setResult(completed);
-          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: completed.final_response ?? "Task completed without a text response.", waiting: false, warnings: completed.warnings }
-            : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
-        } else if (item.type === "task_failed" || item.type === "task_cancelled") {
-          const failure = String(item.payload.error ?? "Task failed");
-          finished = true;
-          setError(failure);
-          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: failure, waiting: false, warnings: ["The task stopped safely."] }
-            : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
-        }
-      };
-      eventTypes.forEach((type) => stream.addEventListener(type, receive as EventListener));
-      stream.onerror = () => {
-        if (!finished && stream.readyState === EventSource.CLOSED) {
-          setLoading(false);
-          setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: "The live task connection closed before a final response arrived.", waiting: false }
-            : entry));
-        }
-      };
+      watchTask(started.task_id, assistantEntryId);
     } catch (caught) {
       const failure = caught instanceof Error ? caught.message : "Request failed";
       setError(failure);
@@ -339,6 +465,8 @@ export default function Home() {
 
   async function logout() {
     await apiFetch("/api/auth/logout", { method: "POST" });
+    currentPrincipalKey.current = ""; activeStream.current?.close();
+    setLoading(false); setActiveTaskId("");
     setPrincipal(null); setVoiceBusy(false); setChatEntries([]); setResult(null);
   }
 
@@ -351,7 +479,7 @@ export default function Home() {
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><span>S</span> SovereignAI</div>
-      <button className="newTask" disabled={voiceBusy} onClick={() => { setResult(null); setMessage(""); setToolScope("ALL"); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
+      <button className="newTask" disabled={voiceBusy || loading || inputReplyBusy} onClick={() => { setResult(null); setMessage(""); setToolScope("ALL"); setAttachments([]); setLiveEvents([]); setChatEntries([]); setCapsule(null); setError(""); }}>+ New task</button>
       <nav><a className="active">Workbench</a><Link href="/integrations">Integrated analysis</Link><Link href="/assets">Asset intelligence</Link><Link href="/organization">Organization</Link>{principal.roles.includes("ADMIN") && <Link href="/admin/onboarding">Organization onboarding</Link>}<a>Conversations</a><a>Files</a><a>Knowledge base</a><a>Generated artifacts</a><Link href="/sovereignty">Sovereignty monitor</Link><Link href="/metrics">Evaluation metrics</Link></nav>
       <div className="userContext"><b>{principal.display_name}</b><span>{primaryDepartment} · {primaryRole}</span><small>{principal.workspace_ids[0] ?? "Local workspace"}</small><button type="button" onClick={() => void logout()}>Log out</button></div>
       <div className="localBadge"><i /> AIR-GAPPED MODE<br/><small>Local services only</small></div>
@@ -368,6 +496,15 @@ export default function Home() {
         </div> : <div className="empty"><div className="mark">S</div><h2>Confidential work stays here.</h2><p>Analyze industrial documents, search internal knowledge, execute controlled tools, and generate finished deliverables—all inside your infrastructure.</p></div>}
         {!chatEntries.length && <AgentExamples disabled={loading || voiceBusy || attachments.length > 0 || !!workcellId || !principal.permissions.includes("tool.execute")} onChoose={(prompt) => { setMessage(prompt); setChatMode("CONTROLLED"); setToolScope("NUMERIC"); messageInput.current?.focus(); }} />}
         <AgentTrace events={liveEvents} records={result?.tool_records ?? []} status={result?.status} />
+        <TaskLifecycle lifecycle={result?.lifecycle} checkpoint={result?.checkpoint} />
+        {result?.status === "waiting_for_input" && result.checkpoint && result.principal_id === principal.user_id && result.lifecycle &&
+          <TaskInputReply key={`${principalKey}:${result.id}:${result.checkpoint.revision}`} taskId={result.id}
+            revision={result.checkpoint.revision} questions={result.lifecycle.required_inputs}
+            disabled={loading || voiceBusy || savedTaskBusy} apiFetch={apiFetch}
+            onBusy={setInputReplyBusy} onContinue={continueAfterInput} />}
+        <WorkflowSelection selection={result?.workflow_selection ?? liveEvents.findLast((event) => event.type === "workflow_selected")?.payload as WorkflowSelectionInfo | undefined} />
+        <StructuredPlan plan={result?.structured_plan ?? liveEvents.findLast((event) => event.type === "plan_validated")?.payload?.plan as StructuredPlanInfo | undefined} />
+        <RuntimeTiming metrics={result?.runtime_metrics ?? liveEvents.findLast((event) => event.type === "task_timing")?.payload} />
         {chatEntries.length > 0 && <div ref={conversationEnd} />}
         {error && !chatEntries.length && <p className="error">{error}</p>}
       </div>
@@ -375,12 +512,15 @@ export default function Home() {
         {toolScope === "NUMERIC" && <div><span>Arithmetic tools only</span><button type="button" disabled={loading || voiceBusy} onClick={() => setToolScope("ALL")}>Use all tools</button></div>}
         <textarea ref={messageInput} aria-label="Message SovereignAI" disabled={voiceBusy} value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Message SovereignAI…" />
         {attachments.map((attachment) => <div className="attachment" key={attachment.path}>File: {attachment.name}<button type="button" onClick={() => setAttachments((current) => current.filter((item) => item.path !== attachment.path))}>x</button></div>)}
-        <div><label className="attachButton" title="Attach files">+<input multiple type="file" accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.tif,.tiff" onChange={(event) => { Array.from(event.target.files ?? []).forEach((file) => void upload(file)); }} /></label><VoiceInput key={principal.user_id} disabled={loading} apiFetch={apiFetch} onBusy={setVoiceBusy} onTranscript={(text) => { setMessage((draft) => draft.trim() ? `${draft.trimEnd()} ${text}` : text); requestAnimationFrame(() => messageInput.current?.focus()); }} /><span>Enter to send · Shift+Enter for a new line</span>{loading && <button type="button" className="send" onClick={() => void cancelActiveTask()}>Cancel</button>}<button className="send" disabled={loading || voiceBusy || !message.trim()}>{loading ? "Waiting…" : "Run task →"}</button></div>
+        <div><label className="attachButton" title="Attach files">+<input multiple type="file" accept=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.png,.jpg,.jpeg,.tif,.tiff" onChange={(event) => { Array.from(event.target.files ?? []).forEach((file) => void upload(file)); }} /></label><VoiceInput key={principal.user_id} disabled={loading || inputReplyBusy} apiFetch={apiFetch} onBusy={setVoiceBusy} onTranscript={(text) => { setMessage((draft) => draft.trim() ? `${draft.trimEnd()} ${text}` : text); requestAnimationFrame(() => messageInput.current?.focus()); }} /><span>Enter to send · Shift+Enter for a new line</span>{loading && <button type="button" className="send" onClick={() => void cancelActiveTask()}>Cancel</button>}<button className="send" disabled={loading || voiceBusy || inputReplyBusy || !message.trim()}>{loading ? "Waiting…" : "Run task →"}</button></div>
       </form>
     </section>
     <aside className="inspector">
       <div className="inspectorColumn inspectorExecution">
       <h3>Agent execution</h3>
+      <section><label htmlFor="saved-task">SAVED TASKS</label><select id="saved-task" value={result?.id ?? ""} disabled={loading || voiceBusy || savedTaskBusy || inputReplyBusy} onChange={event => void openSavedTask(event.target.value)}>
+        <option value="">Open saved progress</option>{savedTasks.map(task => <option key={task.id} value={task.id}>{task.status.replaceAll("_", " ")}: {task.request.slice(0, 80)}</option>)}
+      </select>{result && <button type="button" disabled={loading || voiceBusy || savedTaskBusy || inputReplyBusy} onClick={() => void openSavedTask(result.id)}>Refresh saved progress</button>}{result?.checkpoint && result.principal_id === principal?.user_id && ["interrupted", "cancelled", "failed", "waiting_for_approval"].includes(result.status) && <button type="button" disabled={loading || voiceBusy || savedTaskBusy || inputReplyBusy} onClick={() => void resumeSavedTask()}>Resume saved task</button>}<p>{savedTaskBusy ? "Loading saved progress..." : "Opening a saved task only retrieves its state. Resume checks current access and confirmed action receipts before continuing."}</p></section>
       <section><label>MODEL &amp; EXECUTION</label><b>{result?.routing.model_id ?? "Automatic routing"}</b><p>{result?.routing.reason ?? "A local model will be selected for the task."}</p>{result && <><div className="metric"><span>Confidence</span><b>{Math.round(result.routing.confidence * 100)}%</b></div><div className="metric"><span>Chat mode</span><b>{result.chat_mode}</b></div><p>{result.chat_mode_reason}</p><div className="metric"><span>Depth</span><b>{result.execution_mode}</b></div><p>{result.execution_mode_reason}</p></>}<div className="metric"><span>Local readiness</span><b>{models.length ? `${models.filter((model) => model.availability === "READY").length}/${models.length} roles` : "Checking"}</b></div><select value={chatMode} onChange={(event) => setChatMode(event.target.value)} aria-label="Chat mode"><option value="AUTOMATIC">Automatic chat mode</option><option value="GENERAL">General Chat</option><option value="AUTHORIZED">Authorized Knowledge</option><option value="CONTROLLED">Controlled Agent</option></select><select value={executionMode} onChange={(event) => setExecutionMode(event.target.value)} aria-label="Execution mode"><option value="AUTOMATIC">Automatic depth</option><option value="FAST">Fast</option><option value="STANDARD">Standard</option><option value="DEEP">Deep</option></select><select value={modelOverride} onChange={(event) => setModelOverride(event.target.value)} aria-label="Model override"><option value="">Automatic model</option>{models.map((model) => <option key={model.id} value={model.id} disabled={model.availability !== "READY"}>{model.role}: {model.display_name} — {model.availability}</option>)}</select>{models.map((model) => <div className="modelRuntime" key={model.id}><span className={model.availability === "READY" ? "readyDot" : "warnDot"}/><div><b>{model.role}</b><small>{model.model_tag} · {model.lifecycle_state ?? model.availability} · {model.warm_status ?? "unknown"}</small></div></div>)}</section>
       <section><label>WORKFLOW</label>{result?.context_metrics.integration_route?.services?.length ? <><b>Automatic service plan</b>{result.context_metrics.integration_route.services.map((service) => <div className="metric" key={service}><span>{service}</span><b>SELECTED</b></div>)}<p>{result.context_metrics.integration_route.reason}</p></> : result?.workcell_id ? <><b>{workcells.find((item) => item.id === result.workcell_id)?.name ?? result.workcell_id}</b><p>Version {result.workcell_version} · Workflow {result.workflow_version}</p><div className="metric"><span>Pack status</span><b>READY / DEVELOPMENT</b></div><code className="shortHash">{result.workcell_hash}</code></> : <><select value={workcellId} onChange={(event) => setWorkcellId(event.target.value)} aria-label="Workcell selection"><option value="">Automatic workflow</option>{workcells.map((item) => <option key={`${item.id}-${item.version}`} value={item.id}>{item.name} v{item.version}</option>)}</select><p>{workcellId ? workcells.find((item) => item.id === workcellId)?.description : "The task classifier can select an installed local Workcell."}</p></>}</section>
       {resources && <section><label>LOCAL RESOURCES</label><div className="metric"><span>GPU jobs / queue</span><b>{resources.active_gpu_jobs} / {resources.queue_depth}</b></div><div className="metric"><span>CPU</span><b>{resources.cpu_percent}%</b></div><div className="metric"><span>RAM</span><b>{Math.round(resources.ram_used_mb)} / {Math.round(resources.ram_total_mb)} MB</b></div>{resources.vram_total_mb != null && <div className="metric"><span>VRAM</span><b>{Math.round(resources.vram_used_mb ?? 0)} / {Math.round(resources.vram_total_mb)} MB</b></div>}</section>}

@@ -17,6 +17,7 @@ from app.llm.base import (
     StructuredGenerationResult,
 )
 from app.monitoring.network import LocalNetworkPolicy
+from app.monitoring.timing import measure_generation, measure_stream
 from app.resources.lifecycle import ModelLifecycleManager, get_model_lifecycle_manager
 from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_scheduler
 
@@ -100,6 +101,7 @@ class OllamaProvider(LocalModelProvider):
             runtime_stats=final.runtime_stats if final else {},
         )
 
+    @measure_stream
     async def stream(
         self,
         prompt: str,
@@ -310,6 +312,7 @@ class OllamaProvider(LocalModelProvider):
         except httpx.HTTPError:
             return None
 
+    @measure_generation
     async def generate_json(
         self, prompt: str, model: str, schema: dict[str, Any], system: str | None = None
     ) -> StructuredGenerationResult:
@@ -388,7 +391,8 @@ class OllamaProvider(LocalModelProvider):
         total_seconds = _nanoseconds_to_seconds(response.get("total_duration")) or (monotonic() - started)
         load_seconds = _nanoseconds_to_seconds(response.get("load_duration"))
         eval_seconds = _nanoseconds_to_seconds(response.get("eval_duration"))
-        token_count = int(response.get("eval_count", 0) or 0)
+        prompt_seconds = _nanoseconds_to_seconds(response.get("prompt_eval_duration"))
+        token_count = int(response["eval_count"]) if isinstance(response.get("eval_count"), (int, float)) else None
         done_reason = str(response.get("done_reason") or "stop")
         return {
             "model": str(response.get("model", "")),
@@ -396,8 +400,10 @@ class OllamaProvider(LocalModelProvider):
             "tokens_per_second": round(token_count / eval_seconds, 3) if eval_seconds and token_count else None,
             "total_duration_seconds": round(total_seconds, 6),
             "load_duration_seconds": round(load_seconds, 6) if load_seconds is not None else None,
+            "prompt_processing_seconds": round(prompt_seconds, 6) if prompt_seconds is not None else None,
+            "generation_seconds": round(eval_seconds, 6) if eval_seconds is not None else None,
             "token_count": token_count,
-            "prompt_token_count": int(response.get("prompt_eval_count", 0) or 0),
+            "prompt_token_count": int(response["prompt_eval_count"]) if isinstance(response.get("prompt_eval_count"), (int, float)) else None,
             "warm_status": "warm" if was_loaded is True else "cold" if was_loaded is False else "unknown",
             "queue_wait_seconds": round(queue_wait_seconds, 6),
             "done_reason": done_reason,

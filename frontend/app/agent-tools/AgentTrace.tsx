@@ -3,6 +3,8 @@ export type ToolRecord = {
   tool: string; arguments?: Record<string, unknown>; reason_summary?: string;
   success?: boolean; error?: string | null; output_summary?: string; duration_ms?: number;
   validation?: string; waiting_for_approval?: boolean; governance_decision?: string;
+  execution_status?: string;
+  reconciliation?: { type: string; id: string };
 };
 
 export default function AgentTrace({ events, records, status }: { events: TraceEvent[]; records: ToolRecord[]; status?: string }) {
@@ -17,8 +19,9 @@ export default function AgentTrace({ events, records, status }: { events: TraceE
       {status ? ` · Run: ${status}` : " · Final governance checks pending"}. This checks tool execution; the answer still uses the existing grounding and policy checks.
     </p>}
     {records.length ? records.map((record, index) => <details key={`${record.tool}-${index}`} open>
-      <summary>{index + 1}. {record.tool} · {record.waiting_for_approval ? "Approval required" : record.success ? "Succeeded" : "Failed or denied"}{record.duration_ms != null ? ` · ${record.duration_ms} ms` : ""}</summary>
+      <summary>{index + 1}. {record.tool} · {record.waiting_for_approval ? "Approval required" : record.execution_status === "unknown" ? "Outcome unknown; review required" : record.execution_status === "in_flight" ? "Running; result not yet confirmed" : record.success ? "Succeeded" : "Failed or denied"}{record.duration_ms != null ? ` · ${record.duration_ms} ms` : ""}</summary>
       <p>{record.reason_summary}</p><b>Input</b><pre>{JSON.stringify(record.arguments, null, 2)}</pre>
+      {record.reconciliation && <p>Previous execution verified from its saved result; this action was not repeated on resume.</p>}
       {record.output_summary && <><b>Observed output</b><pre>{record.output_summary}</pre></>}
       {record.error && <p className="error">{record.error}</p>}
       <p>{record.validation || record.governance_decision}</p>
