@@ -49,6 +49,11 @@ def storage(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{(tmp_path / 'checkpoints.db').as_posix()}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine)
+    # Direct handler tests run before application startup. Keep every imported
+    # cache factory on this isolated schema, not an existing developer database.
+    from app.resources import cache as cache_module
+    from app.resources.cache import SQLiteCache
+    monkeypatch.setattr(cache_module, "SQLiteCache", lambda: SQLiteCache(factory))
     monkeypatch.setattr(tasks, "SessionLocal", factory)
     monkeypatch.setattr(tasks, "task_event_broker", TaskEventBroker())
     def database():

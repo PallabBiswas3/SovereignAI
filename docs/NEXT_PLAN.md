@@ -1,5 +1,13 @@
 # Next implementation plan
 
+Development combines application, diagnostic research, and pending security work.
+See BRANCH_STATUS.md for consolidation scope and remaining validation.
+
+Main promotion scope (22 October 2026): completed application features only.
+Process 3.3 and Wind 1.2 research changes remain on their research branch and
+require separate evaluation before promotion. Historical research sections below
+are follow-up records, not changes included in the application release.
+
 ## Task continuity follow-up - 22 October 2026
 
 Step 4 now accepts typed clarification answers and task-bound uploads for the

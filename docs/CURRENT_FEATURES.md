@@ -1,5 +1,30 @@
 # Current features
 
+Development consolidation (22 October 2026): this branch combines the published
+application with the retained Process/Wind diagnostic research. The main-only
+promotion scope below describes `main`, not this development runtime. Integration
+and security validation must pass before any later promotion.
+
+Application-only main promotion (22 October 2026): the application features below
+are included, while Process 3.3 sensitivity/reference guards and Wind 1.2 quality
+research remain on `research/diagnostic-guards-review`. This application's
+diagnostic source baseline is commit `480ee76`; the following research sections
+describe that separate branch, not the promoted runtime's defaults. Historical
+research results and the earlier 688-test live-validation record remain evidence
+for their explicitly recorded configurations, not fresh-clone release claims.
+
+Maintained voice/agent tests and their synthetic diagnostic fixture are included
+in Git. The default `pytest` command no longer depends on ignored `local_testing`
+folders. It imports the checked-out diagnostic/ControlPlane source rather than
+an editable installation from another workspace.
+
+Application promotion validation: all 297 maintained Python tests passed against
+a fresh SQLite database; 24 agent-tools and 13 voice frontend tests passed. The
+Next.js production build (Webpack), including TypeScript checking, passed. A
+synthetic Pump-102 request against the promoted diagnostic baseline returned a
+diagnosis identifying pressure as its root-cause candidate. These are synthetic
+development checks, not plant-deployment acceptance.
+
 ## Diagnostic research branch status — 18 October 2026
 
 The previously uncommitted Process 3.3 and Wind 1.2 changes are retained on

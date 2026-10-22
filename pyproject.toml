@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
-pythonpath = ["backend", "local_testing"]
-testpaths = ["local_testing/tests", "tests/voice", "tests/agent_tools"]
+pythonpath = ["backend", "Controlplane.ai/src", "Time-Series-Diagnostic-Agent/src", "tests/agent_tools"]
+testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
