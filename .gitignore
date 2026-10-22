@@ -40,6 +40,12 @@ __pycache__/
 *.py[cod]
 models/faster-whisper-*/
 backend/tests/
+!backend/tests/
+backend/tests/*
+!backend/tests/security/
+!backend/tests/security/**
+**/__pycache__/
+*.py[cod]
 Controlplane.ai/tests/
 Time-Series-Diagnostic-Agent/tests/
 benchmarks/

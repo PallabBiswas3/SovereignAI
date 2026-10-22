@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
 from app.rag.factory import configured_hybrid_retriever
-from app.tools.file_tools import SafeWorkspace
+from app.tools.file_tools import principal_workspace
 from app.workflows.inspection import InspectionWorkflow
 from app.workflows.coding import CodingWorkflow
 from app.sandbox.executor import DockerSandboxExecutor
@@ -45,8 +45,9 @@ async def run_inspection_demo(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        inspection = SafeWorkspace(settings.workspace_root).resolve(payload.inspection_path, must_exist=True)
-        sop = SafeWorkspace(settings.knowledge_root).resolve(payload.sop_path, must_exist=True)
+        workspace = principal_workspace(settings.workspace_root, principal)
+        inspection = workspace.resolve(payload.inspection_path, must_exist=True)
+        sop = (workspace if settings.auth_mode.lower() == "local" else principal_workspace(settings.knowledge_root, principal)).resolve(payload.sop_path, must_exist=True)
         embeddings = configured_embedding_provider()
         cache = get_cache_backend() if settings.cache_enabled else None
         access = AuthorizationService().can_execute_workcell(principal, "pump-inspection")
@@ -75,7 +76,7 @@ async def run_coding_demo(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        csv_path = SafeWorkspace(settings.workspace_root).resolve(payload.csv_path, must_exist=True)
+        csv_path = principal_workspace(settings.workspace_root, principal).resolve(payload.csv_path, must_exist=True)
         if csv_path.suffix.lower() != ".csv":
             raise ValueError("Coding demo requires a CSV input")
         artifact_root = settings.workspace_root / "artifacts"

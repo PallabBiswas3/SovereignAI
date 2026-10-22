@@ -26,6 +26,32 @@ python scripts\import_organization.py --pack organizations\example-industrial --
 
 It is deliberately honest about runtime dependencies: model answers require the configured local vLLM or Ollama service; code execution requires Docker; vision requires the configured local VLM. When one is unavailable, the workbench returns an explicit unavailable state and does not fabricate success or execute generated code on the host.
 
+## Final v1 verification (18 October 2026)
+
+**Ready for a controlled research release review, with documented non-blocking
+limitations. No merge, release or deployment has been performed.**
+The verification branch is `verification/v1-final`; the original security branch
+remains at `f15e2867c03d322a7049ec5cf05df233612fc2c9`. The separate diagnostic
+research branch is preserved and Wind SCADA remains frozen.
+
+Final checks: backend **436 passed, 1 skipped**; security **69 passed** (included
+in the backend total); ControlPlane **221 passed, 1 failed, 7 skipped**;
+diagnostics **237 passed, 2 failed**. The three remaining failures concern a
+historical ablation and research-branch version literals; their evidence and
+non-blocking classification are in [Past experiments](docs/PAST_EXPERIMENTS.md).
+GraphRAG builds/tests, frontend type checking, four stream tests and the
+production build pass.
+
+An authenticated synthetic Pump-102 run actually used GraphRAG, Process 3.0,
+Ollama and ControlPlane, released a cited assessment and generated an artifact
+and integrity-valid capsule. Client latency was **161.6 seconds**, including
+**144.5 seconds** of model generation; the release check took **1.781 seconds**
+under the unchanged 2-second policy. Negative authorization, review and real
+service-outage checks held or denied access. The browser displayed the actual
+held state for a separate default maintenance request. These observations do
+not establish plant accuracy or production accreditation. See the maintained
+report for exact commands, identifiers, remaining limits and test evidence.
+
 ## Architecture
 
 ```mermaid
@@ -136,7 +162,34 @@ Set-Location frontend
 npm run dev
 ```
 
-Open `http://127.0.0.1:3000`. API docs are at `http://127.0.0.1:8000/docs`.
+Open `http://localhost:3000`. API docs are at `http://localhost:8000/docs`.
+Use `localhost` consistently in the browser and `NEXT_PUBLIC_API_URL`; mixing
+`localhost` with `127.0.0.1` prevents Strict session cookies from working.
+
+### Authenticated v1 configuration
+
+For the multi-user workflow, set `SOVEREIGN_AUTH_MODE=local` in the backend
+process. `disabled` is an explicit single-user development mode and provides no
+tenant isolation. Production mode already rejects disabled authentication.
+
+Set the same randomly generated secret of at least 32 characters as
+`SOVEREIGN_GRAPHRAG_SERVICE_TOKEN` in the backend process and
+`GRAPHRAG_SERVICE_TOKEN` in the GraphRAG process. Keep both server-side.
+Configure a separate `GRAPHRAG_ADMIN_TOKEN` only when an operator needs the
+legacy global graph ingestion, viewing or deletion APIs; they are disabled
+without it. Never expose either token through `NEXT_PUBLIC_*` or the GraphRAG
+browser client. Missing service credentials fail closed.
+
+Authenticated uploads now belong to the organization, primary workspace and
+user that uploaded them. Pass the returned `path` unchanged to OCR, vision,
+ingestion or task attachments. Re-upload legacy shared files through that
+user's authenticated session. The server does not guess ownership of old files
+or conversations. Legacy `/api/chat` now also requires ControlPlane availability
+and a successful governed release.
+
+The [18 October remediation report](docs/PAST_EXPERIMENTS.md#v1-security-and-integration-remediation--18-october-2026)
+records changed files, test results and release blockers. No final release or PR
+merge has been performed.
 
 For the multi-user APEL demonstration, seed explicitly before starting the backend:
 

@@ -10,6 +10,7 @@ import StructuredPlan, { type StructuredPlanInfo } from "./agent-tools/Structure
 import TaskLifecycle, { taskOutcomeEvents, type TaskLifecycleInfo, type ExecutionCheckpointInfo } from "./agent-tools/TaskLifecycle";
 import TaskInputReply from "./agent-tools/TaskInputReply";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { openTaskStream } from "./task-stream";
 
 type TaskResult = {
   id: string;
@@ -201,10 +202,26 @@ export default function Home() {
   const [inputReplyBusy, setInputReplyBusy] = useState(false);
   const principalKey = `${principal?.organization_id ?? ""}:${principal?.user_id ?? ""}`;
   const currentPrincipalKey = useRef(principalKey);
-  const activeStream = useRef<EventSource | null>(null);
   currentPrincipalKey.current = principalKey;
-  useEffect(() => () => activeStream.current?.close(), []);
   const conversationEnd = useRef<HTMLDivElement>(null);
+  const closeStream = useRef<(() => void) | null>(null);
+  const sessionRequests = useRef(new AbortController());
+
+  useEffect(() => {
+    sessionRequests.current = new AbortController();
+    return () => { closeStream.current?.(); sessionRequests.current.abort(); };
+  }, []);
+
+  function clearSession() {
+    currentPrincipalKey.current = "";
+    setVoiceBusy(false); setSavedTasks([]); setSavedTaskBusy(false); setInputReplyBusy(false);
+    closeStream.current?.(); closeStream.current = null;
+    sessionRequests.current.abort(); sessionRequests.current = new AbortController();
+    setPrincipal(null); setChatEntries([]); setResult(null); setCapsule(null);
+    setAttachments([]); setLiveEvents([]); setModels([]); setResources(null); setWorkcells([]);
+    setLoading(false); setActiveTaskId(""); setMessage(""); setError("");
+    setCapsuleBusy(false); setWorkcellId(""); setModelOverride("");
+  }
 
   useEffect(() => {
     apiFetch("/api/auth/me").then(async (response) => {
@@ -215,16 +232,26 @@ export default function Home() {
 
   useEffect(() => {
     if (!principal) return;
-    apiFetch("/api/models/status").then((response) => response.json())
-      .then((payload) => { setModels(payload.models ?? []); setResources(payload.resources ?? null); })
-      .catch(() => { setModels([]); setResources(null); });
+    const controller = new AbortController();
+    apiFetch("/api/models/status", { signal: controller.signal }).then((response) => {
+      if (!response.ok) throw new Error(`Model readiness unavailable (${response.status})`);
+      return response.json();
+    })
+      .then((payload) => { if (!controller.signal.aborted) { setModels(payload.models ?? []); setResources(payload.resources ?? null); } })
+      .catch(() => { if (!controller.signal.aborted) { setModels([]); setResources(null); } });
+    return () => controller.abort();
   }, [principal]);
 
   useEffect(() => {
     if (!principal) return;
-    apiFetch("/api/workcells").then((response) => response.json())
-      .then((payload: Workcell[]) => setWorkcells(payload.filter((item) => item.status === "READY")))
-      .catch(() => setWorkcells([]));
+    const controller = new AbortController();
+    apiFetch("/api/workcells", { signal: controller.signal }).then((response) => {
+      if (!response.ok) throw new Error(`Workflows unavailable (${response.status})`);
+      return response.json();
+    })
+      .then((payload: Workcell[]) => { if (!controller.signal.aborted) setWorkcells(payload.filter((item) => item.status === "READY")); })
+      .catch(() => { if (!controller.signal.aborted) setWorkcells([]); });
+    return () => controller.abort();
   }, [principal]);
 
   useEffect(() => {
@@ -269,17 +296,14 @@ export default function Home() {
   function watchTask(taskId: string, assistantEntryId: string) {
       const readerKey = currentPrincipalKey.current;
       setActiveTaskId(taskId);
-      const stream = new EventSource(`${api}/api/tasks/${taskId}/events`, { withCredentials: true });
-      activeStream.current?.close();
-      activeStream.current = stream;
-      let finished = false;
+      closeStream.current?.();
+      let close = () => {};
       const eventTypes = ["task_accepted", "task_resumed", "governance_completed", "task_classified", "model_selected", "chat_mode_selected", "workflow_selected", "plan_validated", "plan_revision_requested", "plan_stopped", "workflow_fallback", "execution_mode_selected", "plan_created", "step_started", "generation_started", "model_token", "generation_completed", "service_plan_selected", "graph_evidence_retrieved", "diagnostic_completed", "controlplane_release_decided", "integration_unavailable", "workcell_selected", "workcell_validated", "workcell_loaded", "workcell_step_started", "workcell_step_completed", "workcell_step_failed", "workcell_completed", "asset_resolved", "telemetry_loaded", "telemetry_warning", "trend_calculated", "asset_context_ready", "tool_proposed", "tool_started", "tool_completed", "tool_approval_required", "agent_verified", "agent_decision_rejected", "source_retrieved", "calculation_completed", "claim_verified", "evidence_conflict", "artifact_created", "warning", "step_completed", "task_timing", "task_completed", "task_cancelled", "task_failed"];
-      const receive = (event: MessageEvent) => {
-        if (readerKey !== currentPrincipalKey.current) { stream.close(); return; }
-        const item = JSON.parse(event.data) as LiveEvent;
+      const receive = (item: LiveEvent) => {
+        if (readerKey !== currentPrincipalKey.current) { close(); return; }
         if (item.type === "access_revoked") {
-          finished = true; stream.close(); setPrincipal(null); setResult(null); setChatEntries([]);
-          setLoading(false); setActiveTaskId(""); return;
+          close(); clearSession();
+          setLoginError("Your session expired or access changed. Sign in again."); return;
         }
         setLiveEvents((current) => [...current, item]);
         if (item.type === "model_token") {
@@ -289,34 +313,31 @@ export default function Home() {
             : entry));
         } else if (taskOutcomeEvents.includes(item.type) && item.payload.result) {
           const completed = item.payload.result as TaskResult;
-          finished = true;
           setResult(completed);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
             ? { ...entry, content: item.type === "task_snapshot"
                 ? "Saved task progress retrieved. A live stream is unavailable here; execution may still be running."
                 : completed.final_response ?? completed.checkpoint?.interruption_reason ?? `Task ${completed.status.replaceAll("_", " ")}.`, waiting: false, warnings: completed.warnings }
             : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
+          setLoading(false); setActiveTaskId(""); close();
         } else if (item.type === "task_failed" || item.type === "task_cancelled" || item.type === "task_blocked") {
           const failure = String(item.payload.error ?? "Task failed");
-          finished = true;
           setError(failure);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
             ? { ...entry, content: failure, waiting: false, warnings: ["The task stopped safely."] }
             : entry));
-          setLoading(false); setActiveTaskId(""); stream.close();
+          setLoading(false); setActiveTaskId(""); close();
         }
       };
-      [...new Set([...eventTypes, ...taskOutcomeEvents, "access_revoked"])].forEach((type) => stream.addEventListener(type, receive as EventListener));
-      stream.onerror = () => {
-        if (readerKey !== currentPrincipalKey.current) { stream.close(); return; }
-        if (!finished && stream.readyState === EventSource.CLOSED) {
-          setLoading(false);
+      close = openTaskStream(`${api}/api/tasks/${encodeURIComponent(taskId)}/events`,
+        [...eventTypes, ...taskOutcomeEvents], receive, (failure) => {
+          if (readerKey !== currentPrincipalKey.current) return;
+          setLoading(false); setActiveTaskId(""); setError(failure);
           setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
-            ? { ...entry, content: "The live task connection closed before a final response arrived.", waiting: false }
+            ? { ...entry, content: failure, waiting: false }
             : entry));
-        }
-      };
+        });
+      closeStream.current = close;
   }
 
   function continueAfterInput(taskId: string) {
@@ -373,6 +394,7 @@ export default function Home() {
     const submittedMessage = message.trim();
     const submittedAttachments = attachments.map((item) => item.name);
     const assistantEntryId = `assistant-${Date.now()}`;
+    const signal = sessionRequests.current.signal;
     setChatEntries((current) => [...current,
       { id: `user-${Date.now()}`, role: "user", content: submittedMessage, attachments: submittedAttachments },
       { id: assistantEntryId, role: "assistant", content: "", waiting: true },
@@ -383,7 +405,7 @@ export default function Home() {
     try {
       setResult(null); setLiveEvents([]); setCapsule(null);
       const response = await apiFetch("/api/tasks/start", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", signal, headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request: submittedMessage,
           model_override: modelOverride || null,
@@ -397,8 +419,10 @@ export default function Home() {
       });
       if (!response.ok) throw new Error(`Backend returned ${response.status}: ${await response.text()}`);
       const started = await response.json();
+      if (signal.aborted) return;
       watchTask(started.task_id, assistantEntryId);
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return;
       const failure = caught instanceof Error ? caught.message : "Request failed";
       setError(failure);
       setChatEntries((current) => current.map((entry) => entry.id === assistantEntryId
@@ -411,42 +435,56 @@ export default function Home() {
 
   async function cancelActiveTask() {
     if (!activeTaskId) return;
-    await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE" });
+    const signal = sessionRequests.current.signal;
+    try {
+      const response = await apiFetch(`/api/tasks/${activeTaskId}`, { method: "DELETE", signal });
+      if (signal.aborted) return;
+      if (!response.ok) throw new Error(`Cancellation failed (${response.status}).`);
+      closeStream.current?.(); setLoading(false); setActiveTaskId("");
+      setChatEntries(current => current.map(entry => entry.waiting
+        ? { ...entry, content: "Cancellation requested.", waiting: false } : entry));
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Cancellation failed"); }
   }
 
   async function upload(file: File) {
     setError("");
     const form = new FormData(); form.append("file", file);
+    const signal = sessionRequests.current.signal;
     try {
-      const response = await apiFetch("/api/files/upload", { method: "POST", body: form });
+      const response = await apiFetch("/api/files/upload", { method: "POST", body: form, signal });
       if (!response.ok) throw new Error(`Upload returned ${response.status}`);
       const uploaded = await response.json();
+      if (signal.aborted) return;
       setAttachments((current) => [...current, { name: uploaded.name, path: uploaded.path }]);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Upload failed"); }
+    } catch (caught) { if (!(caught instanceof DOMException && caught.name === "AbortError")) setError(caught instanceof Error ? caught.message : "Upload failed"); }
   }
 
   async function buildCapsule() {
     if (!result?.id || capsuleBusy) return;
     setCapsuleBusy(true); setError("");
+    const signal = sessionRequests.current.signal;
     try {
       const response = await apiFetch(`/api/tasks/${result.id}/capsule`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inputs: [] }),
+        method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inputs: [] }),
       });
       if (!response.ok) throw new Error(`Capsule build returned ${response.status}: ${await response.text()}`);
-      setCapsule(await response.json());
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Capsule build failed"); }
+      const built = await response.json();
+      if (!signal.aborted) setCapsule(built);
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Capsule build failed"); }
     finally { setCapsuleBusy(false); }
   }
 
   async function verifyCapsule() {
     if (!capsule || capsuleBusy) return;
     setCapsuleBusy(true); setError("");
+    const signal = sessionRequests.current.signal;
     try {
-      const response = await apiFetch(capsule.verify_url, { method: "POST" });
+      const response = await apiFetch(capsule.verify_url, { method: "POST", signal });
       if (!response.ok) throw new Error(`Capsule verification returned ${response.status}`);
       const verification = await response.json();
+      if (signal.aborted) return;
       setCapsule((current) => current ? { ...current, state: verification.status === "VALID" ? "VERIFIED" : "INVALID", verification } : current);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Capsule verification failed"); }
+    } catch (caught) { if (!signal.aborted) setError(caught instanceof Error ? caught.message : "Capsule verification failed"); }
     finally { setCapsuleBusy(false); }
   }
 
@@ -464,10 +502,11 @@ export default function Home() {
   }
 
   async function logout() {
-    await apiFetch("/api/auth/logout", { method: "POST" });
-    currentPrincipalKey.current = ""; activeStream.current?.close();
-    setLoading(false); setActiveTaskId("");
-    setPrincipal(null); setVoiceBusy(false); setChatEntries([]); setResult(null);
+    try {
+      const response = await apiFetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok && response.status !== 401) throw new Error(`Logout failed (${response.status}). Try again.`);
+      clearSession();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Logout failed. Try again."); }
   }
 
   if (!authChecked) return <main className="loginShell"><div className="loginCard"><div className="mark">S</div><p>Checking local session…</p></div></main>;
@@ -506,7 +545,7 @@ export default function Home() {
         <StructuredPlan plan={result?.structured_plan ?? liveEvents.findLast((event) => event.type === "plan_validated")?.payload?.plan as StructuredPlanInfo | undefined} />
         <RuntimeTiming metrics={result?.runtime_metrics ?? liveEvents.findLast((event) => event.type === "task_timing")?.payload} />
         {chatEntries.length > 0 && <div ref={conversationEnd} />}
-        {error && !chatEntries.length && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </div>
       <form onSubmit={submit} className="composer">
         {toolScope === "NUMERIC" && <div><span>Arithmetic tools only</span><button type="button" disabled={loading || voiceBusy} onClick={() => setToolScope("ALL")}>Use all tools</button></div>}

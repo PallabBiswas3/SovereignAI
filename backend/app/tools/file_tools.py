@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
+import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,16 +18,59 @@ ALLOWED_EXTENSIONS = {
 
 class SafeWorkspace:
     def __init__(self, root: Path) -> None:
-        self.root = root.resolve()
+        self.root = self._native(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _native(path: Path) -> Path:
+        # Capsules import agent state, which imports workflow routing and this
+        # module. Defer the helper import until the workspace class is defined.
+        from app.capsules.paths import windows_extended_path
+
+        resolved = path.resolve()
+        return Path(windows_extended_path(str(resolved))) if os.name == "nt" else resolved
+
     def resolve(self, relative_path: str, *, must_exist: bool = False) -> Path:
-        candidate = (self.root / relative_path).resolve()
+        candidate = self._native(self.root / relative_path)
         if candidate != self.root and self.root not in candidate.parents:
             raise ValueError("Path traversal outside the configured workspace is blocked")
         if must_exist and not candidate.exists():
             raise FileNotFoundError(relative_path)
         return candidate
+
+    def files(self, base: Path | None = None):
+        for path in (base or self.root).rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                self.resolve(path.relative_to(self.root).as_posix(), must_exist=True)
+            except (ValueError, FileNotFoundError):
+                continue
+            yield path
+
+
+def principal_workspace(root: Path, principal=None) -> SafeWorkspace:
+    """Bind raw file access to the authenticated owner and active workspace.
+
+    Client paths stay relative (uploads/...), so every consumer must use the
+    same resolver. Unscoped legacy files remain accessible only in explicit
+    development mode; artifact/capsule access uses their separate ACL endpoints.
+    """
+    from app.core.config import get_settings
+    if get_settings().auth_mode.lower() != "local":
+        return SafeWorkspace(root)
+    if not principal or not principal.organization_id or not principal.user_id or not principal.workspace_ids:
+        raise ValueError("ACCESS_SCOPE_REQUIRED")
+    parts = [principal.organization_id, principal.workspace_ids[0], principal.user_id]
+    if any(not part or part == "*" for part in parts):
+        raise ValueError("ACCESS_SCOPE_REQUIRED")
+    base = root.resolve()
+    # One digest keeps the namespace short enough for ordinary Windows paths.
+    identity = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+    directory = base / "users" / hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    if directory.resolve() != directory or base not in directory.parents:
+        raise ValueError("Invalid private workspace")
+    return SafeWorkspace(directory)
 
 
 class ListFilesTool(Tool):
@@ -42,7 +87,7 @@ class ListFilesTool(Tool):
             base = self.workspace.resolve(str(args.get("path", ".")), must_exist=True)
             files = [
                 str(path.relative_to(self.workspace.root)).replace("\\", "/")
-                for path in base.rglob("*")
+                for path in self.workspace.files(base)
                 if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS
             ]
             return ToolResult(success=True, output=sorted(files))
@@ -111,7 +156,7 @@ class SearchFilesTool(Tool):
         if not query:
             return ToolResult(success=False, error="A non-empty query is required")
         matches: list[dict[str, Any]] = []
-        for path in self.workspace.root.rglob("*"):
+        for path in self.workspace.files():
             if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTENSIONS:
                 continue
             try:

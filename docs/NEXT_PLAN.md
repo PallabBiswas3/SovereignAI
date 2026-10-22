@@ -160,6 +160,52 @@ identifiability and future-data influence; freeze new test families after repair
 Local report: `local_testing/experiments/results/process_synthetic_v1_baseline_audited/REPORT.md`.
 Eleven harness tests pass. This is unreviewed synthetic evidence, not plant validation.
 
+## Historical v1 security handoff
+
+This older branch-specific handoff is retained for evidence. The current user
+has authorized consolidation into development; production release remains a
+separate decision.
+
+## Final v1 handoff (18 October 2026; supersedes older acceptance lists)
+
+Final verification is complete on `verification/v1-final` in
+`../SovereignAI_v1_security`, based on unchanged security branch
+`security/v1-remediation` at `f15e2867c03d322a7049ec5cf05df233612fc2c9`.
+The original eleven files are separately committed on
+`research/diagnostic-guards-review` at
+`56d742020028657f6c200f24af100ff4e6fa341c`; that working tree is clean.
+No research code was merged, no branch was merged and no release was created.
+
+Completed acceptance work:
+
+1. Corrected nine historical profiling/clock test fixtures without changing
+   expected outcomes, source or the 2,000 ms release policy. The remaining
+   authority ablation is explicitly non-blocking research behavior; expectation
+   remains unchanged and its failure is disclosed.
+2. Verified that Process 3.0 supports the existing v1 path. Research Process 3.3
+   and Wind 1.2 version assertions remain two visible non-blocking failures;
+   importing research code is not a release requirement. Wind stays frozen.
+3. Ran the actual authenticated synthetic Pump-102 workflow with matching
+   GraphRAG service credentials, local Ollama generation and all required
+   services. Checked citations, scoped downloads, capsule integrity, approvals,
+   foreign/missing evidence, unsafe/unsupported candidates and a real outage.
+   The browser displayed a separate actual held backend response correctly.
+4. Fixed the live Windows long-path upload failure in an isolated increment.
+   Security 69 passed; backend 436 passed/1 skipped; ControlPlane 221 passed/
+   1 failed/7 skipped; diagnostics 237 passed/2 failed. GraphRAG and frontend
+   builds/checks passed. Evidence and exact limitations are in PAST_EXPERIMENTS.
+
+**Final handoff: ready for controlled research release review with documented
+non-blocking limitations.** The whole suite is not entirely green. No observed
+critical security or essential integration defect remains in the tested scope.
+Review the final diff and report, then obtain explicit approval before merging
+or creating a final release. Do not automatically publish, deploy or merge the
+separate research branch. Stop v1 work at this report.
+
+Do not expand architectures, add agents, retrain models, or loosen release policy.
+Existing historical research plans below are not part of this v1 completion and
+do not authorize additional work.
+
 ## Diagnostic input contract and training handoff (10 October 2026)
 
 Seven public workflows now share `industrial-diagnostic-v1`; exact required

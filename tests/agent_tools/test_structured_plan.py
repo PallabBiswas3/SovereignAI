@@ -18,7 +18,7 @@ from app.agent.state import AgentPlan, AgentRunState, RunStatus
 from app.api import tasks
 from app.artifacts.service import ArtifactService
 from app.core.config import get_settings
-from app.core.database import AgentRunRecord, AuditEventRecord, Base, HumanApprovalRecord, get_db
+from app.core.database import AgentRunRecord, ArtifactRecord, AuditEventRecord, Base, HumanApprovalRecord, get_db
 from app.governance.action_guard import ActionGuard
 from app.identity.dependencies import development_principal
 from app.identity.models import Permission
@@ -99,7 +99,8 @@ def test_file_to_real_word_report_with_data_reference(tmp_path):
         assert result.status == RunStatus.completed and len(script.prompts) == 1
         assert result.runtime_metrics["response_generation"]["mode"] == "verified_formatter"
         assert result.artifacts and result.tool_records[-1]["arguments"]["run_id"] == result.id
-        document = Document(tmp_path / "artifacts" / "observed.docx")
+        artifact = db.get(ArtifactRecord, result.artifacts[0]["id"])
+        document = Document(tmp_path / "artifacts" / artifact.path)
         assert any("2 mm/s" in paragraph.text for paragraph in document.paragraphs)
     engine.dispose()
 

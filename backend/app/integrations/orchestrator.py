@@ -43,7 +43,8 @@ class IndustrialIntegrationOrchestrator:
             "retry_backoff_seconds": getattr(self.settings, "integration_retry_backoff_seconds", 0.25),
             "retry_backoff_max_seconds": getattr(self.settings, "integration_retry_backoff_max_seconds", 2.0),
         }
-        self.graph = graph or GraphRagClient(self.settings.graphrag_url, **client_options)
+        self.graph = graph or GraphRagClient(self.settings.graphrag_url,
+                                           service_token=getattr(self.settings, "graphrag_service_token", ""), **client_options)
         self.diagnostics = diagnostics or DiagnosticAgentClient(self.settings.diagnostics_url, **client_options)
         self.controlplane = controlplane or ControlPlaneClient(self.settings.controlplane_url, **client_options)
         if provider is None:

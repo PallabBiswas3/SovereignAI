@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 from typing import Any
 from urllib.parse import urlparse
 
@@ -68,6 +69,7 @@ class JsonServiceClient:
         self.retry_backoff_max_seconds = max(self.retry_backoff_seconds, float(retry_backoff_max_seconds))
 
     async def request(self, method: str, path: str, *, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        headers = self.request_headers(path)
         owns_client = self.client is None
         client = self.client or httpx.AsyncClient(timeout=self.timeout, follow_redirects=False)
         attempts = 0
@@ -78,7 +80,7 @@ class JsonServiceClient:
             while attempts <= self.max_retries:
                 attempts += 1
                 try:
-                    response = await client.request(method, f"{self.base_url}{path}", json=payload)
+                    response = await client.request(method, f"{self.base_url}{path}", json=payload, headers=headers)
                     last_status = response.status_code
                     if response.status_code >= 400:
                         retryable = response.status_code in RETRYABLE_STATUS_CODES
@@ -129,12 +131,26 @@ class JsonServiceClient:
         if delay > 0:
             await asyncio.sleep(delay)
 
+    def request_headers(self, path: str) -> dict[str, str]:
+        return {}
+
     async def health(self) -> dict[str, Any]:
         return await self.request("GET", "/health")
 
 
 class GraphRagClient(JsonServiceClient):
     service_name = "graph-rag"
+
+    def __init__(self, base_url: str, *, service_token: str | None = None, **kwargs) -> None:
+        super().__init__(base_url, **kwargs)
+        self.service_token = service_token if service_token is not None else os.getenv("SOVEREIGN_GRAPHRAG_SERVICE_TOKEN", "")
+
+    def request_headers(self, path: str) -> dict[str, str]:
+        if path == "/health":
+            return {}
+        if len(self.service_token) < 32:
+            raise IntegrationServiceError(self.service_name, "GraphRAG service authentication is not configured", retryable=False)
+        return {"Authorization": f"Bearer {self.service_token}"}
 
     async def retrieve(
         self,

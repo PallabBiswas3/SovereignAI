@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.core.config import get_settings
-from app.tools.file_tools import ALLOWED_EXTENSIONS, SafeWorkspace
+from app.tools.file_tools import ALLOWED_EXTENSIONS, principal_workspace
 from app.identity.dependencies import require_permission
 from app.identity.models import Permission, Principal
 
@@ -21,6 +22,13 @@ def _safe_name(name: str | None) -> str:
     return cleaned
 
 
+def _workspace(principal: Principal):
+    try:
+        return principal_workspace(get_settings().workspace_root, principal)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail={"code": "ACCESS_SCOPE_REQUIRED"}) from exc
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
@@ -33,16 +41,30 @@ async def upload_file(
     content = await file.read(settings.max_upload_mb * 1024 * 1024 + 1)
     if len(content) > settings.max_upload_mb * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Upload exceeds configured limit")
-    workspace = SafeWorkspace(settings.workspace_root / "uploads")
-    target = workspace.resolve(name)
-    target.write_bytes(content)
-    return {"name": name, "size": len(content), "path": f"uploads/{name}"}
+    workspace = _workspace(principal)
+    relative = f"uploads/{uuid4().hex}/{name}"
+    target = workspace.resolve(relative)
+    target.parent.mkdir(parents=True, exist_ok=False)
+    with target.open("xb") as output:
+        output.write(content)
+    return {"name": name, "size": len(content), "path": relative}
 
 
 @router.get("")
 async def list_files(
     principal: Principal = Depends(require_permission(Permission.task_read)),
 ) -> list[dict[str, object]]:
-    root = get_settings().workspace_root / "uploads"
+    workspace = _workspace(principal)
+    root = workspace.resolve("uploads")
     root.mkdir(parents=True, exist_ok=True)
-    return [{"name": path.name, "size": path.stat().st_size, "path": f"uploads/{path.name}"} for path in root.iterdir() if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS]
+    files = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in ALLOWED_EXTENSIONS:
+            continue
+        relative = path.relative_to(workspace.root).as_posix()
+        try:
+            workspace.resolve(relative, must_exist=True)
+        except (ValueError, FileNotFoundError):
+            continue
+        files.append({"name": path.name, "size": path.stat().st_size, "path": relative})
+    return files

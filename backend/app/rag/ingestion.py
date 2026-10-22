@@ -47,6 +47,18 @@ class KnowledgeIngestionService:
         checksum = hashlib.sha256(content).hexdigest()
         existing = self.session.query(KnowledgeDocument).filter_by(checksum=checksum).one_or_none()
         if existing:
+            if require_acl and acl:
+                # An identical upload is not permission to claim a legacy row
+                # or rewrite another owner's retrieval metadata and ACL.
+                expected = (acl.organization_id, acl.workspace_id, acl.department_id,
+                            acl.owner_id, acl.classification.name.upper(),
+                            sorted(role.value for role in acl.allowed_roles), sorted(acl.allowed_users))
+                current = (existing.organization_id, existing.workspace_id, existing.department_id,
+                           existing.owner_id, existing.classification,
+                           sorted(json.loads(existing.allowed_roles_json or "[]")),
+                           sorted(json.loads(existing.allowed_users_json or "[]")))
+                if current != expected:
+                    raise ValueError("DOCUMENT_ALREADY_SCOPED")
             if acl and (
                 existing.organization_id not in {None, acl.organization_id}
                 or existing.workspace_id not in {None, acl.workspace_id}

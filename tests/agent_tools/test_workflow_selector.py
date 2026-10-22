@@ -135,12 +135,17 @@ def test_outside_workspace_diagnostic_input_does_not_fall_back_to_direct_answer(
 
 
 @pytest.fixture
-def isolated_db(tmp_path):
+def isolated_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOVEREIGN_AUTH_MODE", "disabled")
+    monkeypatch.setenv("SOVEREIGN_WORKSPACE_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+    (tmp_path / "data.csv").write_text("value\n1\n", encoding="utf-8")
     engine = create_engine(f"sqlite:///{(tmp_path / 'workflow.db').as_posix()}")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
     engine.dispose()
+    get_settings.cache_clear()
 
 
 def result_state(request):

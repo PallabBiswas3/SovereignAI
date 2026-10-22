@@ -41,7 +41,7 @@ from app.rag.embeddings import configured_embedding_provider
 from app.rag.ingestion import KnowledgeIngestionService
 from app.rag.factory import configured_hybrid_retriever
 from app.sandbox.executor import DockerSandboxExecutor
-from app.tools.file_tools import SafeWorkspace
+from app.tools.file_tools import SafeWorkspace, principal_workspace
 from app.workflows.coding import CodingWorkflow
 from app.workflows.inspection import InspectionWorkflow
 from pathlib import Path
@@ -131,6 +131,16 @@ class TaskInputReply(ResumeTaskRequest):
 
 
 EventCallback = Callable[[str, dict[str, object]], Awaitable[None]]
+
+
+def _validate_attachments(payload: CreateTaskRequest, settings, principal: Principal) -> None:
+    try:
+        workspace = principal_workspace(settings.workspace_root, principal)
+        for item in payload.attachments:
+            if not workspace.resolve(item, must_exist=True).is_file():
+                raise ValueError("Invalid attachment")
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="Attachment not found") from exc
 
 
 def _mode_selection(payload: CreateTaskRequest, routing):
@@ -504,7 +514,7 @@ async def _run_inspection_task_implementation(
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
-    workspace = SafeWorkspace(settings.workspace_root)
+    workspace = principal_workspace(settings.workspace_root, principal)
     attachment_paths = [workspace.resolve(item, must_exist=True) for item in payload.attachments]
     uploaded_sops = [path for path in attachment_paths if "sop" in path.stem.lower()]
     candidates = [path for path in attachment_paths if path not in uploaded_sops and path.suffix.lower() in {".pdf", ".md", ".txt", ".docx"}]
@@ -718,7 +728,7 @@ async def _run_coding_task(payload: CreateTaskRequest, settings, db: Session, pr
     registry = ModelRegistry(settings.models_config)
     routing = ModelRouter(registry).route(payload.request, payload.model_override)
     selection = _mode_selection(payload, routing)
-    csv_path = SafeWorkspace(settings.workspace_root).resolve(payload.attachments[0], must_exist=True)
+    csv_path = principal_workspace(settings.workspace_root, principal).resolve(payload.attachments[0], must_exist=True)
     if csv_path.suffix.lower() != ".csv":
         raise ValueError("Coding workflow requires a CSV attachment")
     action = ActionGuard(settings.tools_config).evaluate("run_python")
@@ -959,11 +969,13 @@ async def _execute_task_measured(
     pii = PIIDetector().detect(payload.request)
     injections = PromptInjectionScanner().scan(payload.request)
     input_decision = policy_engine.decide(policy, pii_count=len(pii), injection_count=len(injections))
+    if input_decision != GovernanceDecision.block:
+        _validate_attachments(payload, settings, principal)
     record_stage("input_checks", input_started)
     execution_started = perf_counter()
     try:
         workflow = WorkflowSelector().select(
-            payload.request, workspace_root=settings.workspace_root,
+            payload.request, workspace_root=principal_workspace(settings.workspace_root, principal).root,
             requested_chat_mode=payload.chat_mode,
             attachments=[continuation_state.checkpoint.data["diagnostic_attachment"]] if continuation_state else payload.attachments,
             workcell_id=payload.workcell_id, tool_scope=payload.tool_scope,
@@ -1299,6 +1311,7 @@ async def create_task(
     principal: Principal = Depends(require_permission(Permission.task_create)),
     db: Session = Depends(get_db),
 ) -> AgentRunState:
+    _validate_attachments(payload, get_settings(), principal)
     return await _execute_task(payload, db, principal)
 
 
@@ -1390,6 +1403,7 @@ async def start_task(
     principal: Principal = Depends(require_permission(Permission.task_create)),
     db: Session = Depends(get_db),
 ) -> StartTaskResponse:
+    _validate_attachments(payload, get_settings(), principal)
     tracking_id = str(uuid4())
     accept_task(db, _accepted_state(payload, tracking_id), payload.model_dump(mode="json"), principal)
     scope = execution_scope(principal)

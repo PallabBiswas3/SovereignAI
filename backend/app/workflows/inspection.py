@@ -26,6 +26,7 @@ from app.multimodal.ocr import DocumentTextExtractor
 from app.rag.retrieval import RetrievedChunk
 from app.rag.decomposition import ModeAwareRetrievalPipeline
 from app.resources.cache import CacheBackend, CacheKeyBuilder, CacheNamespace
+from app.identity.authorization import AuthorizationService
 
 
 class Retriever(Protocol):
@@ -90,11 +91,14 @@ class InspectionWorkflow:
     ) -> InspectionAnalysis:
         input_hashes = [
             hashlib.sha256(inspection_path.read_bytes()).hexdigest(),
+            hashlib.sha256(str(inspection_path.resolve()).encode()).hexdigest(),
             self.retriever.collection_version(),
             hashlib.sha256(task.encode("utf-8")).hexdigest(),
             hashlib.sha256(json.dumps(asset_context.model_dump(mode="json") if isinstance(asset_context, BaseModel) else asset_context or {}, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
             hashlib.sha256(json.dumps(sorted(source_document_ids or [])).encode("utf-8")).hexdigest(),
         ]
+        principal = getattr(self.retriever, "principal", None)
+        input_hashes.append(AuthorizationService().effective_scope(principal).fingerprint if principal else "legacy")
         workflow_version = "inspection-evidence-first-v2"
         if self.workcell_identity:
             workflow_version = f"{workflow_version}:{self.workcell_identity}"

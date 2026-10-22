@@ -41,11 +41,17 @@ class DockerSandboxExecutor:
             if not source.is_file():
                 return SandboxResult(exit_code=None, stderr=f"Sandbox input file is missing: {source.name}")
             shutil.copy2(source, run_dir / source.name)
+        # Docker's volume argument uses host syntax, not Win32 extended I/O syntax.
+        mount_path = str(run_dir)
+        if mount_path.startswith("\\\\?\\UNC\\"):
+            mount_path = "\\\\" + mount_path[8:]
+        elif mount_path.startswith("\\\\?\\"):
+            mount_path = mount_path[4:]
         command = [
             "docker", "run", "--rm", "--network", "none", "--memory", "256m",
             "--cpus", "0.5", "--pids-limit", "64", "--read-only", "--security-opt",
             "no-new-privileges", "--cap-drop", "ALL", "--user", "65534:65534",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-v", f"{run_dir}:/work:rw",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=32m", "-v", f"{mount_path}:/work:rw",
             "-w", "/work", self.image, "python", "-I", "main.py",
         ]
         try:

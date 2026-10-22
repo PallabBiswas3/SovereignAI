@@ -9,6 +9,7 @@ import evidenceRouter from "./evidence/evidenceRouter";
 import { runAdaptiveAgent } from "./agent/adaptiveAgent";
 import { runVerificationPipeline } from "./verification/verificationPipeline";
 import { RetrievalAuthorizationScope } from "./retrieval/hybridRetriever";
+import { serviceAuthentication, validatedScope } from "./serviceAuth";
 
 dotenv.config({ path: path.resolve(process.cwd(), "server", ".env") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -21,10 +22,12 @@ app.use(cors({
   methods: ["GET", "POST"],
 }));
 app.use(express.json({ limit: "10mb" }));
+app.use("/api", serviceAuthentication);
 app.use("/api/evidence", evidenceRouter);
 
 app.get("/health", (_req, res) =>
-  res.json({ status: "ok", service: "graph-rag", version: "1.1.0", model: localModelConfiguration() })
+  res.json({ status: (process.env.GRAPHRAG_SERVICE_TOKEN?.length || 0) >= 32 ? "ok" : "unavailable",
+    service: "graph-rag", version: "1.1.0", model: localModelConfiguration() })
 );
 
 interface Node {
@@ -464,17 +467,8 @@ app.post("/api/integration/retrieve", async (req, res) => {
     return res.status(400).json({ message: "verification_mode must be fast, standard, or thorough" });
   }
   const verificationMode = requestedMode as "fast" | "standard" | "thorough";
-  const authorizationScope = req.body?.authorization_scope as RetrievalAuthorizationScope | undefined;
-  if (
-    !authorizationScope
-    || typeof authorizationScope.organization_id !== "string"
-    || typeof authorizationScope.user_id !== "string"
-    || !Array.isArray(authorizationScope.department_ids)
-    || !Array.isArray(authorizationScope.workspace_ids)
-    || !Array.isArray(authorizationScope.roles)
-    || typeof authorizationScope.clearance !== "number"
-    || typeof authorizationScope.cross_department !== "boolean"
-  ) {
+  const authorizationScope = validatedScope(req.body?.authorization_scope);
+  if (!authorizationScope) {
     return res.status(400).json({ message: "A complete authorization_scope is required" });
   }
   const totalStarted = Date.now();
@@ -608,4 +602,7 @@ app.get("/", (_req, res) =>
   res.send("Adaptive evidence-grounded GraphRAG backend with claim verification running 🚀")
 );
 
-app.listen(Number(PORT), HOST, () => console.log(`Server running on http://${HOST}:${PORT}`));
+export { app };
+if (require.main === module) {
+  app.listen(Number(PORT), HOST, () => console.log(`Server running on http://${HOST}:${PORT}`));
+}

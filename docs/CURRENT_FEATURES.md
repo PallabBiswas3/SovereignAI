@@ -61,6 +61,88 @@ do not establish authenticity. Sustained simultaneous multi-channel changes can
 abstain from a unique-root diagnosis while retaining deviation evidence. Monitoring
 thresholds are unchanged; analysis remains retrospective and confidence uncalibrated.
 
+## Historical security verification before consolidation
+
+The following results describe the separate pre-consolidation security branch;
+they must be revalidated against the combined development runtime.
+
+## V1 security remediation (18 October 2026)
+
+Implemented on `security/v1-remediation`, with final verification and the
+Windows long-path correction on `verification/v1-final`, in the isolated
+`SovereignAI_v1_security` worktree. The original eleven Time-Series/documentation
+changes are now committed separately on `research/diagnostic-guards-review` at
+`56d742020028657f6c200f24af100ff4e6fa341c`; its working tree is clean. No research
+changes were merged. Process 3.0 and frozen Wind 1.1 remain the v1 baseline.
+
+- Approval reads, decisions and audit access require an authorized scoped
+  parent. Orphan/unscoped legacy resources are denied in authenticated mode.
+- Raw file access uses an organization/workspace/user namespace throughout
+  upload/list, OCR, vision, ingestion, demo/task attachment resolution and agent
+  file/Python tools. Upload and generated-artifact names cannot overwrite an
+  existing file. Inspection caches include effective authorization identity.
+- Authenticated duplicate ingestion cannot adopt an unscoped legacy document
+  or change its existing owner, classification or ACL metadata.
+- GraphRAG retrieval accepts only an authenticated backend service hop and a
+  bounded explicit principal scope with a matching fingerprint. Global graph
+  operations require a separate operator credential. Retrieval ranking,
+  revision selection and verification logic are unchanged.
+- Legacy chat applies existing PII/injection policy and ControlPlane precheck
+  and release. Only released `final_response` text is returned and persisted;
+  held candidates are replaced with a fixed notice. Conversations require
+  matching organization, owner and workspace. SQLite adds nullable scope columns
+  without assigning guessed ownership to legacy rows.
+- The workbench closes streams and aborts pending requests on logout/unmount,
+  handles access revocation and malformed/disconnected streams, hides candidate
+  tokens, and checks cancellation/logout errors. Metrics recover from denied
+  or failed requests; assets clear stale details and cancel obsolete requests.
+
+Configuration and compatibility boundaries:
+
+- These tenant controls require `SOVEREIGN_AUTH_MODE=local`. Disabled mode is
+  retained for explicit single-user development only.
+- Set matching backend/GraphRAG service tokens as described in README. They
+  authenticate a trusted backend; a scope fingerprint is not a secret or an
+  independent authentication credential. Use a protected internal network and
+  transport security when services are separated across machines.
+- Legacy global GraphRAG browser operations no longer work anonymously. The
+  host's authenticated, scoped integration route is the supported user boundary.
+- Old shared uploads/conversations and orphan audit events require explicit
+  migration or re-upload. File access currently uses the primary workspace.
+- Knowledge content hashes remain globally unique. The same bytes cannot be
+  independently indexed with another scope; requests fail closed. Changing that
+  storage model is deferred rather than folded into this remediation.
+- The ControlPlane 2,000 ms release deadline and existing claim/evidence policy
+  remain unchanged. Passing software tests does not establish model accuracy.
+
+Final verification additionally supports Windows extended paths in private file
+I/O while preserving canonical confinement, relative API paths and ordinary
+Docker mount syntax. The actual long-path upload now succeeds; foreign file
+access remains denied. Docker mount behavior was checked with a subprocess
+stub; no live Docker execution is claimed.
+
+**Research-release verdict: ready for controlled review with documented
+non-blocking limitations.** An authenticated synthetic all-service Pump-102
+assessment was released with citations, an authorized artifact and a capsule
+whose stored-byte integrity verified. A separate live browser maintenance
+request was held and correctly displayed as not released. Cross-scope access,
+self approval, unsafe/unsupported candidates and an actual ControlPlane outage
+were denied or held without generating outputs.
+
+Backend: 436 passed/1 skipped; security: 69 passed (included); ControlPlane:
+221 passed/1 failed/7 skipped; diagnostics: 237 passed/2 failed. The remaining
+failures are an experimental authority ablation and two research version
+literals, not failures of the frozen v1 path. The suite is **not entirely green**.
+GraphRAG and frontend builds/checks pass. No merge/release/deployment occurred.
+
+The live configured GraphRAG path supplied authorized raw chunks; its structured
+claim verifier was unavailable and dense retrieval was disabled. ControlPlane
+performed the final claim verification. The local CPU model took 144.5 seconds;
+the client request took 161.6 seconds, so this is not a 3-second workflow. Process
+baseline confidence is not calibrated accuracy. The capsule was unsigned in
+development, and existing remote Supabase storage does not establish an air gap.
+See PAST_EXPERIMENTS for commands, identifiers, findings and exact limitations.
+
 ## Versioned diagnostic forms (10 October 2026)
 
 `/integrations` now derives seven task-specific forms from the authoritative
