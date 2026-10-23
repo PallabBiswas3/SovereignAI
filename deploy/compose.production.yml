@@ -1,0 +1,214 @@
+name: sovereign-production
+
+x-python: &python
+  image: sovereign-python:production-candidate
+  build:
+    context: ..
+    dockerfile: backend/Dockerfile
+  user: "10001:10001"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  networks: [services]
+  volumes:
+    - ./models:/models:ro
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 120s
+
+services:
+  backend:
+    <<: *python
+    environment:
+      SOVEREIGN_ENVIRONMENT: production
+      SOVEREIGN_AUTH_MODE: local
+      SOVEREIGN_AUTH_COOKIE_SECURE: "true"
+      SOVEREIGN_ALLOWED_ORIGINS: '["https://${SOVEREIGN_HOST:-localhost}:${HTTPS_PORT:-8443}"]'
+      SOVEREIGN_ALLOW_DETERMINISTIC_FALLBACK: "false"
+      SOVEREIGN_INTEGRATION_FAIL_CLOSED: "true"
+      SOVEREIGN_DEMO_ORG_ENABLED: "false"
+      SOVEREIGN_GRAPHRAG_SERVICE_TOKEN_FILE: /run/secrets/graphrag_token
+      SOVEREIGN_DATABASE_URL: sqlite:////app/backend/data/sovereign.db
+      SOVEREIGN_MODELS_CONFIG: /app/config/models.docker.yaml
+      SOVEREIGN_TOOLS_CONFIG: /app/deploy/tools.production.yaml
+      SOVEREIGN_OLLAMA_URL: http://ollama:11434
+      SOVEREIGN_GRAPHRAG_URL: http://graphrag:3100
+      SOVEREIGN_CONTROLPLANE_URL: http://controlplane:8000
+      SOVEREIGN_DIAGNOSTICS_URL: http://diagnostics:8000
+      SOVEREIGN_EMBEDDING_ALLOW_HASH_FALLBACK: "false"
+      SOVEREIGN_EMBEDDING_MODEL: /models/all-MiniLM-L6-v2
+      SOVEREIGN_RERANKER_MODEL: /models/ms-marco-MiniLM-L-6-v2
+    secrets: [graphrag_token]
+    volumes:
+      - backend-data:/app/backend/data
+      - workspace:/app/workspace
+      - knowledge:/app/knowledge_base
+      - organizations:/app/organizations
+      - ./models:/models:ro
+    depends_on:
+      graphrag: {condition: service_started}
+      controlplane: {condition: service_started}
+      diagnostics: {condition: service_started}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=12)"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args: {NEXT_PUBLIC_API_URL: ""}
+    user: sovereign
+    read_only: true
+    tmpfs: [/tmp, /app/.next/cache]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    networks: [services]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  controlplane:
+    <<: *python
+    working_dir: /app/Controlplane.ai
+    command: [python, -m, uvicorn, controlplane.api:app, --host, 0.0.0.0, --port, "8000"]
+    environment:
+      CONTROLPLANE_ADAPTIVE_VERIFICATION: "1"
+      CONTROLPLANE_NLI_MODEL: /models/nli-deberta-v3-small
+      CONTROLPLANE_NLI_LOCAL_ONLY: "1"
+      CONTROLPLANE_NLI_DEVICE: cpu
+    volumes:
+      - ./models:/models:ro
+      - controlplane-audit:/app/Controlplane.ai/results
+
+  diagnostics:
+    <<: *python
+    command: [python, -m, uvicorn, tsdiag.api:app, --host, 0.0.0.0, --port, "8000"]
+
+  graphrag:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.graphrag
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_GENERATION_MODEL: qwen3:4b-instruct
+      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      GRAPHRAG_DENSE_RETRIEVAL_ENABLED: "true"
+      SUPABASE_URL: http://gateway:8080
+    secrets: [graphrag_token, graph_service_jwt]
+    user: node
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    networks: [services, graph]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/health').then(async r=>process.exit(r.ok&&(await r.json()).status==='ok'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+  graph-db:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: evidence
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password, graph_db_password]
+    volumes:
+      - graph-data:/var/lib/postgresql/data
+      - ./init-graph.sh:/docker-entrypoint-initdb.d/001-base.sh:ro
+      - ../Graph-RAG/server/migrations/001_evidence_graph.sql:/docker-entrypoint-initdb.d/002-evidence.sql:ro
+      - ./graph-grants.sql:/docker-entrypoint-initdb.d/003-grants.sql:ro
+    networks: [graph]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d evidence"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  graph-rest:
+    image: postgrest/postgrest:v12.2.3
+    environment:
+      PGRST_DB_URI: "@/run/secrets/graph_rest_uri"
+      PGRST_JWT_SECRET: "@/run/secrets/graph_jwt_secret"
+      PGRST_DB_SCHEMAS: public
+      PGRST_OPENAPI_MODE: disabled
+    secrets: [graph_rest_uri, graph_jwt_secret]
+    depends_on:
+      graph-db: {condition: service_healthy}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [graph]
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.33.2
+    volumes: [ollama-models:/root/.ollama]
+    networks: [services]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+    environment:
+      SOVEREIGN_HOST: ${SOVEREIGN_HOST:-localhost}
+      HTTPS_PORT: ${HTTPS_PORT:-8443}
+    ports: ["${BIND_IP:-127.0.0.1}:${HTTPS_PORT:-8443}:8443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway-data:/data
+      - gateway-config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [services, graph]
+    restart: unless-stopped
+
+networks:
+  services: {internal: true}
+  graph: {internal: true}
+
+volumes:
+  backend-data:
+  workspace:
+  knowledge:
+  organizations:
+  controlplane-audit:
+  graph-data:
+  ollama-models:
+  gateway-data:
+  gateway-config:
+
+secrets:
+  graphrag_token: {file: ./secrets/graphrag_token}
+  postgres_password: {file: ./secrets/postgres_password}
+  graph_db_password: {file: ./secrets/graph_db_password}
+  graph_rest_uri: {file: ./secrets/graph_rest_uri}
+  graph_jwt_secret: {file: ./secrets/graph_jwt_secret}
+  graph_service_jwt: {file: ./secrets/graph_service_jwt}

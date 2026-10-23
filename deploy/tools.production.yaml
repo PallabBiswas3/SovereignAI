@@ -1,0 +1,27 @@
+# Supported scope: evidence intake, governed assessment, Word reports, capsules.
+# Docker socket access, host code execution and plant actions are not enabled.
+tools:
+  calculate: {risk: LOW, enabled: true}
+  summarize_numbers: {risk: LOW, enabled: true}
+  convert_units: {risk: LOW, enabled: true}
+  list_files: {risk: LOW, enabled: true}
+  read_file: {risk: LOW, enabled: true}
+  search_files: {risk: LOW, enabled: true}
+  get_file_metadata: {risk: LOW, enabled: true}
+  extract_pdf_text: {risk: LOW, enabled: true}
+  knowledge_search: {risk: LOW, enabled: true}
+  get_asset_telemetry: {risk: LOW, enabled: true}
+  get_asset_history: {risk: LOW, enabled: true}
+  generate_docx: {risk: LOW, enabled: true}
+  create_docx: {risk: LOW, enabled: true}
+  approve_maintenance_draft: {risk: MEDIUM, enabled: false, executable_after_approval: false}
+  write_file: {risk: MEDIUM, enabled: false, executable_after_approval: false}
+  ocr_document: {risk: LOW, enabled: false}
+  analyze_image: {risk: LOW, enabled: false}
+  run_python: {risk: MEDIUM, enabled: false}
+  create_xlsx: {risk: LOW, enabled: false}
+  create_pptx: {risk: LOW, enabled: false}
+  generate_xlsx: {risk: LOW, enabled: false}
+  generate_pptx: {risk: LOW, enabled: false}
+  delete_file: {risk: HIGH, enabled: false, executable_after_approval: false}
+  execute_shell: {risk: HIGH, enabled: false, executable_after_approval: false}

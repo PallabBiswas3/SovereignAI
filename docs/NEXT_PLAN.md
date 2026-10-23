@@ -1,5 +1,31 @@
 # Next implementation plan
 
+## Clean-environment release gate - 23 October 2026
+
+Verdict **BLOCKED**; see `deploy/CLEAN_ENVIRONMENT_REPORT.md` and the exact
+command/result ledger in `deploy/remediation-20261023.json`. Reranker provisioning
+is resolved with immutable revision/SHA-256 verification; all three local models
+load offline. Remaining: restore adequate disk headroom and Docker VM/engine
+health, identify/repair shared WSL large-TLS-transfer corruption, build the whole
+profile, verify pinned Ollama storage and daemon recreation, then execute every
+authenticated deployment gate. Do not treat source tests or a static Compose
+check as live acceptance. Keep the single legacy ControlPlane test failure
+visible; no policy or assertion was weakened. Avoid resets/pruning or disabling
+network-security filters as a shortcut to acceptance.
+
+## Production baseline/deployment follow-up - 23 October 2026
+
+The first implementation batch now provides a 73-checkpoint evidence inventory,
+repeatable isolated regression runner, authenticated Compose candidate, preflight,
+explicit identity/model provisioning, service readiness and TLS routing. See the
+dated CURRENT_FEATURES section and `deploy/README.md` for observed results.
+Next unblock Docker dependency-download transport, finish staged model files,
+then build and run the complete isolated deployment before accepting part 2's
+clean-environment exit gate. Preserve TLS/integrity checks and all runtime release
+policies. Authenticated browser acceptance and operational recovery remain later
+work. The single current ControlPlane ablation-contract failure is recorded; do
+not treat older failure counts as the current baseline or relax runtime guards.
+
 Development combines application, diagnostic research, and pending security work.
 See BRANCH_STATUS.md for consolidation scope and remaining validation.
 

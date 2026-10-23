@@ -8,3 +8,16 @@ backend/data
 workspace/artifacts
 workspace/sandbox
 *.log
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+local_testing
+.workspace
+deploy/secrets
+deploy/models
+workspace
+knowledge_base
+demo/apel/generated
+Graph-RAG/client
+!Graph-RAG/client/package.json

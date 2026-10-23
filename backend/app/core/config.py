@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     auth_cookie_name: str = "sovereign_session"
     auth_csrf_cookie_name: str = "sovereign_csrf"
     auth_cookie_secure: bool = False
+    allowed_origins: list[str] = ["http://127.0.0.1:3000", "http://localhost:3000"]
+    graphrag_service_token_file: Path | None = None
+    readiness_timeout_seconds: float = Field(default=3.0, gt=0, le=15)
     workspace_root: Path = PROJECT_DIR / "workspace"
     knowledge_root: Path = PROJECT_DIR / "knowledge_base"
     ollama_url: str = "http://127.0.0.1:11434"
@@ -100,11 +103,42 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    if settings.environment.lower() == "production" and settings.auth_mode.lower() == "disabled":
-        raise RuntimeError("SOVEREIGN_AUTH_MODE=disabled is forbidden in production")
+    if settings.graphrag_service_token_file:
+        settings.graphrag_service_token = settings.graphrag_service_token_file.read_text(encoding="utf-8").strip()
+    validate_runtime_settings(settings)
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
     settings.knowledge_root.mkdir(parents=True, exist_ok=True)
     settings.organizations_root.mkdir(parents=True, exist_ok=True)
     settings.organization_reports_root.mkdir(parents=True, exist_ok=True)
     (BACKEND_DIR / "data").mkdir(parents=True, exist_ok=True)
     return settings
+
+
+def validate_runtime_settings(settings: Settings) -> None:
+    """Reject unsafe production configuration before opening the API."""
+    if settings.environment.lower() != "production":
+        return
+    if settings.auth_mode.lower() == "disabled":
+        raise RuntimeError("SOVEREIGN_AUTH_MODE=disabled is forbidden in production")
+    if settings.auth_mode.lower() != "local":
+        raise RuntimeError("Production requires the supported local identity provider")
+    if not settings.auth_cookie_secure:
+        raise RuntimeError("Production requires secure session cookies and HTTPS")
+    if settings.demo_org_enabled:
+        raise RuntimeError("Production forbids synthetic demo account seeding")
+    if not settings.integration_fail_closed or settings.allow_deterministic_fallback:
+        raise RuntimeError("Production requires fail-closed integrations and disabled deterministic fallback")
+    if len(settings.graphrag_service_token) < 32:
+        raise RuntimeError("Production requires a GraphRAG service credential of at least 32 characters")
+    from urllib.parse import urlparse
+    for origin in settings.allowed_origins:
+        try:
+            parsed = urlparse(origin)
+            parsed.port  # Validate malformed/out-of-range ports as well.
+        except ValueError as exc:
+            raise RuntimeError("Production CORS origins must be explicit HTTPS origins") from exc
+        if (parsed.scheme != "https" or not parsed.hostname or "*" in origin or parsed.username or parsed.password
+                or parsed.path or parsed.query or parsed.fragment):
+            raise RuntimeError("Production CORS origins must be explicit HTTPS origins")
+    if not settings.allowed_origins:
+        raise RuntimeError("Production requires at least one explicit HTTPS origin")

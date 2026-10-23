@@ -25,10 +25,25 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api", serviceAuthentication);
 app.use("/api/evidence", evidenceRouter);
 
-app.get("/health", (_req, res) =>
-  res.json({ status: (process.env.GRAPHRAG_SERVICE_TOKEN?.length || 0) >= 32 ? "ok" : "unavailable",
-    service: "graph-rag", version: "1.1.0", model: localModelConfiguration() })
-);
+app.get("/health", async (_req, res) => {
+  const checks = { credential: (process.env.GRAPHRAG_SERVICE_TOKEN?.length || 0) >= 32,
+    database: false, models: false };
+  try {
+    const queries = ["nodes", "chunks", "claims"].map((table) =>
+      supabase.from(table).select("id").limit(1).abortSignal(AbortSignal.timeout(3000)));
+    const results = await Promise.all(queries);
+    checks.database = results.every((result) => !result.error);
+    const config = localModelConfiguration();
+    const response = await fetch(`${config.endpoint}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (response.ok) {
+      const payload = await response.json() as { models?: Array<{name?: string; model?: string}> };
+      const names = new Set((payload.models || []).map((item) => item.name || item.model));
+      checks.models = [config.generationModel, config.embeddingModel].every((name) => names.has(name) || names.has(`${name}:latest`));
+    }
+  } catch { /* Health responses must never disclose credentials or raw errors. */ }
+  const ready = Object.values(checks).every(Boolean);
+  res.status(ready ? 200 : 503).json({ status: ready ? "ok" : "unavailable", service: "graph-rag", checks });
+});
 
 interface Node {
   id: string;

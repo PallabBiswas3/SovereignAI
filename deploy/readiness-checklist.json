@@ -1,0 +1,863 @@
+{
+  "as_of": "2026-10-23",
+  "baseline_commit": "5eaf907f9b74e686ec49d1aa61755fd0a5f86b0a",
+  "scope": "Single-host authenticated internal Pump-102 deployment candidate; checklist status is not production accreditation.",
+  "status_definitions": {
+    "verified": "Explicit inspection or recorded check establishes the stated limited scope.",
+    "implemented_unverified": "Source exists; end-to-end deployed acceptance remains pending.",
+    "missing": "A completed implementation/evidence was not found in the inspected surface.",
+    "blocked": "Requires external evidence or operator participation."
+  },
+  "checkpoints": [
+    {
+      "id": "A1",
+      "checkpoint": "One supported workflow is clearly defined and documented",
+      "status": "verified",
+      "evidence": [
+        "README.md",
+        "docs/BRANCH_STATUS.md",
+        "deploy/README.md"
+      ],
+      "note": "Verified by repository documentation inspection; no plant-use acceptance implied."
+    },
+    {
+      "id": "A2",
+      "checkpoint": "One supported deployment profile is clearly defined",
+      "status": "implemented_unverified",
+      "evidence": [
+        "README.md",
+        "docs/BRANCH_STATUS.md",
+        "deploy/README.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "A3",
+      "checkpoint": "Supported vs experimental capabilities are explicitly separated",
+      "status": "verified",
+      "evidence": [
+        "README.md",
+        "docs/BRANCH_STATUS.md",
+        "deploy/README.md"
+      ],
+      "note": "Verified by repository documentation inspection; no plant-use acceptance implied."
+    },
+    {
+      "id": "A4",
+      "checkpoint": "Product maturity is documented honestly (prototype, beta, production candidate)",
+      "status": "verified",
+      "evidence": [
+        "README.md",
+        "docs/BRANCH_STATUS.md",
+        "deploy/README.md"
+      ],
+      "note": "Verified by repository documentation inspection; no plant-use acceptance implied."
+    },
+    {
+      "id": "A5",
+      "checkpoint": "The canonical workflow is the default public-facing story",
+      "status": "verified",
+      "evidence": [
+        "README.md",
+        "docs/BRANCH_STATUS.md",
+        "deploy/README.md"
+      ],
+      "note": "Verified by repository documentation inspection; no plant-use acceptance implied."
+    },
+    {
+      "id": "B1",
+      "checkpoint": "The supported deployment is reproducible from a clean environment",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B2",
+      "checkpoint": "Dependency checks are automated and clear",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B3",
+      "checkpoint": "Startup health checks validate runtime readiness",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B4",
+      "checkpoint": "Environment configuration is versioned and documented",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B5",
+      "checkpoint": "Deployment secrets are managed securely",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B6",
+      "checkpoint": "TLS / network isolation / service boundaries are defined",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B7",
+      "checkpoint": "Containerization is standardized for the supported environment",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "B8",
+      "checkpoint": "Rollback and recovery steps are documented",
+      "status": "missing",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "B9",
+      "checkpoint": "Service restart behavior is tested and understood",
+      "status": "implemented_unverified",
+      "evidence": [
+        "deploy/compose.production.yml",
+        "scripts/preflight_production.py",
+        "backend/app/monitoring/readiness.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C1",
+      "checkpoint": "Real user identity is established in production",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C2",
+      "checkpoint": "RBAC or equivalent access model exists",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C3",
+      "checkpoint": "Workspaces / tenant scopes are enforced",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C4",
+      "checkpoint": "Upload permissions are role-based",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C5",
+      "checkpoint": "Approval permissions are role-based",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C6",
+      "checkpoint": "Tool execution is restricted to approved actions",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C7",
+      "checkpoint": "Direct browser trust is not used for principal identity",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C8",
+      "checkpoint": "Auth is intentionally not bypassable in production config",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "C9",
+      "checkpoint": "Cross-workspace leakage is tested and blocked",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/identity",
+        "backend/tests/security",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D1",
+      "checkpoint": "Threat model exists",
+      "status": "missing",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "D2",
+      "checkpoint": "Trust boundaries are documented",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D3",
+      "checkpoint": "Authorization matrix is documented",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D4",
+      "checkpoint": "Tool permission matrix is documented",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D5",
+      "checkpoint": "Fail-closed behavior is validated for required services",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D6",
+      "checkpoint": "Unsupported or uncertain claims are blocked or escalated",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D7",
+      "checkpoint": "PII and sensitive input handling is enforced",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D8",
+      "checkpoint": "Prompt injection and retrieval poisoning protections are tested",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D9",
+      "checkpoint": "Evidence provenance and integrity are validated",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D10",
+      "checkpoint": "Audit events are durable and machine-readable",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "D11",
+      "checkpoint": "Operators can explain why a decision was made",
+      "status": "implemented_unverified",
+      "evidence": [
+        "config/access.yaml",
+        "config/tools.yaml",
+        "backend/app/governance",
+        "Controlplane.ai/src/controlplane",
+        "backend/tests/security"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E1",
+      "checkpoint": "Stored task state is durable and recoverable",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E2",
+      "checkpoint": "Artifact generation is validated end-to-end",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E3",
+      "checkpoint": "Report receipts / hashes / integrity checks exist",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E4",
+      "checkpoint": "Replay prevention is validated",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E5",
+      "checkpoint": "Evidence capsules are verifiable",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E6",
+      "checkpoint": "Generated files are stored with clear metadata",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "E7",
+      "checkpoint": "Artifact retention and cleanup policy exists",
+      "status": "missing",
+      "evidence": [
+        "backend/app/agent/checkpoints.py",
+        "backend/app/capsules",
+        "tests/agent_tools/test_industrial_report.py",
+        "tests/agent_tools/test_resume.py"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "F1",
+      "checkpoint": "Service failure modes are defined",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F2",
+      "checkpoint": "Timeouts and retry policies are sane and documented",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F3",
+      "checkpoint": "Missing service behavior is fail-safe",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F4",
+      "checkpoint": "Partial-workflow continuation is validated or explicitly marked experimental",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F5",
+      "checkpoint": "State recovery after interruption is tested",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F6",
+      "checkpoint": "Monitoring dashboards exist for runtime health",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F7",
+      "checkpoint": "Structured logs and run IDs are consistent",
+      "status": "implemented_unverified",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "F8",
+      "checkpoint": "Alerting rules exist for critical degradation",
+      "status": "missing",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "F9",
+      "checkpoint": "Recovery procedures are documented",
+      "status": "missing",
+      "evidence": [
+        "backend/app/integrations/clients.py",
+        "backend/app/core/events.py",
+        "backend/app/agent/checkpoints.py",
+        "tests/agent_tools/test_checkpoints.py"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G1",
+      "checkpoint": "Core workflow smoke tests exist",
+      "status": "implemented_unverified",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "G2",
+      "checkpoint": "Supported workflow has repeatable CI validation",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G3",
+      "checkpoint": "Security regression tests are in CI",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G4",
+      "checkpoint": "Authorization tests are in CI",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G5",
+      "checkpoint": "Failure handling tests are in CI",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G6",
+      "checkpoint": "Report generation tests are in CI",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G7",
+      "checkpoint": "Capsule verification tests are in CI",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "G8",
+      "checkpoint": "Setup validation is automated",
+      "status": "implemented_unverified",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "G9",
+      "checkpoint": "No product claim depends only on ad hoc local runs",
+      "status": "missing",
+      "evidence": [
+        "pyproject.toml",
+        "scripts/run_readiness_baseline.py",
+        "scripts/preflight_production.py",
+        "tests/deployment"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "H1",
+      "checkpoint": "Users can see what the system is doing",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H2",
+      "checkpoint": "Evidence used for decisions is visible",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H3",
+      "checkpoint": "Uncertainty is visible",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H4",
+      "checkpoint": "Review reasons are clear",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H5",
+      "checkpoint": "Approval states are understandable",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H6",
+      "checkpoint": "Output is tied to evidence and trace",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "H7",
+      "checkpoint": "Alert burden and operator review burden are measured",
+      "status": "blocked",
+      "evidence": [
+        "frontend/app/agent-tools",
+        "frontend/agent-tools-tests/components.test.cjs",
+        "docs/CURRENT_FEATURES.md"
+      ],
+      "note": "Synthetic alert measurements exist; operational operator burden requires representative cases and reviewer participation."
+    },
+    {
+      "id": "I1",
+      "checkpoint": "Semantic versioning exists",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    },
+    {
+      "id": "I2",
+      "checkpoint": "Changelog exists",
+      "status": "missing",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "I3",
+      "checkpoint": "Rollback process is documented",
+      "status": "missing",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "I4",
+      "checkpoint": "Supported dependency versions are pinned",
+      "status": "missing",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "I5",
+      "checkpoint": "Upgrade path is defined",
+      "status": "missing",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "I6",
+      "checkpoint": "Release gate depends on supported workflow validation",
+      "status": "missing",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "No completed evidence found in the inspected release surface; scheduled after the baseline/deployment batch."
+    },
+    {
+      "id": "I7",
+      "checkpoint": "Support boundaries are documented for experimental modules",
+      "status": "implemented_unverified",
+      "evidence": [
+        "frontend/package.json",
+        "docs/BRANCH_STATUS.md",
+        "docs/NEXT_PLAN.md"
+      ],
+      "note": "Existing implementation or new deployment work; deployed behavior remains to be accepted."
+    }
+  ]
+}

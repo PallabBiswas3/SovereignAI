@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "models": {
+    "nli-deberta-v3-small": {
+      "repository": "cross-encoder/nli-deberta-v3-small",
+      "revision": "fa2804872c3b4bd748f38c0185cc85775361e735",
+      "files": {
+        "config.json": {
+          "size": 1052,
+          "git_blob_sha1": "69a0f734d3ab525dc1eb951b46f1d0f7dd52230c",
+          "sha256": "885d0dceae8fa5c136da9209121ec9eb11160488e840de3bc1f29353674e5712"
+        },
+        "tokenizer_config.json": {
+          "size": 1346,
+          "git_blob_sha1": "734481711f0d172bd376a6d06c545286d58d8159",
+          "sha256": "f3eecd07c370ef0bf7dd3780d3cd68cf9c8b00c267e21a208ddcd8f82bfec1a6"
+        },
+        "tokenizer.json": {
+          "size": 8656624,
+          "git_blob_sha1": "12cc2e86bad0e731393847b017b32a7405ebd4f8",
+          "sha256": "5124ef2ead1a10a717703bc436de7f353da76d6340e4587719b42b1693707964"
+        },
+        "special_tokens_map.json": {
+          "size": 301,
+          "git_blob_sha1": "21ee423233314af53c84b2a229398f8b425672f5",
+          "sha256": "ed7c099c988dbb414b18a6980d20cb57b91b7cd119f6f6941eb364b0e892e712"
+        },
+        "spm.model": {
+          "size": 2464616,
+          "git_blob_sha1": "b1b95e5b0fef33623979511f423eaeee465c46f0",
+          "sha256": "c679fbf93643d19aab7ee10c0b99e460bdbc02fedf34b92b05af343b4af586fd"
+        },
+        "model.safetensors": {
+          "size": 567605820,
+          "git_blob_sha1": "f7078639472298b8a61ab7b0ad60be242ae77dde",
+          "sha256": "ebc79588dd73ccfb6a3f6078519cfbf512c5305384c5ea1845bc71cd32216e86"
+        }
+      }
+    },
+    "all-MiniLM-L6-v2": {
+      "repository": "sentence-transformers/all-MiniLM-L6-v2",
+      "revision": "c9745ed1d9f207416be6d2e6f8de32d1f16199bf",
+      "files": {
+        "config.json": {
+          "size": 612,
+          "git_blob_sha1": "72b987fd805cfa2b58c4c8c952b274a11bfd5a00",
+          "sha256": "953f9c0d463486b10a6871cc2fd59f223b2c70184f49815e7efbcab5d8908b41"
+        },
+        "tokenizer_config.json": {
+          "size": 350,
+          "git_blob_sha1": "c79f2b6a0cea6f4b564fed1938984bace9d30ff0",
+          "sha256": "acb92769e8195aabd29b7b2137a9e6d6e25c476a4f15aa4355c233426c61576b"
+        },
+        "tokenizer.json": {
+          "size": 466247,
+          "git_blob_sha1": "cb202bfe2e3c98645018a6d12f182a434c9d3e02",
+          "sha256": "be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037"
+        },
+        "special_tokens_map.json": {
+          "size": 112,
+          "git_blob_sha1": "e7b0375001f109a6b8873d756ad4f7bbb15fbaa5",
+          "sha256": "303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3"
+        },
+        "vocab.txt": {
+          "size": 231508,
+          "git_blob_sha1": "fb140275c155a9c7c5a3b3e0e77a9e839594a938",
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        },
+        "modules.json": {
+          "size": 349,
+          "git_blob_sha1": "952a9b81c0bfd99800fabf352f69c7ccd46c5e43",
+          "sha256": "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf"
+        },
+        "1_Pooling/config.json": {
+          "size": 190,
+          "git_blob_sha1": "d1514c3162bbe87b343f565fadc62e6c06f04f03",
+          "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+        },
+        "model.safetensors": {
+          "size": 90868376,
+          "git_blob_sha1": "d49eff1e4a6f0e3ba5069f21c6d20aad156dd2c9",
+          "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"
+        }
+      }
+    },
+    "ms-marco-MiniLM-L-6-v2": {
+      "repository": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+      "files": {
+        "config.json": {
+          "size": 794,
+          "git_blob_sha1": "88bc4f74b33a2073abc9a66cb532b889448ac3ed",
+          "sha256": "380e02c93f431831be65d99a4e7e5f67c133985bf2e77d9d4eba46847190bacc"
+        },
+        "tokenizer_config.json": {
+          "size": 1330,
+          "git_blob_sha1": "a2435fedfac32b9ad70f052d4f84007730cd3109",
+          "sha256": "a5c2e5a7b1a29a0702cd28c08a399b5ecc110c263009d17f7e3b415f25905fd8"
+        },
+        "tokenizer.json": {
+          "size": 711396,
+          "git_blob_sha1": "688882a79f44442ddc1f60d70334a7ff5df0fb47",
+          "sha256": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66"
+        },
+        "special_tokens_map.json": {
+          "size": 132,
+          "git_blob_sha1": "7520992f25914d962f0e2fd0e0566fc33d19ec59",
+          "sha256": "3c3507f36dff57bce437223db3b3081d1e2b52ec3e56ee55438193ecb2c94dd6"
+        },
+        "vocab.txt": {
+          "size": 231508,
+          "git_blob_sha1": "fb140275c155a9c7c5a3b3e0e77a9e839594a938",
+          "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+        },
+        "model.safetensors": {
+          "size": 90870598,
+          "git_blob_sha1": "c9aad2ad6c9139e6be3593d5b5a1495732d03154",
+          "sha256": "821d1aa69520101d6e0737f78a042ae25b19e5cb9160701909d10434f4aeb0ae"
+        }
+      }
+    }
+  }
+}

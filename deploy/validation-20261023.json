@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-23",
+  "baseline_commit": "5eaf907f9b74e686ec49d1aa61755fd0a5f86b0a",
+  "branch": "development",
+  "part_1": "baseline_and_checkpoint_inventory_recorded",
+  "part_2": "implemented_with_clean_environment_acceptance_blocked",
+  "checks": {
+    "pre_change_maintained_python": {"passed": 367},
+    "post_change_maintained_python": {"passed": 389, "scope": "Includes the initial 22 deployment tests; later focused additions checked separately"},
+    "final_security_and_deployment": {"passed": 97, "scope": "70 existing security tests plus 27 deployment/provisioning cases after final changes"},
+    "frontend_tests": {"passed": 41},
+    "frontend_typecheck": "passed",
+    "graphrag_typescript_build": "passed",
+    "graphrag_auth_tests": {"passed": 3},
+    "controlplane_local_service_directory": {"passed": 240, "failed": 1, "skipped": 15},
+    "static_preflight": "passed",
+    "compose_configuration": "passed",
+    "gateway_build_and_nonroot_caddy_validation": "passed",
+    "isolated_graph_store_auth_and_schema": {"passed": 10},
+    "complete_python_and_web_image_builds": "blocked_by_dependency_download_transport",
+    "full_runtime_readiness": "not_established",
+    "authenticated_browser_acceptance": "not_run_in_this_batch"
+  },
+  "controlplane_failure": {
+    "test": "test_pre_authority_ablation_reuses_same_evidence_and_semantic_score",
+    "classification": "historical_ablation_contract_mismatch",
+    "expected_without_authority": "supported",
+    "observed_without_authority": "undecidable",
+    "observed_with_authority": "contradicted",
+    "runtime_policy_changed": false,
+    "test_expectation_changed": false
+  },
+  "blockers": [
+    "Docker build dependency downloads repeatedly failed with Debian checksum/transport errors and npm TLS cipher errors; standalone Node registry fetch also failed",
+    "Local reranker snapshot not provisioned",
+    "Separate runtime Ollama model volume not provisioned",
+    "Operator-scoped accounts and approved graph evidence must be provisioned before workflow acceptance"
+  ],
+  "raw_evidence": [
+    "local_testing/production-readiness-20261023/",
+    "local_testing/readiness-baseline-20261023T140819Z/"
+  ],
+  "cleanup": "Isolated sovereign-readiness-20261023 containers, networks and disposable volumes removed after verification; production services not started"
+}

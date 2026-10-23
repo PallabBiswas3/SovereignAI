@@ -1,0 +1,904 @@
+{
+  "date": "2026-10-23",
+  "release_verdict": "BLOCKED",
+  "baseline_commit": "5eaf907f9b74e686ec49d1aa61755fd0a5f86b0a",
+  "worktree": "uncommitted development changes",
+  "confirmed_environmental_findings": [
+    "Windows host completed nine certificate-verifying HTTPS probes; Docker large transfers failed in pristine images",
+    "Independent Ubuntu WSL reproduced a Debian bad-record-MAC failure, localizing the failure below SovereignAI and beyond Docker alone",
+    "Alternate authenticated ciphers, software OpenSSL, host networking and MTU 1280 did not remediate Docker TLS failures",
+    "Reversible virtual-adapter RSC test did not remediate failures; original flags restored",
+    "Ollama image pull reported containerd ingest I/O failure; Docker VM log recorded virtual-block-device and ext4 journal I/O errors",
+    "Docker restart timed out, stop/start recovery did not restore a usable engine; current build attempt received daemon HTTP 500",
+    "Host free space about 2.1 GiB; model provisioning refused because it required at least 3845338077 bytes including reserve"
+  ],
+  "causal_limits": [
+    "Exact Windows/WSL driver or component causing TLS stream corruption has not been conclusively identified",
+    "Installed network filters are observations, not established causes; none was disabled",
+    "Later virtual-disk errors and low space do not prove the cause of the earlier TLS corruption",
+    "Containerd write error occurred during the Docker recovery/restart window; no destructive filesystem repair was attempted"
+  ],
+  "repository_defects_remediated": [
+    "Model provisioning resolved mutable revisions and accepted existing directories without content verification",
+    "Preflight checked only the presence of model files, not pinned revision or file hashes",
+    "Readiness could raise on malformed model-list records rather than report unready",
+    "Provisioning lacked a free-space guard",
+    "APT update did not explicitly fail on every repository-update error"
+  ],
+  "models": {
+    "lock": "deploy/model-lock.json",
+    "all_files_verified": true,
+    "offline_model_load_smoke": "passed",
+    "reranker_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a"
+  },
+  "ollama": {
+    "lock": "deploy/ollama-model-lock.json",
+    "official_and_cached_manifests_match": true,
+    "host_blob_hashes_verified": 9,
+    "host_models_verified": 2,
+    "persistent_volume_recreation": "BLOCKED",
+    "runtime_inference": "NOT_RUN",
+    "provisioning_attempt_exit_code": 2,
+    "existing_host_cache_modified": false
+  },
+  "tests": {
+    "maintained_python": {
+      "tests": 403,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 403
+    },
+    "controlplane_local": {
+      "tests": 256,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 15,
+      "passed": 240
+    },
+    "frontend": {
+      "passed": 41
+    },
+    "frontend_typecheck": "passed",
+    "graphrag_build": "passed",
+    "graphrag_auth": {
+      "passed": 3
+    },
+    "supplemental_provisioning_regression": {
+      "passed": 12,
+      "evidence": "local_testing/deployment-remediation-20261023/final-provisioning-regression.log",
+      "scope": "After final helper change; five new fail-closed cases plus seven lock integrity cases. Not a deployed-volume test."
+    },
+    "legacy_failure": "test_pre_authority_ablation_reuses_same_evidence_and_semantic_score; expectation and runtime policy unchanged"
+  },
+  "authenticated_deployment_acceptance": [
+    {
+      "scenario": "trusted_tls_and_browser_login",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "role_and_workspace_boundaries",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "browser_upload_and_task_continuation",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "diagnosis_authorized_retrieval_and_governed_release",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "approval_accept_reject_and_execution_receipts",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "report_download_and_capsule_verification",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "required_service_outage_and_readiness",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "restart_recovery_and_replay_prevention",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    },
+    {
+      "scenario": "ollama_volume_recreation_and_digest_match",
+      "status": "NOT_RUN",
+      "reason": "Complete images/runtime unavailable"
+    }
+  ],
+  "security_source_unchanged_from_previous_batch": {
+    "config/access.yaml": true,
+    "config/policies.yaml": true,
+    "config/tools.yaml": true,
+    "deploy/tools.production.yaml": true,
+    "backend/app/identity/authorization.py": true,
+    "backend/app/identity/dependencies.py": true,
+    "backend/app/integrations/orchestrator.py": true,
+    "Controlplane.ai/src/controlplane/checker.py": true,
+    "Controlplane.ai/src/controlplane/verification.py": true,
+    "Time-Series-Diagnostic-Agent/src/tsdiag/domains/process_sensitivity.py": true
+  },
+  "all_protected_sources_unchanged": true,
+  "commands": [
+    {
+      "label": "host-tls-default",
+      "started_utc": "2026-10-23T14:33:18.772652+00:00",
+      "seconds": 0.625,
+      "command": [
+        "node",
+        "tests/deployment/transport_probe.cjs",
+        "--all-ciphers"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\host-tls-default.log",
+      "sha256": "86aec41e23cf08f43766941a9c67d07544a90403f9672f4fcdf03eb6dff00c77",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "container-tls-software-crypto",
+      "started_utc": "2026-10-23T14:33:41.829778+00:00",
+      "seconds": 4.609,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "-e",
+        "OPENSSL_ia32cap=0",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\container-tls-software-crypto.log",
+      "sha256": "79fefee7d7967e3ef7dd11dee742307faa1ea762fb4b331f009cb28337d0f6a5",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "container-tls-default",
+      "started_utc": "2026-10-23T14:33:39.427881+00:00",
+      "seconds": 11.046,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs",
+        "--all-ciphers"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\container-tls-default.log",
+      "sha256": "48f9649b2fc08697474d2c6cbc2b2b7aabc0f96a85d8cc34de31123a03b71b26",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "model-pinned-metadata",
+      "started_utc": "2026-10-23T14:34:47.022505+00:00",
+      "seconds": 1.266,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "local_testing/deployment-remediation-20261023/hub_metadata.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\model-pinned-metadata.log",
+      "sha256": "154f976daa25d9e0bfb3bb1e3ff0c3f7a783cf151f353b761c8b0488c6b83481",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "host-tls-unrestricted",
+      "started_utc": "2026-10-23T14:35:31.421367+00:00",
+      "seconds": 32.953,
+      "command": [
+        "node",
+        "tests/deployment/transport_probe.cjs",
+        "--all-ciphers"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\host-tls-unrestricted.log",
+      "sha256": "43ad14cf5feb38f828620d3c1536b945dfed8f56190e9eb3e811004d0d3e6856",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "model-pinned-metadata-unrestricted",
+      "started_utc": "2026-10-23T14:36:21.803443+00:00",
+      "seconds": 2.296,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "local_testing/deployment-remediation-20261023/hub_metadata.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\model-pinned-metadata-unrestricted.log",
+      "sha256": "215147f8a5fb175d7997c27ed5abc13222b0fffc97e874af10e8ab8f421c43b3",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "container-apt-verified",
+      "started_utc": "2026-10-23T14:37:49.785699+00:00",
+      "seconds": 16.469,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/debian_transport.sh,target=/probe.sh,readonly",
+        "python:3.11-slim-bookworm",
+        "sh",
+        "/probe.sh"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 100,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\container-apt-verified.log",
+      "sha256": "b03e9449f3385676df24519bc8b5667b58ecdcf53e0e715549a1ad3c136499ec",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "create-mtu-test-network",
+      "started_utc": "2026-10-23T14:39:07.023045+00:00",
+      "seconds": 0.141,
+      "command": [
+        "docker",
+        "network",
+        "create",
+        "--driver",
+        "bridge",
+        "--opt",
+        "com.docker.network.driver.mtu=1280",
+        "sovereign-transport-mtu1280-20261023"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\create-mtu-test-network.log",
+      "sha256": "e26b2a90ee771057ed5322ed286c16371bdef8a8b5b15e27670934668ddf3334",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "container-tls-mtu1280",
+      "started_utc": "2026-10-23T14:39:07.375092+00:00",
+      "seconds": 3.281,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "sovereign-transport-mtu1280-20261023",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\container-tls-mtu1280.log",
+      "sha256": "130caa3cbea2a479fc365457ca7baac046adb706cd23513791a489ede8f2b14e",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "container-tls-host-network",
+      "started_utc": "2026-10-23T14:39:10.814133+00:00",
+      "seconds": 2.36,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "host",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\container-tls-host-network.log",
+      "sha256": "accbd1ec4fc6cd0257f7fa6511ae8c4059628c89955a006f22ee15265cb8aae6",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "pinned-model-staging",
+      "started_utc": "2026-10-23T14:44:32.181648+00:00",
+      "seconds": 47.11,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/stage_production_models.py",
+        "--download"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\pinned-model-staging.log",
+      "sha256": "863804382a36eacdbe1fc7443f216c05c4bb49783b3d867cf93f77a4c5401bc2",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "ollama-runtime-image",
+      "started_utc": "2026-10-23T14:45:45.612347+00:00",
+      "seconds": 12.0,
+      "command": [
+        "docker",
+        "manifest",
+        "inspect",
+        "ollama/ollama:0.33.2"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\ollama-runtime-image.log",
+      "sha256": "97b7ad2f2d30e866c66569ab808816da57c8c9f892bf964269eb49c982a68321",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "rsc-before-probe",
+      "started_utc": "2026-10-23T14:48:02.753264+00:00",
+      "seconds": 3.14,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}\\tests\\deployment\\transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\rsc-before-probe.log",
+      "sha256": "91505322bcda8e9938a70b70d5141a5254b8e7fd7c74c76e668c75ae3aa15aa8",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "rsc-disabled-probe",
+      "started_utc": "2026-10-23T14:48:10.089098+00:00",
+      "seconds": 4.36,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}\\tests\\deployment\\transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\rsc-disabled-probe.log",
+      "sha256": "31f53f4e34830d024dc036fc51fddca8935c28b89bef2e0a42eda364f6e4ff4a",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "rsc-restored-probe",
+      "started_utc": "2026-10-23T14:48:18.517680+00:00",
+      "seconds": 3.407,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}\\tests\\deployment\\transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\rsc-restored-probe.log",
+      "sha256": "e5763b383b4af6ffd93b9bf34db89973878414ca1d449d9ccc554947b1a3734b",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "ollama-official-manifest-lock",
+      "started_utc": "2026-10-23T14:50:14.348245+00:00",
+      "seconds": 2.625,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "local_testing/deployment-remediation-20261023/ollama_metadata.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\ollama-official-manifest-lock.log",
+      "sha256": "9b34999a560af7a20107188fd227e3888d6798c72b3b645836b38be9496ac42d",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "wsl-version",
+      "started_utc": "2026-10-23T14:52:36.646873+00:00",
+      "seconds": 0.063,
+      "command": [
+        "wsl.exe",
+        "--version"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\wsl-version.log",
+      "sha256": "8ce43203dc8f4a94cf17d158800f57af2759dfdb9a396623faac5583823ef287",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "wsl-distributions",
+      "started_utc": "2026-10-23T14:52:36.863713+00:00",
+      "seconds": 0.063,
+      "command": [
+        "wsl.exe",
+        "--list",
+        "--verbose"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\wsl-distributions.log",
+      "sha256": "da3a4b56203b2a7bfb74d7136a7570f1c0624303ddf1d8848a64c4ebc9ee1e53",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-desktop-restart-help",
+      "started_utc": "2026-10-23T14:52:37.054472+00:00",
+      "seconds": 0.156,
+      "command": [
+        "docker",
+        "desktop",
+        "restart",
+        "--help"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-desktop-restart-help.log",
+      "sha256": "a999919094de39aa675ac48d5cd38589bbedfffd6cd866b06077721d87c48461",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "ubuntu-independent-tls",
+      "started_utc": "2026-10-23T14:54:53.130459+00:00",
+      "seconds": 50.125,
+      "command": [
+        "wsl.exe",
+        "-d",
+        "Ubuntu",
+        "--",
+        "python3",
+        "/mnt/c/Users/PALLAB/Desktop/Industrial_Architechture/1_SIH/tests/deployment/python_transport_probe.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\ubuntu-independent-tls.log",
+      "sha256": "5a85d0b0277d3398b3f4c4cea997d59823141c91f1168df073047138b3b30592",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "model-load-smoke",
+      "started_utc": "2026-10-23T14:56:30.646605+00:00",
+      "seconds": 18.782,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/verify_production_models.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\model-load-smoke.log",
+      "sha256": "2009b60534b1926648fc6a61fa25a586c7683740584277585fcb3e0251e14463",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "provisioning-unit-regressions",
+      "started_utc": "2026-10-23T14:56:49.618647+00:00",
+      "seconds": 3.703,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "-m",
+        "pytest",
+        "tests/deployment",
+        "-q",
+        "-o",
+        "addopts="
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\provisioning-unit-regressions.log",
+      "sha256": "36c998a0339d20cb7e16ea80ff1dde535ae4c06a33a911ad16561a3309461351",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "pull-ollama-runtime",
+      "started_utc": "2026-10-23T14:50:17.119919+00:00",
+      "seconds": 506.297,
+      "command": [
+        "docker",
+        "pull",
+        "ollama/ollama:0.33.2"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\pull-ollama-runtime.log",
+      "sha256": "9278d69294a977de5bc5b54e12bd841caa2f26f15a32733247e717190af93944",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-desktop-restart",
+      "started_utc": "2026-10-23T14:59:56.331913+00:00",
+      "seconds": 121.906,
+      "command": [
+        "docker",
+        "desktop",
+        "restart",
+        "--timeout",
+        "120"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-desktop-restart.log",
+      "sha256": "ce8ff13e0dcd7a399a976a4f6e6e6bdbb15c7d778dd09e35b60b5e2cf4ec6ca1",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "tls-after-docker-restart",
+      "started_utc": "2026-10-23T15:01:47.536057+00:00",
+      "seconds": 22.156,
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--mount",
+        "type=bind,source=${REPO_ROOT}/tests/deployment/transport_probe.cjs,target=/probe.cjs,readonly",
+        "node:22-alpine",
+        "node",
+        "/probe.cjs"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\tls-after-docker-restart.log",
+      "sha256": "31f9367b5314dcb770eaf6ee5a46b1489f50d2f891ee16b3007c8f5c9988d634",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "host-ollama-cache-hashes",
+      "started_utc": "2026-10-23T15:02:51.158104+00:00",
+      "seconds": 5.719,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "tests/deployment/ollama_volume_verify.py",
+        "--root",
+        "C:/Users/PALLAB/.ollama/models",
+        "--lock",
+        "deploy/ollama-model-lock.json"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\host-ollama-cache-hashes.log",
+      "sha256": "eff9b66c4992556117cbf39b98f2e8676b1d7f905c38285bf2ec0ab148d9acc4",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-status-after-restart",
+      "started_utc": "2026-10-23T15:03:36.302720+00:00",
+      "seconds": 0.359,
+      "command": [
+        "docker",
+        "desktop",
+        "status"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-status-after-restart.log",
+      "sha256": "0c4d6245146a9913937a11410fb1b708f5b4f382e8d819c06c136b3e4c650aba",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-vm-kernel-errors",
+      "started_utc": "2026-10-23T15:03:36.818172+00:00",
+      "seconds": 0.156,
+      "command": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "--",
+        "dmesg",
+        "--level=err,warn"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-vm-kernel-errors.log",
+      "sha256": "5dce5afa258d534b3b26ec62182e0980ef54aba7018932d7fcbcf3f5e61a3100",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "complete-sha256-model-pins",
+      "started_utc": "2026-10-23T15:07:26.107832+00:00",
+      "seconds": 1.469,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "local_testing/deployment-remediation-20261023/complete_model_hashes.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\complete-sha256-model-pins.log",
+      "sha256": "14f0e8bc30e1c96d931ec4051c9d0f43b77a14113a0b36eca9f136e95c7d37a0",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-staged-model-byte-verification",
+      "started_utc": "2026-10-23T15:07:27.761905+00:00",
+      "seconds": 2.344,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/stage_production_models.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\final-staged-model-byte-verification.log",
+      "sha256": "7617b59a733f9f2ca21beb35fe161bb729111e09ea7d37df99f49aaf2488060c",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-desktop-stop-recovery",
+      "started_utc": "2026-10-23T15:07:13.011779+00:00",
+      "seconds": 65.032,
+      "command": [
+        "docker",
+        "desktop",
+        "stop",
+        "--timeout",
+        "60"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-desktop-stop-recovery.log",
+      "sha256": "e86b48e59923f123facb946576d8537f6d1d150f9213efb5aa55423706c1a3a0",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "docker-desktop-start-recovery",
+      "started_utc": "2026-10-23T15:08:18.272413+00:00",
+      "seconds": 2.875,
+      "command": [
+        "docker",
+        "desktop",
+        "start",
+        "--timeout",
+        "120"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\docker-desktop-start-recovery.log",
+      "sha256": "dfbca9f23d9ab195576075689e08e9de08374f6a2aea2913472bb4b4a1129ec8",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "ollama-volume-provision-attempt",
+      "started_utc": "2026-10-23T15:09:50.315889+00:00",
+      "seconds": 0.235,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/provision_ollama_models.py",
+        "--volume",
+        "sovereign-production_ollama-models",
+        "--storage-only"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 2,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\ollama-volume-provision-attempt.log",
+      "sha256": "fe038f441a4c35f6d4c9683c56e8eeaf5bc1dc8786b72302e70279f9c2be0bac",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-production-preflight",
+      "started_utc": "2026-10-23T15:09:50.729278+00:00",
+      "seconds": 32.0,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/preflight_production.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\final-production-preflight.log",
+      "sha256": "e467119667b6b92ef33ab17f71d95e053c574fe2df095abe16ab446445d45f28",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "complete-source-baseline",
+      "started_utc": "2026-10-23T15:08:45.169712+00:00",
+      "seconds": 224.281,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/run_readiness_baseline.py",
+        "--include-local-controlplane"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\complete-source-baseline.log",
+      "sha256": "6ddc9b5ed708799e2c33a41cd4f8deeb31508278696c61975e2e2cc52d3e85dd",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "complete-deployment-build-attempt",
+      "started_utc": "2026-10-23T15:16:01.820815+00:00",
+      "seconds": 22.64,
+      "command": [
+        "docker",
+        "compose",
+        "-f",
+        "deploy/compose.production.yml",
+        "build",
+        "backend",
+        "frontend",
+        "graphrag",
+        "gateway"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 1,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\complete-deployment-build-attempt.log",
+      "sha256": "cf4ef506870d6f38efa9336e32994893c27d2e59c6110d30e7c1b8990b52623f",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "cleanup-diagnostic-network",
+      "started_utc": "2026-10-23T15:16:24.655406+00:00",
+      "seconds": 30.016,
+      "command": [
+        "docker",
+        "network",
+        "rm",
+        "sovereign-transport-mtu1280-20261023"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 124,
+      "status": "timeout",
+      "output": "local_testing\\deployment-remediation-20261023\\cleanup-diagnostic-network.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "publish-evidence-summary",
+      "started_utc": "2026-10-23T15:20:46.217908+00:00",
+      "seconds": 0.235,
+      "command": [
+        ".\\.venv\\Scripts\\python.exe",
+        "scripts/summarize_deployment_investigation.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\publish-evidence-summary.log",
+      "sha256": "9c78074372981f8130701576afc00dbfa016bd4e50f4607654eda7602018fc48",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-provisioning-regression",
+      "started_utc": "2026-10-23T15:24:47.229133+00:00",
+      "seconds": 12.219,
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "tests/deployment/test_ollama_provision.py",
+        "tests/deployment/test_ollama_lock.py",
+        "tests/deployment/test_model_locks.py",
+        "-q"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\final-provisioning-regression.log",
+      "sha256": "4208f92aa778c742c7655af90b8e57da8220901a67e852bb157f327d7f189aa3",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-diff-whitespace",
+      "started_utc": "2026-10-23T15:26:07.202680+00:00",
+      "seconds": 0.031,
+      "command": [
+        "git",
+        "-c",
+        "safe.directory=${REPO_ROOT}",
+        "diff",
+        "--check"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\final-diff-whitespace.log",
+      "sha256": "d647701d779544f9f548f1c94ddea111fd8e456820c84e96580aa07e13278101",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-engine-status",
+      "started_utc": "2026-10-23T15:25:38.941582+00:00",
+      "seconds": 30.031,
+      "command": [
+        "docker",
+        "version"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 124,
+      "status": "timeout",
+      "output": "local_testing\\deployment-remediation-20261023\\final-engine-status.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "evidence_hash_valid": true
+    },
+    {
+      "label": "final-evidence-publication",
+      "started_utc": "2026-10-23T15:26:32.083218+00:00",
+      "seconds": 0.187,
+      "command": [
+        "python",
+        "scripts/summarize_deployment_investigation.py"
+      ],
+      "cwd": "${REPO_ROOT}",
+      "exit_code": 0,
+      "status": "finished",
+      "output": "local_testing\\deployment-remediation-20261023\\final-evidence-publication.log",
+      "sha256": "dcf0250549b1237c37d65de10e7130bf17c90a2e5864161d32f8483d2468f490",
+      "evidence_hash_valid": true
+    }
+  ],
+  "remaining_blockers": [
+    "WSL large-transfer corruption; exact upstream component unresolved",
+    "Docker engine/VHD health and host storage headroom",
+    "Complete image build",
+    "Persisted Ollama volume and real daemon verification",
+    "Authenticated deployment acceptance",
+    "One reproduced legacy ControlPlane ablation test failure"
+  ],
+  "cleanup": {
+    "rsc_original_flags_restored": true,
+    "application_stack_started": false,
+    "docker_factory_reset_or_data_prune": false,
+    "disposable_mtu_network_removal": "attempted; engine unavailable"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "models": {
+    "qwen3:4b-instruct": {
+      "manifest_path": "manifests/registry.ollama.ai/library/qwen3/4b-instruct",
+      "manifest_sha256": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+      "blobs": {
+        "sha256:b72accf9724e93698c57cbd3b1af2d3341b3d05ec2089d86d273d97964853cd2": 487,
+        "sha256:85e4a5b7b8ef0e48af0e8658f5aaab9c2324c76c1641493f4d1e25fce54b18b9": 2497280480,
+        "sha256:eade0a07cac7712787bbce23d12f9306adb4781d873d1df6e16f7840fa37afec": 1379,
+        "sha256:d18a5cc71b84bc4af394a31116bd3932b42241de70c77d2b76d69a314ec8aa12": 11338,
+        "sha256:0914c7781e001948488d937994217538375b4fd8c1466c5e7a625221abd3ea7a": 119
+      }
+    },
+    "nomic-embed-text:latest": {
+      "manifest_path": "manifests/registry.ollama.ai/library/nomic-embed-text/latest",
+      "manifest_sha256": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+      "blobs": {
+        "sha256:31df23ea7daa448f9ccdbbcecce6c14689c8552222b80defd3830707c0139d4f": 420,
+        "sha256:970aa74c0a90ef7482477cf803618e776e173c007bf957f635f1015bfcfef0e6": 274290656,
+        "sha256:c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4": 11357,
+        "sha256:ce4a164fc04605703b485251fe9f1a181688ba0eb6badb80cc6335c0de17ca0d": 17
+      }
+    }
+  }
+}

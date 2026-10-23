@@ -1,0 +1,35 @@
+{
+    admin off
+    auto_https disable_redirects
+    skip_install_trust
+}
+
+https://{$SOVEREIGN_HOST:localhost}:8443 {
+    tls internal
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy same-origin
+    }
+    request_body {
+        max_size 27MB
+    }
+    @backend path /api/* /health /ready
+    handle @backend {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+
+# Supabase-compatible REST prefix, available only on the private graph network.
+# The public TLS listener never routes /rest/v1 to this upstream.
+:8080 {
+    handle_path /rest/v1/* {
+        reverse_proxy graph-rest:3000
+    }
+    respond 404
+}

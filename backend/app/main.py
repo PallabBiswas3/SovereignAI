@@ -50,7 +50,7 @@ settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -96,3 +96,10 @@ async def local_csrf_protection(request: Request, call_next):
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "sovereign-backend"}
+
+
+@app.get("/ready", include_in_schema=False)
+async def ready():
+    from app.monitoring.readiness import readiness_status
+    result = await readiness_status(get_settings())
+    return JSONResponse(result, status_code=200 if result["ready"] else 503)

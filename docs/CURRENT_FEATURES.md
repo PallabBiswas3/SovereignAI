@@ -1,5 +1,97 @@
 # Current features
 
+## Clean-environment blocker investigation - 23 October 2026
+
+Release verdict remains **BLOCKED**. `deploy/CLEAN_ENVIRONMENT_REPORT.md` and
+`deploy/remediation-20261023.json` separate confirmed environmental failures,
+repository fixes, exact command/log evidence and causal uncertainty. Pristine
+Docker images and independent Ubuntu WSL reproduce large HTTPS failures while
+Windows host probes pass; the exact upstream driver/component is not proven.
+Software crypto, alternate secure ciphers, reduced MTU, host networking and a
+restored-after-test virtual-adapter RSC experiment did not fix it. No security
+filter, TLS or package verification was disabled.
+
+Model provisioning now enforces immutable revisions and SHA-256 for every locked
+file, rejects corrupted existing directories, and promotes verified copies
+atomically. The missing reranker was provisioned at
+`233902d25c440f23af6f7d6e94d2946bac0bee0a`. All three snapshots passed byte checks
+and real offline model-load smoke tests. Two host Ollama model manifests match
+the official registry and all nine cached blobs passed SHA-256 checks. Actual
+volume/daemon recreation remains blocked: its provisioning guard refused about
+2.1 GiB free versus 3,845,338,077 bytes required including reserve.
+
+The runtime image pull reported containerd write I/O failure; Docker VM logs
+show virtual-disk/ext4 I/O errors. Bounded restart/stop/start did not restore a
+healthy engine and the final full-build attempt received daemon HTTP 500. These
+later storage errors do not prove the cause of the earlier TLS corruption.
+No Docker reset, destructive disk repair, user-data prune, or WSL-wide shutdown
+was performed. The separate Ubuntu distribution was preserved.
+
+Fresh source verification: **403 maintained Python tests passed**, **41 frontend
+tests passed**, frontend typecheck and GraphRAG build/three auth tests passed.
+Broader local ControlPlane: **240 passed, 15 skipped, one unchanged historical
+ablation failure**; aggregate verification correctly returned nonzero. Readiness
+now handles malformed model lists without crashing. Preflight checks model
+integrity and provisioning capacity and correctly fails on current capacity/
+engine blockers. Governance, authorization, policies and diagnostics are unchanged.
+No complete authenticated deployment acceptance or production success is claimed.
+
+## Production baseline and deployment candidate - 23 October 2026
+
+Implemented the baseline inventory and a separate authenticated single-host
+deployment profile under `deploy/`. All 73 requested readiness checkpoints have
+status/evidence entries in `deploy/readiness-checklist.json`. Baseline source:
+`development` at `5eaf907f9b74e686ec49d1aa61755fd0a5f86b0a`; implementation remains
+uncommitted until separately reviewed. No deployment to a plant or remote host.
+
+Before changes: 367 maintained Python tests passed, 41 frontend tests passed,
+frontend typechecking and GraphRAG build/three authentication tests passed.
+After configuration/readiness changes: 389 maintained Python tests passed,
+including 22 new deployment cases; the same frontend/GraphRAG checks passed.
+Additional account-provisioning tests validate explicit scope, password hashing,
+duplicate refusal and wildcard denial. Reproducible baseline runner:
+`python scripts/run_readiness_baseline.py`; manifests and raw evidence are under
+ignored `local_testing/readiness-baseline-*/` and
+`local_testing/production-readiness-20261023/`.
+Final focused verification after the last origin-validation changes passed
+97 cases: 70 existing security tests plus 27 deployment/provisioning cases.
+Machine-readable batch results are in `deploy/validation-20261023.json`.
+
+The broader local ControlPlane baseline is now 240 passed, 15 skipped, one failed
+when run from `Controlplane.ai`, reproduced before and after this batch. Remaining
+failure: `test_pre_authority_ablation_reuses_same_evidence_and_semantic_score`.
+Its superseded-only current-limit claim remains undecidable under support/source
+guards even with the authority ablation disabled, while the historical test
+expects supported. This is a research ablation-contract mismatch, not a newly
+observed unsafe release. No verifier/policy thresholds or historical tests were
+changed. A root-directory invocation additionally fails relative policy discovery;
+the profile sets the service working directory. Older failure counts below are
+historical evidence, not the current baseline.
+
+The profile provides all specialist endpoints, private PostgreSQL/PostgREST
+GraphRAG storage, one HTTPS gateway, secure-cookie local authentication,
+file-mounted credentials, non-root application services, read-only filesystems
+where applicable, and isolated writable volumes. Backend `/health` remains
+liveness; `/ready` fails on missing configuration/storage/identity/dependencies
+or the matching installed generation model. GraphRAG health now checks table
+access and required model presence. Preflight and explicit account/model
+provisioning commands are documented in `deploy/README.md`. Runtime model
+downloads and deterministic/hash-embedding fallback are disabled in the profile.
+
+Actual infrastructure checks passed: gateway image build and non-root Caddy
+validation; isolated PostgreSQL/PostgREST initialization; ten evidence-store
+checks covering anonymous/invalid JWT denial and service access to eight tables.
+Full Python/web image builds remain blocked here by repeated Debian checksum/
+transport failures and npm TLS cipher errors. A standalone Node registry fetch
+also failed with `UND_ERR_SOCKET`. Integrity and TLS checks stayed enabled.
+Two local model snapshots were staged from existing caches; the reranker snapshot
+and the isolated Ollama model volume still require provisioning. No complete
+runtime-readiness or authenticated browser-workflow acceptance is claimed.
+
+See `deploy/README.md` for exact setup, TLS trust, provisioning and verification
+commands. Backup/restore, release rollback, CI gating and operational acceptance
+remain subsequent checkpoints.
+
 Development consolidation (22 October 2026): this branch combines the published
 application with the retained Process/Wind diagnostic research. The main-only
 promotion scope below describes `main`, not this development runtime. Integration

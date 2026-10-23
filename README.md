@@ -1,5 +1,10 @@
 # SovereignAI — Industrial Agentic AI Workbench
 
+For the authenticated single-host deployment candidate, setup/preflight commands,
+and the evidence-backed production checklist, see [deployment guidance](deploy/README.md).
+The current image-build and acceptance limitations are recorded there and in
+[Current features](docs/CURRENT_FEATURES.md).
+
 SovereignAI studies a gap that ordinary local RAG does not solve: keeping a model
 private does not guarantee authorized retrieval, traceable evidence, efficient
 inference, or trustworthy release for consequential industrial decisions.
