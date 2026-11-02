@@ -79,6 +79,29 @@ a second public runtime.
 
 ## Current priority: Wind false-alarm calibration
 
+Integration reviewed 2026-11-03: the supplied NumPy uncertainty layer now lives
+in `src/tsdiag/uncertainty/`, with prediction sets, regression/CQR intervals and
+selective metrics. `src/tsdiag/calibration/event_conformal.py` adds an opt-in
+event-statistic FAR calibrator. Its compact split API delegates to the existing
+`DevelopmentSplitManifest`; existing manifest schemas and checksums are retained.
+Statistic-selection data and final calibration data are separated, validation
+partitions obey the declared leakage boundary, and frozen artifacts preserve
+the missing-data policy. Missing rows cannot complete alarm persistence. The
+loose lead-time and selective-accuracy tests were replaced with exact checks.
+Tests use synthetic inputs only; no real CARE calibration, threshold freeze,
+domain-wide model retrofit or Wind plugin behavior change is claimed.
+
+Next integration gate: obtain independent healthy development events and their
+declared prediction windows, export residuals using a train-only normal-behavior
+model, freeze the scorer before final threshold fitting, then evaluate once on
+untouched events. The conformal marginal FAR bound assumes exchangeable scorable
+healthy event scores; descriptive Wilson/bootstrap validation intervals assume
+independent events. Temperature/model tuning also needs data separate from final
+conformal calibration. See the original CQR method
+([Romano et al., 2019](https://arxiv.org/abs/1905.03222)) and the independent
+tuning/calibration rationale
+([Decoupled Conformal Optimisation](https://arxiv.org/abs/2605.18354)).
+
 The canonical CARE v6 run remains a frozen regression result, but its 0.94
 normal-event FAR excludes Wind from platform demonstrations. A healthy-only
 target-event-FAR calibration workflow now exists in
@@ -151,6 +174,58 @@ Completion criteria for this track:
 - conclusions distinguish benchmark evidence from production claims.
 
 ## Architecture status
+
+Challenger integration reviewed 2026-11-03: supplied transformer sequence features
+and turbofan HGB/optional-CNN ensembles now live in `src/tsdiag/challengers/`.
+The transformer extractor uses per-record frequency estimation, fixed harmonic
+columns/observability indicators, true zero-sequence RMS, and non-integer-cycle
+phasors. Circular augmentation requires known whole-cycle windows. Stacking
+retains its fitted feature schema and requires independent/OOF training inputs.
+These electrical ratios do not establish physical fault identity without verified
+channel/grounding metadata; V/I coupling is not load- or unit-invariant.
+
+RUL calibration and interval evaluation now require engine identities, reject
+repeated calibration/test prefixes or training overlap, and invalidate old
+calibration on refit. Window construction is causal within each engine, and
+regime statistics are fit on training rows only. Point training uses capped RUL;
+interval calibration defaults to uncapped truth, with an explicit capped option
+and separate coverage fields. Random prefix sampling is a synthetic protocol,
+not proof that official C-MAPSS test censoring is exchangeable with calibration.
+All new verification is synthetic, including optional CNN CPU execution. No
+default plugin/model/decision-policy change, new SGAH accuracy or replacement of
+the retained C-MAPSS scores is claimed. Next: train/development ablations under
+predeclared physical-unit splits, freeze the challenger and uncertainty protocol,
+then evaluate on untouched data through an explicit domain adapter.
+
+Battery/bearing challenger integration reviewed 2026-11-03: supplied particle-
+filter/GP capacity-fade models and STFT-power modulation/order features now live
+beside the other opt-in challengers. Population priors retain training-cell IDs,
+held-out-cell overlap is rejected, and a full-prefix fit is not reused as a prior
+for filtering the same prefix again. Battery histories, weights, censoring and
+discharge segments are validated. GP non-crossing tails are right-censored at
+their finite prediction horizon; survival checks beyond that horizon are
+unscorable. Reports identify uncalibrated model uncertainty, finite-point coverage,
+unbounded intervals and per-cell errors. Retrospective fractions of observed
+life define evaluation cutoffs and do not constitute prospective deployment.
+
+Bearing features use amplitude-invariant normalization, energy-weighted positive
+SK, validated STFT/band/speed inputs and anti-alias filtering for angular
+downsampling. Healthy-threshold calibration optionally uses the existing split
+manifest and rejects reused development specimens/assets. The bound requires a
+fixed scoring rule, exchangeable units and strict score > threshold alarms;
+neither sensitivity at a universal SNR nor full cyclic-coherence estimation is
+claimed. Silent/unresolvable inputs remain unscorable. Verification is synthetic
+only; existing battery/bearing plugins and NASA/Paderborn/Lenze/CWRU baselines
+remain unchanged. Next: predeclare development/evaluation units, validate the
+challengers against existing methods, and freeze calibration separately before
+any explicit runtime integration.
+
+Verification: all 227 tests in the combined new uncertainty/challenger suite and
+selected existing battery, bearing and public-pipeline regressions passed. GP
+kernel-bound convergence warnings and existing statistical-test warnings remain
+visible; no real-data recalibration or model promotion was performed.
+GP interval-coverage reports also exclude truths beyond the forecast horizon,
+with explicit scorable/unscorable counts; unknown tails cannot improve coverage.
 
 | Domain | Current path | Status and next concern |
 | --- | --- | --- |

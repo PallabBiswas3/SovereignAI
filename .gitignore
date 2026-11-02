@@ -54,6 +54,14 @@ backend/tests/*
 *.py[cod]
 Controlplane.ai/tests/
 Time-Series-Diagnostic-Agent/tests/
+!Time-Series-Diagnostic-Agent/tests/
+Time-Series-Diagnostic-Agent/tests/*
+!Time-Series-Diagnostic-Agent/tests/test_conformal.py
+!Time-Series-Diagnostic-Agent/tests/test_event_conformal.py
+!Time-Series-Diagnostic-Agent/tests/test_transformer_sequence.py
+!Time-Series-Diagnostic-Agent/tests/test_turbofan_rul.py
+!Time-Series-Diagnostic-Agent/tests/test_battery_prognostics.py
+!Time-Series-Diagnostic-Agent/tests/test_bearing_cyclostationary.py
 benchmarks/
 experiments/
 evaluation/

@@ -55,6 +55,110 @@ compatibility aliases and execute through the same plugin workflow.
 > should use `diagnose()` and `DiagnosticResult`. They will not be removed before
 > a major-version release.
 
+### Shared uncertainty utilities
+
+`tsdiag.uncertainty` provides `ConformalClassifier` (LAC/APS, optional
+class-conditional thresholds), singleton-or-abstain decisions,
+`SplitConformalRegressor`, `ConformalizedQuantileRegressor`, and selective
+metrics: risk/coverage, accuracy at coverage, AURC, ECE and temperature scaling.
+These are NumPy utilities for explicitly supplied model predictions; the domain
+plugins do not automatically apply them. Fix the model, temperature and scoring
+rule before fitting conformal thresholds on independent calibration units.
+Prediction-set coverage is marginal under exchangeability and does not imply
+accuracy conditional on answering. Regression `clip_min=0` is appropriate only
+when the target is known to be nonnegative.
+
+Run the supplied and extended synthetic tests from this project directory:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m pytest -q
+```
+
+### Opt-in domain challengers
+
+`tsdiag.challengers` contains the supplied transformer sequence classifier,
+turbofan RUL ensemble, battery fade models, and bearing modulation/order features.
+They are research APIs; importing them does not replace domain models or policies.
+No new real-data improvement or trained challenger checkpoint is claimed.
+
+`SequenceFeatureExtractor` expects finite waveforms ordered
+`Ua, Ub, Uc, Ia, Ib, Ic`. Use verified `cycles_in_window` metadata where available;
+otherwise the dominant voltage bin is estimated separately for each record.
+Feature columns remain fixed, with observability flags for unavailable harmonics.
+Non-integer cycle metadata is supported without rounding. Circular augmentation
+requires verified whole-cycle windows. Verify channel grounding/zero-sequence
+observability before interpreting an imbalance as a physical fault. V/I coupling
+features remain dependent on sensor units and load.
+
+`SequenceFeatureClassifier` trains only on supplied training records, optionally
+oversamples minority classes, and supports `extra` probability columns when
+augmentation is disabled. Stacking inputs for training must be out-of-fold or
+come from an independently frozen base model. Fit conformal thresholds on
+independent calibration records and align label indices with `classes_`.
+
+`RULChallenger` supports HGB and an optional lazily imported PyTorch CNN (CPU by
+default). Fit `RegimeNormalizer` on training engines only. Point-model targets
+are capped, but interval calibration defaults to uncapped RUL. Engine identities
+are required for calibration and interval evaluation; use one prefix per engine,
+with no train/calibration/test overlap. Refit invalidates calibration.
+
+```python
+from tsdiag.challengers import RULChallenger, evaluate_rul
+
+model = RULChallenger(backend="hgb", window=30).fit(
+    training_windows, training_rul, training_engine_ids,
+)
+model.calibrate(calibration_windows, calibration_rul, units=calibration_engine_ids)
+metrics = evaluate_rul(model, test_windows, uncapped_test_rul, units=test_engine_ids)
+```
+
+The caller supplies those disjoint datasets and predeclares truncation rules.
+Use `target="capped"` explicitly for capped-target intervals; reports identify
+the target and include both capped and uncapped interval coverage. Random
+synthetic truncations do not establish exchangeability with official C-MAPSS
+test prefixes. RMSE/MAE/NASA score use uncapped truth, and `n_engines` counts
+independent test engines rather than repeated windows. These APIs require an
+explicit adapter and real-data validation before use through `diagnose()`.
+
+`CellData`, `FadeParticleFilter`, `GPFadeModel` and `leave_one_cell_out` provide
+capacity-fade research tools. Histories must have strictly increasing cycles and
+finite positive capacities; missing/latest-stale observations are not silently
+filled. Population priors from `prior_from_cells()` retain training cell IDs;
+pass `cell_id=` to filter fitting so overlap is rejected. Leave-one-cell-out
+evaluation excludes the held cell from its prior, rejects duplicate cell IDs,
+and keeps right-censored cells out of point-error metrics. Fraction-based cutoffs
+are retrospective evaluation protocols, not prospective operating schedules.
+
+Both battery models report **uncalibrated model-based uncertainty**. For the GP,
+infinite samples/quantiles mean no crossing within `censoring_horizon_`, not a
+known infinite lifetime. Supply that horizon to `survival_consistency()`;
+leave-one-cell-out reports mark checks beyond it unscorable. Reports include
+finite-point forecast coverage, unbounded-interval fraction and per-cell errors;
+interval coverage excludes true lifetimes beyond the GP horizon and reports
+the scorable/unscorable counts instead of treating its unknown tail as covered.
+Repeated cutoffs are not independent cells. Incremental-capacity features require
+a cleaned monotone discharge segment, increasing timestamps and a consistent
+current sign. These tools have not been validated on NASA battery records here.
+
+`bearing_cyclo_features()` computes STFT-power modulation features and
+energy-weighted spectral-kurtosis descriptors; `order_envelope_spectrum()` adds
+Hilbert demodulation and tachometer-based order tracking. This is a modulation
+proxy, not a full cyclic-coherence estimator. Use finite signals, positive
+sampling/speed metadata, an even STFT window with at least four complete frames,
+and frequency bands inside Nyquist. Angular downsampling applies a conservative
+anti-alias low-pass based on minimum shaft speed; high orders can be attenuated.
+Silent/unresolvable recordings produce unscorable scores or explicit errors.
+
+Freeze score settings before fitting `healthy_threshold()` on independent
+healthy recordings. Its optional `recording_ids=` and `split_manifest=` arguments
+reuse the existing manifest validator and reject calibration records sharing a
+specimen/asset. Without those arguments, split provenance remains the caller's
+responsibility. Marginal FAR requires exchangeable calibration/test units with
+comparable acquisition/window protocols; it is not a per-record fault probability
+or a fault-class diagnosis. Alarm only when `score > threshold`, with equality
+treated as no alarm. No Paderborn/Lenze/CWRU benchmark was rerun here.
+
 ### External tool boundary
 
 Local LLM or service hosts can call the same pipeline through a strict JSON-safe
@@ -129,6 +233,28 @@ New Wind reports call the historical `event_end - first_detection` quantity
 `time_to_event_end`. Genuine signed `early_warning_lead_time` is reported
 separately against event onset (positive before onset, negative after onset).
 The frozen CARE JSON retains its historical field names and is not rewritten.
+
+`tsdiag.calibration.EventFARCalibrator` additionally provides event-statistic
+split-conformal thresholds from healthy residual events, with `persistence`,
+`max_smoothed` and `cusum` scorers. It accepts the existing
+`DevelopmentSplitManifest` from `tsdiag.evaluation.split_manifest`; the compact
+`SplitManifest` API is a compatibility adapter to that same schema and validator.
+Calibration inputs must exactly match its development units. Validation IDs are
+held out from threshold fitting and must respect the declared leakage boundary.
+If selecting a statistic, declare the healthy and anomalous tuning IDs together;
+the returned scorer requires fresh, leakage-safe units for final calibration.
+Unscorable events abstain, and missing rows cannot complete a persistence window.
+
+`EventAlarmCalibration.to_json()` freezes the complete scorer, threshold,
+calibration/validation IDs, exclusion counts, FAR estimates/intervals and manifest
+checksum. Reload with `EventAlarmCalibration.from_json()` and
+`EventFARCalibrator.from_calibration()`. Setting `n_boot=0` omits bootstrap
+intervals. Wilson and bootstrap intervals assume independent validation events;
+the event-FAR claim also requires exchangeable healthy event scores and
+comparable prediction-window lengths. Synthetic checks do not establish CARE
+performance. This new calibrator is not wired into `WindScadaPlugin` and no
+production calibration artifact is frozen: the independent healthy pool is
+still required. The existing Wind search/configuration path remains separate.
 
 This project is designed as a **specialist-agent platform**, not a single bearing classifier. The long-term goal is to combine deterministic signal analysis, statistical monitoring, causal/root-cause reasoning, learned models, multimodal evidence, physics/manual verification, prognostics, and later sovereign industrial orchestration.
 
