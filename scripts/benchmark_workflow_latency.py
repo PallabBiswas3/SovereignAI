@@ -1,4 +1,4 @@
-"""Compare installed Ollama planners on isolated, verifiable workflow samples.
+"""Compare Ollama or vLLM planners on isolated, verifiable workflow samples.
 
 Run from the project root with .venv/Scripts/python.exe. No downloads or saved
 configuration changes. Results are smoke observations, not statistical guarantees.
@@ -37,12 +37,41 @@ CASES = [
 ]
 
 
-def request_json(url, data=None):
+def request_json(url, data=None, *, api_key=None):
     LocalNetworkPolicy.require_local(url)
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(url, data=json.dumps(data).encode() if data is not None else None,
-                                     headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+                                     headers=headers)
+    # Match the inference adapters: never follow redirects to another destination.
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, response_headers, newurl):
+            return None
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    with opener.open(request, timeout=120) as response:
         return json.load(response)
+
+
+def benchmark_settings(args, settings):
+    provider = args.provider or settings.llm_provider
+    updates = {"llm_provider": provider, "allow_deterministic_fallback": False,
+               "cache_enabled": False}
+    if args.endpoint:
+        LocalNetworkPolicy.require_local(args.endpoint)
+        updates["vllm_url" if provider == "vllm" else "ollama_url"] = args.endpoint.rstrip("/")
+    if provider == "vllm":
+        endpoint = str(updates.get("vllm_url", settings.vllm_url)).rstrip("/")
+        updates["vllm_url"] = endpoint if endpoint.endswith("/v1") else endpoint + "/v1"
+    return settings.model_copy(update=updates)
+
+
+def available_models(settings):
+    if settings.llm_provider == "vllm":
+        payload = request_json(settings.vllm_url + "/models", api_key=settings.vllm_api_key)
+        return {item["id"]: item for item in payload["data"]}
+    payload = request_json(settings.ollama_url + "/api/tags")
+    return {item["name"]: item for item in payload["models"]}
 
 
 def check(case, state, workspace):
@@ -76,26 +105,32 @@ def check(case, state, workspace):
 
 
 async def main(args):
-    settings = get_settings()
-    if settings.llm_provider != "ollama":
-        raise RuntimeError("This comparison requires the saved Ollama provider")
-    tags = request_json(settings.ollama_url + "/api/tags")["models"]
-    available = {item["name"]: item for item in tags}
+    settings = benchmark_settings(args, get_settings())
+    args.models = args.models or ([settings.vllm_model] if settings.llm_provider == "vllm"
+                                  else ["qwen3:4b-instruct", "qwen3:0.6b"])
+    available = available_models(settings)
     if any(model not in available for model in args.models):
-        raise RuntimeError("Requested model is not installed; this script never downloads models")
-    report = {"scope": "Sequential isolated smoke tasks with fixed task inputs and Ollama inference options; preloading excluded. Samples were collected during prompt/schema tuning; previous attempts are retained. This is not a controlled statistical model comparison. No default-model change.",
-              "models": {name: available[name].get("details") for name in args.models}, "samples": []}
-    output = ROOT / "local_testing" / "agent_tools" / "latency-comparison.json"
+        raise RuntimeError("Requested model is not served; this script never downloads models")
+    endpoint = settings.vllm_url if settings.llm_provider == "vllm" else settings.ollama_url
+    report = {"scope": "Sequential isolated workflow smoke tasks with fixed synthetic inputs. Model preloading excluded. Application response cache and deterministic inference fallback disabled. Task-handler timings exclude HTTP/SSE delivery and browser rendering. Not a controlled statistical model comparison.",
+              "provider": settings.llm_provider, "endpoint": endpoint,
+              "models": {name: available[name] for name in args.models}, "samples": []}
+    default_name = "vllm-latency-comparison.json" if settings.llm_provider == "vllm" else "latency-comparison.json"
+    output = args.output or ROOT / "local_testing" / "agent_tools" / default_name
     output.parent.mkdir(parents=True, exist_ok=True)
     if args.append and output.exists():
         previous = json.loads(output.read_text(encoding="utf-8"))
+        if (previous.get("provider", "ollama") != settings.llm_provider
+                or previous.get("endpoint", settings.ollama_url) != endpoint):
+            raise RuntimeError("Cannot append measurements from a different provider or endpoint")
         report["models"].update(previous.get("models", {}))
         report["samples"] = previous.get("samples", [])
     original_models = yaml.safe_load(settings.models_config.read_text(encoding="utf-8"))
     for model in args.models:
         started = time.perf_counter()
-        request_json(settings.ollama_url + "/api/generate", {"model": model, "prompt": "", "keep_alive": "15m", "options": {"num_ctx": 8192}})
-        print(json.dumps({"preloaded": model, "seconds": round(time.perf_counter() - started, 3)}), flush=True)
+        if settings.llm_provider == "ollama":
+            request_json(settings.ollama_url + "/api/generate", {"model": model, "prompt": "", "keep_alive": "15m", "options": {"num_ctx": 8192}})
+            print(json.dumps({"preloaded": model, "seconds": round(time.perf_counter() - started, 3)}), flush=True)
         for case, goal, scope in CASES:
             if case not in args.cases:
                 continue
@@ -112,10 +147,13 @@ async def main(args):
                 workspace = Path(directory)
                 models = json.loads(json.dumps(original_models))
                 models["models"]["general"]["model_tag"] = model
+                models["models"]["general"]["endpoint"] = endpoint
+                models["models"]["general"]["provider"] = settings.llm_provider
                 config = workspace / "models.yaml"
                 config.write_text(yaml.safe_dump(models), encoding="utf-8")
                 (workspace / "input.txt").write_text("Observation Z7: recorded vibration was 2 mm/s.", encoding="utf-8")
-                isolated = settings.model_copy(update={"workspace_root": workspace, "models_config": config})
+                isolated = settings.model_copy(update={"workspace_root": workspace, "models_config": config,
+                                                       "vllm_model": model})
                 engine = create_engine(f"sqlite:///{(workspace / 'task.db').as_posix()}")
                 Base.metadata.create_all(engine)
                 try:
@@ -125,6 +163,9 @@ async def main(args):
                             db, development_principal())
                     passed, validation = check(case, state, workspace)
                     timing = state.runtime_metrics["timing"]
+                    calls = timing.get("llm_calls", [])
+                    if not calls or any(call["outcome"] != "completed" for call in calls):
+                        passed, validation = False, "Missing, failed or fallback model inference"
                     sample = {"model": model, "case": case, "correct": passed, "validation": validation,
                               "ram_percent_after": psutil.virtual_memory().percent,
                               "status": state.status.value, "governance": state.governance["decision"],
@@ -141,14 +182,19 @@ async def main(args):
                 finally:
                     engine.dispose()
         # Release only the planner this benchmark just used; leave the Ollama service running.
-        request_json(settings.ollama_url + "/api/generate", {"model": model, "prompt": "", "keep_alive": 0})
+        if settings.llm_provider == "ollama":
+            request_json(settings.ollama_url + "/api/generate", {"model": model, "prompt": "", "keep_alive": 0})
+    return 0 if report["samples"] and all(sample["correct"] for sample in report["samples"]) else 1
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", default=["qwen3:4b-instruct", "qwen3:0.6b"])
+    parser.add_argument("--provider", choices=["ollama", "vllm"], help="Override provider for this process only")
+    parser.add_argument("--endpoint", help="Loopback/internal endpoint; run beside a cloud GPU or use an SSH tunnel")
+    parser.add_argument("--models", nargs="+", help="Served model IDs; defaults depend on the provider")
+    parser.add_argument("--output", type=Path, help="JSON results path")
     parser.add_argument("--cases", nargs="+", choices=[item[0] for item in CASES], default=[item[0] for item in CASES])
     parser.add_argument("--append", action="store_true", help="Retain existing samples and run only missing model/case pairs")
     parser.add_argument("--retry-failed", action="store_true", help="Recheck failed samples after a fix; retain previous attempts")
     parser.add_argument("--keep-going", action="store_true", help="Continue sampling a model after a failed quality check")
-    asyncio.run(main(parser.parse_args()))
+    raise SystemExit(asyncio.run(main(parser.parse_args())))

@@ -336,6 +336,10 @@ The default integration timeout is 180 seconds to accommodate thorough local Gra
 
 ## Known limitations and future work
 
+For GPU inference measurements, use the [vLLM/Colab latency benchmark](docs/GPU_LATENCY_BENCHMARK.md).
+It includes a self-contained GPU notebook, a streaming latency client, and vLLM
+support for the application's workflow benchmark. Actual GPU results require a running GPU session.
+
 - Ollama and Docker are not bundled; service/model availability is shown honestly.
 - The MiniLM/SQLite retriever is benchmarked on a small synthetic corpus, not validated for large-corpus production relevance. A stronger local BGE/E5 encoder, reranker, and Qdrant are logical scale-up options.
 - OCR layout is word/line aware, not a full engineering drawing parser.
