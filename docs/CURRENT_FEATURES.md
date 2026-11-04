@@ -1,5 +1,53 @@
 # Current features
 
+## Diagnostic uncertainty and challengers - 3 November 2026
+
+Implemented and pushed to `development` in `d157ed6`; the accompanying GPU
+benchmark tooling is `9c03731`. The diagnostic package version remains `0.4.0`,
+pipeline version `1.1.0`, and public JSON input contract
+`industrial-diagnostic-v1`. These additions supply opt-in Python APIs. Existing
+domain defaults, authorization, tool permissions and release policies were not
+replaced, and no new trained challenger checkpoint or accepted Wind calibration
+artifact is shipped.
+
+| Area | New capability | Runtime/validation boundary |
+| --- | --- | --- |
+| Shared uncertainty | LAC/APS prediction sets, optional per-class thresholds, singleton-or-abstain decisions, residual/CQR intervals, selective risk/coverage, AURC, ECE and temperature fitting | Model and scoring rule must be fixed before calibration; no automatic retrofit into every domain. |
+| Wind | Robust per-event residual scaling; persistence, smoothed-maximum or CUSUM event scores; conformal event threshold; held-out FAR intervals; versioned frozen JSON | Uses the existing split manifest; independent healthy development/calibration data and plugin integration remain pending. |
+| Transformer | Positive/negative/zero-sequence and harmonic features, imbalance-aware boosted classifier, optional probability stacking | Per-record frequency estimation and stable feature columns; no SGAH retraining or replacement of AD-TFM-AT. |
+| Turbofan | Regime normalization, causal windows, engine-bootstrap HGB or optional CNN ensemble, scaled conformal RUL intervals | Requires disjoint engine IDs and one calibration/evaluation prefix per engine; intervals default to uncapped truth. |
+| Battery | Particle-filter and parametric-mean/GP fade forecasts, leave-one-cell-out evaluation, censoring checks, discharge features | Held cells excluded from identified population priors; uncertainty remains model-based and uncalibrated. |
+| Bearing | STFT-power modulation proxy, energy-weighted spectral kurtosis, healthy-score threshold, tachometer-based order envelope | Split provenance optionally checked by the existing manifest; no universal detection/SNR guarantee or automatic fault diagnosis. |
+
+Input guards reject invalid probabilities, misaligned shapes, nonpositive scales,
+malformed histories and unsupported bands/speeds. Wind missing rows cannot
+complete persistent alarms. Statistic selection carries its tuning manifest into
+final fitting to reject reused units/groups or invalid temporal ordering. Frozen
+Wind artifacts retain score settings, missing-data policy, unit IDs, exclusions
+and manifest checksum, with a strict JSON round trip.
+
+RUL calibration/evaluation rejects training overlap and repeated engine windows;
+refitting invalidates earlier intervals. Battery reports distinguish finite
+forecasts from unbounded intervals, and mark GP survival/interval checks beyond
+its finite forecast horizon unscorable. Bearing scores preserve amplitude-unit
+scaling and reject unresolvable input instead of manufacturing healthy evidence.
+Conformal FAR uses a strict `score > threshold` alarm rule.
+
+Verification: **227 tests passed** across the new uncertainty/calibration/
+challenger tests and selected existing battery, bearing and public-pipeline
+regressions. GP kernel-bound convergence warnings and existing statistical-test
+warnings remain visible. A separate focused GPU-benchmark/timing run passed
+**32 tests**; that count is not part of the diagnostic 227. Neither run establishes
+new NASA, C-MAPSS, CARE, SGAH, CWRU, Paderborn or Lenze performance. Retained
+historical benchmark results are unchanged, including Wind's 0.94 normal-event
+FAR and the transformer inter-phase classification failures.
+
+Details and API examples: [diagnostic README](../Time-Series-Diagnostic-Agent/README.md#latest-diagnostic-changes---3-november-2026).
+Scientific priorities and retained baselines:
+[project direction](../Time-Series-Diagnostic-Agent/docs/PROJECT_DIRECTION.md).
+The 23 October deployment blockers below are the latest recorded deployment
+assessment; no fresh infrastructure acceptance is claimed by this update.
+
 ## Clean-environment blocker investigation - 23 October 2026
 
 Release verdict remains **BLOCKED**. `deploy/CLEAN_ENVIRONMENT_REPORT.md` and

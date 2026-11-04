@@ -7,6 +7,143 @@ improvement log are maintained in
 [`docs/PROJECT_DIRECTION.md`](docs/PROJECT_DIRECTION.md). Update that document
 instead of creating additional planning or status notes.
 
+## Latest diagnostic changes - 3 November 2026
+
+Source baseline: `development`, commit `d157ed6`. The additions below are
+available as Python research utilities; they do not automatically run inside
+`diagnose()` or `POST /v1/diagnose`. Package `0.4.0`, pipeline `1.1.0`, existing
+domain models and public input contract `industrial-diagnostic-v1` are retained.
+No new Process detector was introduced in this batch. Model promotion, real-data
+evaluation and production acceptance are separate from these source additions.
+
+| Module under `src/tsdiag/` | Main inputs | Main outputs |
+| --- | --- | --- |
+| [`uncertainty/conformal.py`](src/tsdiag/uncertainty/conformal.py) | Calibration probabilities `(N, K)` and integer class-column labels, or aligned targets/predictions and optional positive scales | Boolean prediction sets `(N, K)`, selective decisions, or lower/upper interval arrays |
+| [`uncertainty/selective.py`](src/tsdiag/uncertainty/selective.py) | Logits/probabilities and labels; confidence plus correctness; answer/abstain masks | Temperature, ECE, risk/coverage arrays, AURC, accuracy-at-coverage and selective summaries |
+| [`calibration/event_conformal.py`](src/tsdiag/calibration/event_conformal.py) | Named healthy events containing train/prediction residual matrices, a declared split manifest and optional validation IDs | Frozen event threshold/configuration, calibration/validation FAR, intervals, exclusions and per-event decisions |
+| [`calibration/split_guard.py`](src/tsdiag/calibration/split_guard.py) | Event IDs, optional asset groups and temporal intervals | Compatibility adapter to the existing manifest and group-preserving development splits |
+| [`challengers/transformer_sequence.py`](src/tsdiag/challengers/transformer_sequence.py) | Six-channel phase waveforms `(N, T, 6)` and training labels, optionally independent model probabilities | Named sequence/harmonic features, class probabilities/predictions and per-class recall intervals |
+| [`challengers/turbofan_rul.py`](src/tsdiag/challengers/turbofan_rul.py) | Operating settings/sensors, engine/cycle identities, windows and exact RUL targets | Normalized sensors, causal windows, ensemble mean/spread, conformal intervals and evaluation metrics |
+| [`challengers/battery_prognostics.py`](src/tsdiag/challengers/battery_prognostics.py) | Identified capacity histories and EOL threshold; optionally discharge time/voltage/current | Weighted RUL samples/quantiles, per-cell evaluation and censoring reports, discharge features |
+| [`challengers/bearing_cyclostationary.py`](src/tsdiag/challengers/bearing_cyclostationary.py) | Vibration, sampling rate, fault frequencies and optional band/tachometer trace | Modulation/order spectra, fault-frequency features and a healthy-score threshold |
+
+### What the uncertainty results mean
+
+`ConformalClassifier.decide()` returns `label`, `abstain`, `set_size` and `sets`.
+It answers only for singleton sets; both empty and multiple-class sets abstain.
+Its labels refer to probability-column indices. With a learned classifier whose
+`classes_` are not `0..K-1`, map calibration labels into those columns and map
+answered indices back to `classes_`. A class with insufficient calibration data
+gets an infinite class-conditional threshold and remains included conservatively.
+
+`SelectiveDecision.coverage` is the fraction answered; `set_coverage()` is the
+fraction whose true class is inside the set. They measure different properties.
+Report answer coverage together with selective accuracy/risk. Marginal set
+coverage does not promise accuracy conditional on answering. Temperature fitting
+requires its own tuning data, separate from final conformal calibration.
+
+The following standalone example demonstrates result shapes and abstention;
+the repeated synthetic probabilities are not independent validation evidence:
+
+```python
+import numpy as np
+from tsdiag.uncertainty import ConformalClassifier, selective_summary
+
+calibration_probabilities = np.tile([0.4, 0.6], (20, 1))
+calibration_labels = np.zeros(20, dtype=int)
+calibrator = ConformalClassifier(alpha=0.1, method="lac").fit(
+    calibration_probabilities, calibration_labels,
+)
+decision = calibrator.decide([[0.8, 0.2], [0.5, 0.5], [0.2, 0.8]])
+print(decision.label.tolist())    # [0, -1, 1]; -1 means abstain
+print(decision.set_size.tolist()) # [1, 2, 1]
+print(selective_summary(decision.label, [0, 1, 1], decision.abstain))
+```
+
+For regression, `SplitConformalRegressor.fit(y, y_pred, scale=...)` calibrates
+absolute residuals; `predict_interval()` returns `(lo, hi)`. CQR accepts the
+model's lower/upper quantile predictions at fitting and prediction. Insufficient
+calibration can produce unbounded intervals; callers must hold or explicitly
+represent that state, not silently publish a finite interval. `clip_min=0`
+requires a known nonnegative target. General utilities validate arrays but cannot
+infer which physical assets produced them: callers own train/tune/calibration/
+test identity separation. The event and RUL APIs add their explicit ID checks.
+
+### Wind calibration lifecycle and frozen artifacts
+
+1. Fit each event's normal-behavior model using healthy training observations
+   only, then supply its train and prediction residuals as `EventResiduals`.
+   The calibrator does not train that upstream model or certify healthy labels.
+2. Fix an `EventScorer` or call `select_statistic()` on separate healthy/anomalous
+   development tuning events. Its manifest must declare exactly their union.
+   The returned scorer carries the selection manifest into final fitting.
+3. Fit `EventFARCalibrator` on a fresh healthy pool exactly matching the final
+   manifest's development IDs. Optional `validation_ids` stay out of threshold
+   fitting and must obey the declared unit/group/temporal boundary. With 10%
+   target FAR, at least nine scorable fitting events are required for a finite
+   threshold; this minimum is not a recommended validation sample size.
+4. Freeze `EventAlarmCalibration.to_json()` and its `config_sha256()`. The artifact
+   includes scorer/window/fusion/drift, missing-data policy, target/threshold,
+   calibration and validation IDs/counts/exclusions, observed FAR, optional Wilson
+   and bootstrap intervals, manifest boundary/checksum, selection checksum and
+   code version. `n_boot=0` omits the bootstrap interval.
+5. Reload using `EventAlarmCalibration.from_json()` and
+   `EventFARCalibrator.from_calibration()`. `detect()` returns an `EventDecision`
+   with `alarm`, `status`, `score`, `threshold` and optional `first_alarm_index`.
+   `alarm=None` is an unscorable abstention. Alarm requires `score > threshold`.
+
+The checksum identifies artifact contents; it is not a signature or proof of data
+authenticity. The manifest prevents declared identity/time overlap, not hidden
+physical dependence. FAR control assumes fixed scoring and exchangeable scorable
+healthy events; comparable prediction-window lengths matter for maximum-based
+statistics. Validation intervals assume independent events. Missing rows cannot
+complete persistence windows, and exclusions must be reported with FAR.
+
+`early_warning_lead_time(first_alarm, onset)` is signed: positive before onset,
+negative after it. `time_to_event_end(first_alarm, event_end)` is a separate
+quantity. These helpers return sample-index differences, not seconds. No Wind
+artifact has been accepted on independent CARE data, and this calibrator has not
+been wired into `WindScadaPlugin`.
+
+### Verification and remaining integration work
+
+Recorded verification for this source batch: **227 passed**, combining the new
+uncertainty/calibration/challenger tests with selected existing battery, bearing
+and public-pipeline regression checks. This includes a small optional CNN CPU
+forward/backward test; it is not GPU training validation. GP kernel-bound
+convergence and existing statistical-test warnings remain visible. The separate
+32-test application benchmark/timing check is not part of the diagnostic total.
+
+Run the six tracked test files from this project directory with the application
+virtual environment, or an environment installed with this project's dependencies:
+
+```powershell
+$env:PYTHONPATH = "src"
+..\.venv\Scripts\python.exe -m pytest -q tests
+```
+
+The recorded 227-case run additionally used these local-only regression modules,
+which are not available in a fresh GitHub clone:
+
+```powershell
+..\.venv\Scripts\python.exe -m pytest -o "addopts=" -q tests `
+  ../local_testing/Time-Series-Diagnostic-Agent/tests/test_battery_incomplete_history.py `
+  ../local_testing/Time-Series-Diagnostic-Agent/tests/test_battery_prognosis.py `
+  ../local_testing/Time-Series-Diagnostic-Agent/tests/test_bearing_evidence_regressions.py `
+  ../local_testing/Time-Series-Diagnostic-Agent/tests/test_bearing_resonance_selection.py `
+  ../local_testing/Time-Series-Diagnostic-Agent/tests/test_public_pipeline.py
+```
+
+No new CARE/SGAH/C-MAPSS/NASA-battery/CWRU/Paderborn/Lenze evaluation was run.
+Existing historical results remain in [project direction](docs/PROJECT_DIRECTION.md#retained-real-data-baselines).
+Before runtime promotion, predeclare independent physical-unit splits, compare
+against existing baselines, freeze models and calibration separately, and add an
+explicit domain adapter with provenance, abstention and contract checks. The
+public JSON/HTTP boundary continues to reject executable model objects and
+user-supplied decision-threshold overrides. Model-based NumPy infinities/NaNs
+must be converted into explicit unavailable/censored output by an adapter before
+crossing that JSON boundary.
+
 ## Integration API
 
 Install the optional API dependencies and expose the existing strict diagnostic tool contract:

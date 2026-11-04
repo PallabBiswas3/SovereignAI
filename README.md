@@ -21,6 +21,23 @@ The project documentation is intentionally limited to three maintained files:
 - [Current features and boundaries](docs/CURRENT_FEATURES.md)
 - [Next implementation plan](docs/NEXT_PLAN.md)
 
+## Diagnostic update - 3 November 2026
+
+The diagnostic additions on `development` at `d157ed6` include a shared conformal
+uncertainty layer, Wind event-FAR calibration, transformer sequence features,
+turbofan RUL ensembles, battery particle-filter/GP prognosis, and bearing
+modulation/order features. They are opt-in Python APIs; the existing six-domain
+`diagnose()` path, HTTP input contract and production model defaults are retained.
+
+The combined new diagnostic tests and selected existing regressions passed
+**227 tests**. This is scoped software/synthetic verification, not a fresh
+whole-system acceptance run or new real-data accuracy result. Independent
+development/calibration data and explicit runtime adapters are still required.
+See the [detailed diagnostic update](Time-Series-Diagnostic-Agent/README.md#latest-diagnostic-changes---3-november-2026)
+for module paths, inputs, outputs, leakage guards and remaining validation gates.
+The latest recorded deployment verdict remains blocked as described in the
+dated deployment reports below; these diagnostic additions do not clear it.
+
 SovereignAI is a locally deployable prototype for confidential enterprise knowledge work. It combines configurable local inference, model routing, structured agent execution, file/OCR/vision tools, evidence-preserving retrieval, controlled Python execution, real DOCX/XLSX/PPTX artifacts, governance, auditability, and an air-gap monitor.
 
 New companies can be onboarded without Python changes through validated, versioned Organization Packs. Start with a non-mutating dry-run:

@@ -1,5 +1,48 @@
 # Next implementation plan
 
+## Diagnostic follow-up - 3 November 2026
+
+The shared uncertainty layer, Wind event calibration and four domain challengers
+are implemented on `development` (`d157ed6`). Follow-up is validation and explicit
+integration, not another implicit default-model change. Detailed scientific
+direction remains in
+[the diagnostic project record](../Time-Series-Diagnostic-Agent/docs/PROJECT_DIRECTION.md).
+
+1. Declare dataset revisions, physical-unit identities and untouched evaluation
+   pools before inspecting new results. Keep model/statistic/temperature tuning
+   separate from final conformal threshold fitting; record the split checksum.
+2. For Wind, obtain independent healthy events and comparable prediction-window
+   lengths. Export residuals from train-only normal-behavior models, select the
+   statistic on separate tuning events, fit the final healthy threshold, and
+   report held-out FAR, intervals and abstention/exclusion counts. Only then
+   consider a validated `WindScadaPlugin` adapter. Do not reuse the frozen 95-event
+   CARE run as independent development evidence.
+3. For transformer, compare sequence features, the frozen learned baseline and
+   a predeclared fusion using train/development data. Verify phase/channel order,
+   fundamental cycles, grounding and zero-sequence observability. Report per-class
+   recall with intervals, especially inter-phase faults, and selective coverage.
+4. For turbofan, fit preprocessing and ensemble models on training engines only;
+   predeclare truncation and capped/uncapped target semantics. Calibrate one
+   prefix per independent engine, then report uncapped MAE/RMSE/NASA score plus
+   both interval coverages, interval width and test-engine count.
+5. For battery, compare the existing estimator with PF/GP models under a fixed
+   leave-one-cell-out protocol. Report per-cell errors, finite-point coverage,
+   censoring consistency, horizon exclusions and unbounded intervals; do not
+   describe model-based intervals as calibrated confidence.
+6. For bearing, compare current physics/CNN/fusion with modulation/order features
+   under specimen-disjoint splits. Freeze bandwidth, speed processing and scoring
+   before healthy threshold calibration. Report healthy FAR, fault sensitivity,
+   coverage/abstention and runtime on the same independent evaluation units.
+7. Promote only a frozen, independently validated model/calibration bundle through
+   an explicit adapter into `diagnose()` with provenance and abstention tests.
+   JSON/HTTP callers must not upload executable model objects or threshold overrides.
+
+The full GPU application workflow is a separate pending task: source/dependencies
+must accompany vLLM before the workflow benchmark can run. The standalone T4
+generation measurements do not measure diagnostic accuracy, retrieval/tool time,
+ControlPlane release or final browser delivery. Deployment acceptance below
+also remains a separate gate.
+
 ## Clean-environment release gate - 23 October 2026
 
 Verdict **BLOCKED**; see `deploy/CLEAN_ENVIRONMENT_REPORT.md` and the exact
