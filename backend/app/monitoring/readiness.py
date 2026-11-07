@@ -74,6 +74,25 @@ async def readiness_status(settings: Settings, *, client=None, session_factory=N
 
     async def model():
         try:
+            if settings.llm_provider.strip().lower() == "hf_space":
+                from app.llm.factory import configured_local_provider
+                selection = configured_local_provider(settings)
+                selection.provider.client = http
+                models = await selection.provider.list_available_models()
+                return "generation_model", any(item.get("id") == selection.model for item in models)
+            if settings.llm_provider.strip().lower() == "remote_vllm":
+                from app.llm.remote_vllm_provider import validate_remote_settings
+                validate_remote_settings(settings)
+                base = settings.remote_vllm_url.rstrip("/")
+                base = base if base.endswith("/v1") else base + "/v1"
+                response = await http.get(base + "/models", headers={
+                    "Authorization": "Bearer " + settings.remote_vllm_api_key.get_secret_value(),
+                }, follow_redirects=False)
+                response.raise_for_status()
+                installed = response.json()["data"]
+                return "generation_model", isinstance(installed, list) and any(
+                    isinstance(item, dict) and item.get("id") == settings.remote_vllm_model
+                    for item in installed)
             # The first deployment profile supports Ollama. Unsupported providers
             # must not accidentally pass a readiness check intended for Ollama.
             if settings.llm_provider.lower() != "ollama":

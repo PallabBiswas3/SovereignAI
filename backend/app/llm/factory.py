@@ -6,6 +6,8 @@ from app.core.config import Settings, get_settings
 from app.llm.base import LocalModelProvider
 from app.llm.ollama_provider import OllamaProvider
 from app.llm.vllm_provider import VLLMProvider
+from app.llm.remote_vllm_provider import RemoteVLLMProvider, validate_remote_settings
+from app.llm.hf_space_provider import HuggingFaceSpaceProvider, validate_hf_settings
 from app.router.schemas import ModelDefinition
 
 
@@ -29,6 +31,28 @@ def configured_local_provider(
     provider_name = settings.llm_provider.strip().lower()
     role = model_definition.role if model_definition else "GENERAL"
     memory_requirement = model_definition.memory_requirement if model_definition else "medium"
+    if provider_name == "hf_space":
+        validate_hf_settings(settings)
+        provider = HuggingFaceSpaceProvider(
+            settings.hf_space_url, enabled=settings.remote_inference_enabled,
+            api_key=settings.hf_token.get_secret_value(), max_tokens=settings.vllm_max_tokens,
+            timeout_seconds=settings.model_generation_timeout_seconds,
+            role=role, memory_requirement=memory_requirement,
+            execution_mode=execution_mode, priority=priority,
+        )
+        return LocalProviderSelection(provider, settings.hf_space_model, "hf_space", provider.endpoint)
+    if provider_name == "remote_vllm":
+        validate_remote_settings(settings)
+        provider = RemoteVLLMProvider(
+            settings.remote_vllm_url, enabled=settings.remote_inference_enabled,
+            api_key=settings.remote_vllm_api_key.get_secret_value(),
+            enable_thinking=settings.vllm_enable_thinking,
+            max_tokens=settings.vllm_max_tokens,
+            timeout_seconds=settings.model_generation_timeout_seconds,
+            role=role, memory_requirement=memory_requirement,
+            execution_mode=execution_mode, priority=priority,
+        )
+        return LocalProviderSelection(provider, settings.remote_vllm_model, "remote_vllm", provider.endpoint)
     if provider_name == "vllm":
         provider = VLLMProvider(
             settings.vllm_url,

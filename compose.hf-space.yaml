@@ -1,0 +1,21 @@
+# Free Hugging Face ZeroGPU connection. Not an air-gapped profile.
+services:
+  backend:
+    environment:
+      SOVEREIGN_LLM_PROVIDER: hf_space
+      SOVEREIGN_REMOTE_INFERENCE_ENABLED: "true"
+      SOVEREIGN_HF_SPACE_URL: ${SOVEREIGN_HF_SPACE_URL:?Run scripts/deploy_hf_space.py --docker first}
+      SOVEREIGN_HF_SPACE_MODEL: Qwen/Qwen3-4B-Instruct-2507
+      SOVEREIGN_HF_TOKEN_FILE: /run/secrets/hf_token
+      SOVEREIGN_VLLM_MAX_TOKENS: "512"
+      SOVEREIGN_MODEL_GENERATION_TIMEOUT_SECONDS: "180"
+    secrets:
+      - hf_token
+    networks:
+      - remote-inference-egress
+secrets:
+  hf_token:
+    file: ./deploy/secrets/hf_token
+networks:
+  remote-inference-egress:
+    internal: false

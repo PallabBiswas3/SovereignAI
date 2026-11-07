@@ -1,0 +1,21 @@
+# Explicit remote mode: only backend receives an outbound network. Ollama
+# remains local for GraphRAG embeddings and optional vision. This is not air-gapped.
+# docker compose --env-file deploy/.env -f compose.yaml -f compose.remote-inference.yaml ...
+services:
+  backend:
+    environment:
+      SOVEREIGN_LLM_PROVIDER: remote_vllm
+      SOVEREIGN_REMOTE_INFERENCE_ENABLED: "true"
+      SOVEREIGN_REMOTE_VLLM_URL: ${SOVEREIGN_REMOTE_VLLM_URL:?Set the GPU host HTTPS base URL}
+      SOVEREIGN_REMOTE_VLLM_MODEL: ${SOVEREIGN_REMOTE_VLLM_MODEL:?Set the exact served model ID}
+      SOVEREIGN_REMOTE_VLLM_API_KEY_FILE: /run/secrets/remote_vllm_api_key
+    secrets:
+      - remote_vllm_api_key
+    networks:
+      - remote-inference-egress
+secrets:
+  remote_vllm_api_key:
+    file: ./deploy/secrets/remote_vllm_api_key
+networks:
+  remote-inference-egress:
+    internal: false

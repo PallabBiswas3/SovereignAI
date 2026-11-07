@@ -89,6 +89,8 @@ async def local_service_status(
     model_url: str,
     provider: str = "ollama",
     api_key: str = "local",
+    *,
+    model_health: dict[str, object] | None = None,
 ) -> list[dict[str, object]]:
     services: list[dict[str, object]] = [
         {"name": "Backend", "endpoint": "127.0.0.1:8000", "status": "active"},
@@ -97,13 +99,18 @@ async def local_service_status(
         {"name": "OCR", "endpoint": "local Tesseract", "status": "available" if shutil.which("tesseract") else "unavailable"},
     ]
     try:
-        LocalNetworkPolicy.require_local(model_url)
-        path = "/models" if provider.lower() == "vllm" else "/api/tags"
-        headers = {"Authorization": f"Bearer {api_key}"} if provider.lower() == "vllm" else None
-        async with httpx.AsyncClient(timeout=1.5, follow_redirects=False) as client:
-            response = await client.get(f"{model_url.rstrip('/')}{path}", headers=headers)
-            response.raise_for_status()
-        llm_status = "active"
+        if model_health is not None:
+            if not model_health.get("available"):
+                raise ValueError("Model unavailable")
+            llm_status = "active"
+        else:
+            LocalNetworkPolicy.require_local(model_url)
+            path = "/models" if provider.lower() == "vllm" else "/api/tags"
+            headers = {"Authorization": f"Bearer {api_key}"} if provider.lower() == "vllm" else None
+            async with httpx.AsyncClient(timeout=1.5, follow_redirects=False) as client:
+                response = await client.get(f"{model_url.rstrip('/')}{path}", headers=headers)
+                response.raise_for_status()
+            llm_status = "active"
     except (httpx.HTTPError, ValueError):
         llm_status = "unavailable"
     services.append({"name": f"LLM ({provider})", "endpoint": model_url, "status": llm_status})

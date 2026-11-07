@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 type Monitor = {
   sovereignty_status: string;
   external_ai_apis: number;
+  remote_inference_enabled?: boolean;
   external_requests: number;
   services: Array<{ name: string; endpoint: string; status: string }>;
   note: string;
@@ -58,7 +59,7 @@ export default function SovereigntyPage() {
 
   return <main className="monitorPage">
     <div className="monitorHeader">
-      <div><small>SOVEREIGNTY MONITOR</small><h1>Air-gap control plane</h1></div>
+      <div><small>SOVEREIGNTY MONITOR</small><h1>{state.status === "ready" && state.monitor.remote_inference_enabled ? "Inference network policy" : "Air-gap control plane"}</h1></div>
       <Link href="/">← Workbench</Link>
     </div>
 
@@ -89,9 +90,9 @@ export default function SovereigntyPage() {
     </section>}
 
     {state.status === "ready" && <>
-      <div className="sovereignHero"><span className="pulse"/><div><label>STATUS</label><h2>{state.monitor.sovereignty_status.toUpperCase()}</h2><p>Runtime inference endpoints are restricted to local or private infrastructure.</p></div></div>
+      <div className="sovereignHero"><span className="pulse"/><div><label>STATUS</label><h2>{state.monitor.sovereignty_status.toUpperCase()}</h2><p>{state.monitor.remote_inference_enabled ? "Remote inference sends prompts and supplied context to the configured GPU host." : "Runtime inference endpoints are restricted to local or private infrastructure."}</p></div></div>
       <div className="statGrid"><article><label>EXTERNAL AI APIS</label><strong>{state.monitor.external_ai_apis}</strong></article><article><label>EXTERNAL REQUEST ATTEMPTS</label><strong>{state.monitor.external_requests}</strong></article><article><label>TELEMETRY</label><strong>OFF</strong></article></div>
-      <section className="serviceTable"><label>LOCAL SERVICES</label>{state.monitor.services.map((service) => <div key={service.name}><b>{service.name}</b><span>{service.endpoint}</span><em className={service.status}>{service.status}</em></div>)}</section>
+      <section className="serviceTable"><label>CONFIGURED SERVICES</label>{state.monitor.services.map((service) => <div key={service.name}><b>{service.name}</b><span>{service.endpoint}</span><em className={service.status}>{service.status}</em></div>)}</section>
       <p className="monitorNote">{state.monitor.note}</p>
     </>}
   </main>;

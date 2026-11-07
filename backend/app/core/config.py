@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     vllm_api_key: str = "local"
     vllm_enable_thinking: bool = False
     vllm_max_tokens: int = 1280
+    # Explicit opt-in: prompts/context leave the machine in this mode.
+    remote_inference_enabled: bool = False
+    remote_vllm_url: str = ""
+    remote_vllm_model: str = ""
+    remote_vllm_api_key: SecretStr = SecretStr("")
+    remote_vllm_api_key_file: Path | None = None
+    hf_space_url: str = ""
+    hf_space_model: str = "Qwen/Qwen3-4B-Instruct-2507"
+    hf_token: SecretStr = SecretStr("")
+    hf_token_file: Path | None = None
     allow_deterministic_fallback: bool = True
     max_upload_mb: int = 25
     voice_model_path: Path = PROJECT_DIR / "models" / "faster-whisper-tiny.en"
@@ -105,6 +115,10 @@ def get_settings() -> Settings:
     settings = Settings()
     if settings.graphrag_service_token_file:
         settings.graphrag_service_token = settings.graphrag_service_token_file.read_text(encoding="utf-8").strip()
+    if settings.remote_vllm_api_key_file:
+        settings.remote_vllm_api_key = SecretStr(settings.remote_vllm_api_key_file.read_text(encoding="utf-8").strip())
+    if settings.hf_token_file:
+        settings.hf_token = SecretStr(settings.hf_token_file.read_text(encoding="utf-8").strip())
     validate_runtime_settings(settings)
     settings.workspace_root.mkdir(parents=True, exist_ok=True)
     settings.knowledge_root.mkdir(parents=True, exist_ok=True)
@@ -116,6 +130,12 @@ def get_settings() -> Settings:
 
 def validate_runtime_settings(settings: Settings) -> None:
     """Reject unsafe production configuration before opening the API."""
+    if settings.llm_provider.strip().lower() == "remote_vllm":
+        from app.llm.remote_vllm_provider import validate_remote_settings
+        validate_remote_settings(settings)
+    if settings.llm_provider.strip().lower() == "hf_space":
+        from app.llm.hf_space_provider import validate_hf_settings
+        validate_hf_settings(settings)
     if settings.environment.lower() != "production":
         return
     if settings.auth_mode.lower() == "disabled":

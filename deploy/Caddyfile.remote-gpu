@@ -1,0 +1,12 @@
+# Run Caddy natively on the GPU host with SOVEREIGN_GPU_HOST set to its DNS name.
+{$SOVEREIGN_GPU_HOST} {
+    # vLLM also has unauthenticated administrative endpoints. Expose only the
+    # two API paths used by this app; vLLM authenticates both with VLLM_API_KEY.
+    @inference path /v1/models /v1/chat/completions
+    handle @inference {
+        reverse_proxy 127.0.0.1:8001
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

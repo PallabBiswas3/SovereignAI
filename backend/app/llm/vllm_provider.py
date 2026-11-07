@@ -24,6 +24,23 @@ from app.resources.scheduler import ModelJob, ResourceScheduler, get_resource_sc
 class VLLMProvider(LocalModelProvider):
     """OpenAI-compatible vLLM adapter restricted to an internal endpoint."""
 
+    provider_name = "vllm"
+    inference_label = "Local"
+
+    @staticmethod
+    def _validate_endpoint(endpoint: str) -> None:
+        LocalNetworkPolicy.require_local(endpoint)
+
+    @staticmethod
+    def _error_detail(error: Exception) -> str:
+        return str(error)
+
+    def _new_client(self, timeout: float | None = None) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout or self.timeout_seconds, connect=min(10, timeout or self.timeout_seconds)),
+            follow_redirects=False, trust_env=False,
+        )
+
     def __init__(
         self,
         endpoint: str,
@@ -41,7 +58,7 @@ class VLLMProvider(LocalModelProvider):
         execution_mode: str = "STANDARD",
         priority: int = 50,
     ) -> None:
-        LocalNetworkPolicy.require_local(endpoint)
+        self._validate_endpoint(endpoint)
         base = endpoint.rstrip("/")
         self.endpoint = base if base.endswith("/v1") else f"{base}/v1"
         self.api_key = api_key
@@ -103,7 +120,7 @@ class VLLMProvider(LocalModelProvider):
         return GenerationResult(
             text=text,
             model=model,
-            provider=final.provider if final else "vllm",
+            provider=final.provider if final else self.provider_name,
             fallback=bool(final and final.fallback),
             runtime_stats=final.runtime_stats if final else {},
         )
@@ -125,7 +142,7 @@ class VLLMProvider(LocalModelProvider):
         first_token_at: float | None = None
         usage: dict[str, object] = {}
         owns_client = self.client is None
-        client = self.client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False)
+        client = self.client or self._new_client()
         try:
             async with self.scheduler.acquire_model(self._job(model)) as permit:
                 was_loaded = await self._is_model_available(client, model)
@@ -159,7 +176,7 @@ class VLLMProvider(LocalModelProvider):
                             if token:
                                 first_token_at = first_token_at or monotonic()
                                 self.lifecycle.mark_busy(model)
-                                yield GenerationChunk(text=token, model=model, provider="vllm")
+                                yield GenerationChunk(text=token, model=model, provider=self.provider_name)
                     if not saw_done:
                         raise ValueError("vLLM stream ended without a [DONE] record")
                     stats = self._runtime_stats(
@@ -169,15 +186,15 @@ class VLLMProvider(LocalModelProvider):
                     self._last_stats[model] = stats
                     self.lifecycle.complete(model, stats)
                     yield GenerationChunk(
-                        text="", model=model, provider="vllm", done=True, runtime_stats=stats
+                        text="", model=model, provider=self.provider_name, done=True, runtime_stats=stats
                     )
                 except ModelGenerationCancelled:
                     self.lifecycle.fail(model, "Generation cancelled by caller or disconnected client.")
                     raise
                 except (httpx.HTTPError, asyncio.TimeoutError, json.JSONDecodeError, ValueError) as exc:
-                    self.lifecycle.fail(model, str(exc))
+                    self.lifecycle.fail(model, self._error_detail(exc))
                     if not self.allow_fallback:
-                        raise RuntimeError(f"Local inference unavailable: {exc}") from exc
+                        raise RuntimeError(f"{self.inference_label} inference unavailable: {self._error_detail(exc)}") from None
                     stats = self._failure_stats(
                         started, first_token_at, was_loaded, permit.queue_wait_seconds, exc
                     )
@@ -213,7 +230,7 @@ class VLLMProvider(LocalModelProvider):
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         started = monotonic()
         owns_client = self.client is None
-        client = self.client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds), follow_redirects=False)
+        client = self.client or self._new_client()
         try:
             async with self.scheduler.acquire_model(self._job(model)) as permit:
                 was_loaded = await self._is_model_available(client, model)
@@ -238,12 +255,12 @@ class VLLMProvider(LocalModelProvider):
                     self._last_stats[model] = stats
                     self.lifecycle.complete(model, stats)
                     return StructuredGenerationResult(
-                        text=text, data=data, model=model, provider="vllm", runtime_stats=stats
+                        text=text, data=data, model=model, provider=self.provider_name, runtime_stats=stats
                     )
                 except (httpx.HTTPError, KeyError, IndexError, json.JSONDecodeError, ValueError) as exc:
-                    self.lifecycle.fail(model, str(exc))
+                    self.lifecycle.fail(model, self._error_detail(exc))
                     if not self.allow_fallback:
-                        raise RuntimeError(f"Local structured inference unavailable: {exc}") from exc
+                        raise RuntimeError(f"{self.inference_label} structured inference unavailable: {self._error_detail(exc)}") from None
                     stats = self._failure_stats(
                         started, None, was_loaded, permit.queue_wait_seconds, exc
                     )
@@ -258,7 +275,7 @@ class VLLMProvider(LocalModelProvider):
 
     async def list_available_models(self) -> list[dict[str, object]]:
         owns_client = self.client is None
-        client = self.client or httpx.AsyncClient(timeout=2, follow_redirects=False)
+        client = self.client or self._new_client(timeout=2)
         try:
             response = await client.get(f"{self.endpoint}/models", headers=self.headers)
             response.raise_for_status()
@@ -272,7 +289,7 @@ class VLLMProvider(LocalModelProvider):
         try:
             return {"available": True, "endpoint": self.endpoint, "models": await self.list_available_models()}
         except (httpx.HTTPError, ValueError) as exc:
-            return {"available": False, "endpoint": self.endpoint, "error": str(exc)}
+            return {"available": False, "endpoint": self.endpoint, "error": self._error_detail(exc)}
 
     async def model_runtime_stats(self, model: str | None = None) -> dict[str, object]:
         try:
@@ -280,7 +297,7 @@ class VLLMProvider(LocalModelProvider):
             runtime_error: str | None = None
         except (httpx.HTTPError, ValueError) as exc:
             models = []
-            runtime_error = str(exc)
+            runtime_error = self._error_detail(exc)
         return {
             "model": model,
             "running_models": models,
