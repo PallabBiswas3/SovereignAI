@@ -131,6 +131,7 @@ class HallucinationDetector(Detector):
                 "risk_role": "verification_router_only",
                 "risk_threshold": threshold,
                 "claims": len(record.atomic_claims),
+                "claim_extraction_truncated": bool(record.metadata.get("claim_extraction_truncated")),
                 "deterministically_supported": supported,
                 "conflict_candidates": conflict_candidates,
                 "unsupported_entity_diagnostics": unsupported_entity_claims,

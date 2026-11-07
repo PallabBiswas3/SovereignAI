@@ -192,7 +192,9 @@ class ControlPlane:
         decision = self.policy_engine.decide(interaction, findings, profile, latency_budget_exceeded=budget_exceeded, verification_depth=depth)
         stage_ms["policy_evaluation"] = (perf_counter() - stage_started) * 1000.0
         stage_started = perf_counter()
-        final_response = transform_response(interaction.response, decision.action, findings, profile)
+        final_response = transform_response(
+            interaction.response, decision.action, findings, profile, decision.matched_rules,
+        )
         stage_ms["response_transform"] = (perf_counter() - stage_started) * 1000.0
         verification = next((result for result in ordered_results if result.detector == "adaptivefact"), None)
         hallucination = results.get("hallucination")

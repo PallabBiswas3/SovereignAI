@@ -62,6 +62,11 @@ class ClaimExtractor:
     def extract(self, record: ResponseRecord) -> list[Claim]:
         claims: list[Claim] = []
         previous_subject: str | None = None
+        # The claim cap bounds computation. Record when it leaves claim-bearing
+        # text unextracted so callers can abstain instead of treating the
+        # unexamined remainder as verified.
+        record.metadata.pop("claim_extraction_truncated", None)
+        record.metadata.pop("claim_extraction_unextracted_start", None)
         for raw, start, end, parent_span in self._atomic_segments(record.generated_response or ""):
             prefix = _BULLET_PREFIX_RE.match(raw)
             if prefix:
@@ -79,6 +84,10 @@ class ClaimExtractor:
                 continue
             if len(clean) < self.config.min_claim_chars:
                 continue
+            if len(claims) >= self.config.max_claims:
+                record.metadata["claim_extraction_truncated"] = True
+                record.metadata["claim_extraction_unextracted_start"] = start
+                break
 
             numbers = extract_numbers(clean)
             dates = extract_dates(clean)
@@ -118,8 +127,6 @@ class ClaimExtractor:
                     span=(start, end),
                 )
             )
-            if len(claims) >= self.config.max_claims:
-                break
         return claims
 
     def _atomic_segments(self, text: str) -> list[tuple[str, int, int, tuple[int, int]]]:

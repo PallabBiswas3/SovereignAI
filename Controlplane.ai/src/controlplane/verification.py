@@ -12,7 +12,7 @@ from typing import Protocol
 from adaptivefact.agents.schema import AgentVerificationConfig
 from adaptivefact.agents.tools.context import ContextSearchTool
 from adaptivefact.agents.verifier import BoundedVerificationAgent
-from adaptivefact.data.schema import ResponseLabel, VerificationStatus
+from adaptivefact.data.schema import Claim, ResponseLabel, ResponseRecord, VerificationStatus
 from adaptivefact.extraction.claim_extractor import ClaimExtractionConfig
 from adaptivefact.pipeline.aggregation import aggregate_claims
 from adaptivefact.verification.deterministic import DeterministicVerifierConfig
@@ -20,6 +20,7 @@ from adaptivefact.verification.evidence import EvidenceRetrieverConfig
 from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer, profile_model_identity
 from adaptivefact.verification.phase5 import Phase5Pipeline
 from adaptivefact.verification.phase6 import Phase6NLIConfig, Phase6Pipeline
+from adaptivefact.verification.text import split_sentences
 from controlplane.detectors.privacy import mask_privacy_values
 from controlplane.compound_support import apply_compound_support
 from controlplane.range_facts import apply_cited_range_facts
@@ -27,12 +28,89 @@ from controlplane.reported_events import apply_cited_review_events
 from controlplane.evidence_authority import apply_evidence_authority_checks
 from controlplane.evidence_quality import EvidenceAssessment, EvidenceQualityConfig, EvidenceQualityGate
 from controlplane.factuality import PreparedFactuality, build_response_record
-from controlplane.schema import DetectorResult, Finding, FindingStatus, Interaction, RiskCategory, Severity, VerificationDepth
+from controlplane.schema import DetectorResult, Finding, FindingStatus, GroundingEvidence, Interaction, RiskCategory, Severity, VerificationDepth
 from controlplane.support_scorers import AlignScoreSupportScorer, MiniCheckSupportScorer, NLIEntailmentSupportScorer, SupportScorer
 
 
 _SOURCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
 _ASSET_ID = re.compile(r"\b[A-Za-z]+-\d+\b", re.IGNORECASE)
+# Same historical-claim vocabulary Phase 6 uses to admit superseded evidence.
+_HISTORICAL_CLAIM = re.compile(r"\b(?:historical|superseded|archived|formerly|previous|obsolete)\b", re.IGNORECASE)
+_RENDERED_EVIDENCE_HEADER = re.compile(r"\[GroundingEvidence [^\]\n]*\]")
+_NON_AUTHORITATIVE_STATUSES = frozenset({"draft", "unverified"})
+
+
+def _normalized(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def _can_supply_support(item: GroundingEvidence, claim: Claim) -> bool:
+    """Mirror the existing source-authority rules for positive support.
+
+    Draft/unverified documents never establish support. Superseded documents
+    may support only an explicitly cited or explicitly historical claim, which
+    is the rule Phase 6 already applies when selecting structured evidence.
+    """
+    status = str(item.metadata.get("document_status", "")).casefold()
+    if status in _NON_AUTHORITATIVE_STATUSES:
+        return False
+    if status != "superseded":
+        return True
+    cited = set(_SOURCE_CITATION.findall(claim.verification_text))
+    return bool(cited & {item.evidence_id, item.document_id, item.chunk_id}) or bool(
+        _HISTORICAL_CLAIM.search(claim.verification_text)
+    )
+
+
+def _support_relies_on_ineligible_evidence(claim: Claim, interaction: Interaction) -> bool:
+    """True when supporting text is witnessed only by sources that cannot support.
+
+    Phase 5 sentences, Phase 6 premises and deep-agent chunks are all drawn from
+    the flattened context, so a support decision can rest on a draft or
+    unverified document. Text also present in an eligible source (or in the
+    caller's legacy free-text context) remains acceptable.
+    """
+    eligible_sources: list[str] = []
+    ineligible_sources: list[str] = []
+    for item in interaction.grounding_evidence:
+        (eligible_sources if _can_supply_support(item, claim) else ineligible_sources).append(_normalized(item.text))
+    if not ineligible_sources:
+        return False
+    if interaction.context and interaction.context.strip():
+        eligible_sources.append(_normalized(interaction.context))
+    exclusive_ineligible = [
+        sentence
+        for source in ineligible_sources
+        for sentence in (_normalized(value) for value in split_sentences(source))
+        if sentence and not any(sentence in eligible for eligible in eligible_sources)
+    ]
+    for text in claim.evidence:
+        for sentence in split_sentences(_RENDERED_EVIDENCE_HEADER.sub(" ", text)):
+            key = _normalized(sentence)
+            if not key or any(key in eligible for eligible in eligible_sources):
+                continue
+            if any(key in source for source in ineligible_sources) or any(
+                fragment in key for fragment in exclusive_ineligible
+            ):
+                return True
+    return False
+
+
+def _unextracted_tail_claim(record: ResponseRecord) -> Claim | None:
+    """Represent response text left unextracted by the claim cap as an abstention."""
+    if not record.metadata.get("claim_extraction_truncated"):
+        return None
+    response = record.generated_response or ""
+    start = min(max(0, int(record.metadata.get("claim_extraction_unextracted_start", 0))), len(response))
+    return Claim(
+        id=f"{record.id}:claim:unextracted",
+        text=" ".join(response[start:].split()) or "(unextracted response remainder)",
+        span=(start, len(response)),
+        extraction_method="claim_extraction_limit",
+        status=VerificationStatus.UNKNOWN,
+        verifier_used="claim_extraction_limit",
+        verification_metadata={"support_guard_reason": "claim_extraction_limit"},
+    )
 
 
 class VerificationService(Protocol):
@@ -278,6 +356,14 @@ class AdaptiveFactVerificationService:
                 source_assets = [{value.casefold() for value in _ASSET_ID.findall(text)} for text in claim.evidence]
                 if assets and all(named and assets.isdisjoint(named) for named in source_assets):
                     coverage_guards[claim.id] = "support_names_different_asset"
+                if _support_relies_on_ineligible_evidence(claim, interaction):
+                    coverage_guards.setdefault(claim.id, "support_from_non_authoritative_evidence")
+        # The extraction cap bounds computation, not the evidence obligation:
+        # unextracted response text is an explicit abstention, never omitted.
+        unextracted = _unextracted_tail_claim(record)
+        if unextracted is not None:
+            record.atomic_claims.append(unextracted)
+            coverage_guards[unextracted.id] = "claim_extraction_limit"
         # Narrow support helpers may resolve a numeric relation, but cannot
         # discharge a source/claim coverage obligation or clear its hold.
         for claim in record.atomic_claims:
@@ -328,6 +414,7 @@ class AdaptiveFactVerificationService:
                 "response_status": aggregation.label.value,
                 "status_counts": aggregation.status_counts,
                 "claims_checked": len(record.atomic_claims),
+                "claim_extraction_truncated": unextracted is not None,
                 "phase5": phase5_runtime,
                 "phase5_reused": phase5_reused,
                 "stage_latency_ms": {
