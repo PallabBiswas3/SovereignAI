@@ -26,7 +26,14 @@ def wavelet_denoising(signal_matrix, wavelet: str = "db4", level: int | None = N
         detail = coeffs[-1]
         sigma = np.median(np.abs(detail - np.median(detail))) / 0.6745 if detail.size else 0.0
         threshold = sigma * np.sqrt(2 * np.log(max(len(col), 2)))
-        clean = [coeffs[0]] + [pywt.threshold(c, threshold, mode=threshold_rule) for c in coeffs[1:]]
+        # A zero noise estimate (flat or mostly flat channel) means a zero
+        # threshold, which is the identity. pywt's soft rule evaluates that as
+        # c * (1 - 0/|c|) and returns NaN for c == 0, poisoning every channel
+        # through correlation weighting; keep the coefficients unchanged instead.
+        if threshold > 0:
+            clean = [coeffs[0]] + [pywt.threshold(c, threshold, mode=threshold_rule) for c in coeffs[1:]]
+        else:
+            clean = list(coeffs)
         recon = pywt.waverec(clean, wavelet)[:len(col)]
         out[:, j] = recon
         metadata.append({"channel": j, "wavelet": wavelet, "level": use_level, "threshold": float(threshold), "rule": threshold_rule})

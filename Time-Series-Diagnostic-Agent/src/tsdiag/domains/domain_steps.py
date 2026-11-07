@@ -237,10 +237,20 @@ def turbo_decision(s):
 def transformer_sync(s):
     x=matrix(s["signal_matrix"],minimum=32); fs=float(s["sampling_rate_hz"]); pos=names(s["sensor_positions"],x.shape[1],"sensor_positions")
     if fs<=0 or not np.isfinite(fs): raise ValueError("sampling_rate_hz must be positive")
+    # A flat-line channel carries no waveform evidence; abstain explicitly rather
+    # than report "no anomaly" for a dead or disconnected sensor.
+    flat=[pos[j] for j in range(x.shape[1]) if np.ptp(x[:,j])==0]
+    if flat: raise ValueError(f"constant (flat-line) channels cannot be analysed: {flat}")
     return {"signal_matrix":x,"sampling_rate_hz":fs,"sensor_positions":pos,"quality_flags":[],"sync_error":0.0,"channel_statistics":{"std":x.std(0)}}
 
 
-def transformer_denoise(s): return wavelet_denoising(s["signal_matrix"],s.get("wavelet","db4"),s.get("level"),s.get("threshold_rule","soft"))
+def transformer_denoise(s):
+    out=wavelet_denoising(s["signal_matrix"],s.get("wavelet","db4"),s.get("level"),s.get("threshold_rule","soft"))
+    # A zero wavelet noise estimate (flat or mostly flat channel) has no validated
+    # interpretation in this workflow; abstain explicitly instead of diagnosing.
+    degenerate=[s["sensor_positions"][row["channel"]] for row in out["denoising_metadata"] if not row["threshold"]>0]
+    if degenerate: raise ValueError(f"channels with zero wavelet noise estimate (flat or mostly flat) cannot be analysed: {degenerate}")
+    return out
 def transformer_corr(s): return cross_correlation_analysis(s["denoised_signal_matrix"])
 def transformer_weights(s): return correlation_sensor_weighting(s["correlation_energy"])
 def transformer_fuse(s): return multisensor_fusion(s["denoised_signal_matrix"],s["sensor_weights"])

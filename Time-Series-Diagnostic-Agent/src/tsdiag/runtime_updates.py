@@ -339,8 +339,17 @@ def apply_diagnostic_updates(request, result, execution):
         encoded = json.loads(json.dumps(report.model_dump(mode="json"), allow_nan=False))
         result.diagnostic_updates.append(encoded)
         evidence_id = f"diagnostic-update-{len(result.diagnostic_updates)}"
+        # Evidence statements are displayed as sources. When the domain policy
+        # holds the result, the statement must say so and must not restate a
+        # forecast the policy withheld (e.g. an interval that is too wide).
+        held = result.decision == "abstain" and report.status == "completed"
         statement = report.summary
-        if report.point_estimate is not None:
+        if held:
+            statement = (f"Policy hold ({result.abstain_reason}): supplementary analysis only, "
+                         f"not a released result. {statement}")
+            if report.point_estimate is not None:
+                statement += " The model forecast is withheld."
+        elif report.point_estimate is not None:
             statement += f" Model RUL estimate: {report.point_estimate:.6g} {report.unit}; interval: {report.interval} {report.unit}."
         if report.synthetic_artifact:
             statement = "Synthetic demonstration artifact. " + statement
@@ -369,6 +378,6 @@ def apply_diagnostic_updates(request, result, execution):
                     calibration_dataset=report.calibration_dataset, details={"forecast_unavailable": True})
             result.uncertainty = None
             result.metadata["allow_confidence_complement_uncertainty"] = False
-        if result.decision == "abstain" and report.status == "completed":
+        if held:
             encoded["details"]["policy_hold_remains"] = True
     return result

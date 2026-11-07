@@ -24,6 +24,11 @@ class BatteryPrognosticPipeline:
         self.minimum_observations = int(minimum_observations)
         self.slope_window = int(slope_window)
 
+    @property
+    def _horizon(self) -> str:
+        # Name the configured threshold; a fixed "1.4Ah" label misreports other cells.
+        return f"cycles_to_{self.eol_capacity_ah:g}Ah_EOL"
+
     def run(self, cycle_index, capacity_ah, *, battery_id="cell") -> DiagnosticResult:
         x = np.asarray(cycle_index, dtype=float).ravel()
         y = np.asarray(capacity_ah, dtype=float).ravel()
@@ -69,7 +74,7 @@ class BatteryPrognosticPipeline:
                 evidence=evidence,
                 prognosis=PrognosisResult(
                     risk=None,
-                    horizon="cycles_to_1.4Ah_EOL",
+                    horizon=self._horizon,
                     remaining_useful_life=None,
                     uncertainty=None,
                     details=estimate,
@@ -116,7 +121,7 @@ class BatteryPrognosticPipeline:
             )],
             prognosis=PrognosisResult(
                 risk=float(estimate["risk"]),
-                horizon="cycles_to_1.4Ah_EOL",
+                horizon=self._horizon,
                 remaining_useful_life=rul,
                 uncertainty=float(np.clip(relative_uncertainty, 0.0, 1.0)),
                 details={
