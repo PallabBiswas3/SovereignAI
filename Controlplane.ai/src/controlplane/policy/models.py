@@ -42,7 +42,9 @@ class PolicyProfile(BaseModel):
     description: str = ""
     geography: str = "global"
     industry: str = "general"
-    latency_budget_ms: int = Field(default=1000, gt=0)
+    latency_budget_ms: int | None = Field(
+        default=1000, gt=0, description="Verification latency limit; null disables timing-based review."
+    )
     default_action: EnforcementAction = EnforcementAction.ALLOW
     checks: dict[str, DetectorPolicy]
     rules: list[PolicyRule]

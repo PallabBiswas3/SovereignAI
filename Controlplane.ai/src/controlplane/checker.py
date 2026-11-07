@@ -184,7 +184,10 @@ class ControlPlane:
                 )
 
         elapsed_before_policy = (perf_counter() - started) * 1000.0
-        budget_exceeded = elapsed_before_policy > profile.latency_budget_ms
+        budget_exceeded = (
+            profile.latency_budget_ms is not None
+            and elapsed_before_policy > profile.latency_budget_ms
+        )
         stage_started = perf_counter()
         decision = self.policy_engine.decide(interaction, findings, profile, latency_budget_exceeded=budget_exceeded, verification_depth=depth)
         stage_ms["policy_evaluation"] = (perf_counter() - stage_started) * 1000.0

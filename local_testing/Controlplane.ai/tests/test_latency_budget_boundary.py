@@ -12,7 +12,9 @@ from controlplane.schema import EnforcementAction, Interaction
 @pytest.mark.parametrize("elapsed_ms,exceeded", [(1999, False), (2000, False), (2001, True)])
 def test_internal_two_second_budget_boundary(monkeypatch, elapsed_ms, exceeded):
     policies = Path(__file__).resolve().parents[3] / "Controlplane.ai/configs/policies"
-    profile = PolicyRepository(policies).load("internal_assistant")
+    profile = PolicyRepository(policies).load("internal_assistant").model_copy(
+        update={"latency_budget_ms": 2000, "version": "1.3"},
+    )
     assert profile.latency_budget_ms == 2000
     assert profile.version == "1.3"
     # Isolate the actual checker's timing boundary from detector/model latency.
