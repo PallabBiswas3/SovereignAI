@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.config import get_settings
+from app.identity.dependencies import get_current_principal
 from app.llm.ollama_provider import OllamaProvider
 from app.llm.factory import configured_local_provider
 from app.llm.vllm_provider import VLLMProvider
@@ -16,7 +17,9 @@ from app.rag.factory import configured_reranker
 from app.rag.reranking import LocalCrossEncoderReranker
 
 
-router = APIRouter(prefix="/api/models", tags=["models"])
+# Status probes every configured inference endpoint (including any remote GPU
+# host) and returns internal endpoints/errors; it must not be anonymous.
+router = APIRouter(prefix="/api/models", tags=["models"], dependencies=[Depends(get_current_principal)])
 
 
 def get_registry() -> ModelRegistry:

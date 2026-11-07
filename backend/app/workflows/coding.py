@@ -247,14 +247,19 @@ class CodingWorkflow:
         if not execution.output_directory:
             return []
         source_root = Path(execution.output_directory)
+        resolved_root = source_root.resolve()
         allowed = {".csv", ".json", ".png", ".jpg", ".jpeg", ".svg", ".txt", ".md"}
         collected = []
         for name in execution.generated_files:
             source = source_root / Path(name).name
-            if source.name == input_path.name or source.suffix.lower() not in allowed or not source.is_file():
+            if source.name == input_path.name or source.suffix.lower() not in allowed:
+                continue
+            # Sandboxed code controls this directory. A symlink would be followed
+            # on the host and could copy host files into the user's artifacts.
+            if source.is_symlink() or not source.is_file() or source.resolve().parent != resolved_root:
                 continue
             target = destination / source.name
-            shutil.copy2(source, target)
+            shutil.copy2(source, target, follow_symlinks=False)
             collected.append(str(target))
         return collected
 

@@ -15,6 +15,21 @@ from app.identity.models import ClearanceLevel, Permission, Principal, Role
 from app.identity.passwords import PasswordHasher
 
 
+_DUMMY_HASHES: dict[tuple[type, str, int], str] = {}
+
+
+def _dummy_hash(hasher: PasswordHasher) -> str:
+    """A hash of a random secret in this hasher's own format, cached per configuration.
+
+    The key includes the hasher type and algorithm: a dummy produced by another
+    hasher would be rejected without key derivation and reintroduce the leak.
+    """
+    key = (type(hasher), str(getattr(hasher, "algorithm", "")), int(hasher.iterations))
+    if key not in _DUMMY_HASHES:
+        _DUMMY_HASHES[key] = hasher.hash(secrets.token_urlsafe(32))
+    return _DUMMY_HASHES[key]
+
+
 class IdentityProvider(ABC):
     @abstractmethod
     def authenticate(self, email: str, password: str) -> UserRecord | None:
@@ -42,7 +57,12 @@ class LocalIdentityProvider(IdentityProvider):
 
     def authenticate(self, email: str, password: str) -> UserRecord | None:
         user = self.session.query(UserRecord).filter(UserRecord.email_normalized == email.strip().lower()).first()
-        if not user or not user.enabled or not self.password_hasher.verify(password, user.password_hash):
+        if not user or not user.enabled:
+            # Spend the same key-derivation work as a real check so response
+            # time does not reveal whether an account exists or is enabled.
+            self.password_hasher.verify(password, _dummy_hash(self.password_hasher))
+            return None
+        if not self.password_hasher.verify(password, user.password_hash):
             return None
         return user
 
