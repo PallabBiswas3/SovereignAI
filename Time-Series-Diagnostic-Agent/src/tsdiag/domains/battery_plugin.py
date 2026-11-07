@@ -40,7 +40,29 @@ class BatteryPlugin(BatteryPackPlugin):
                 state["capacity_ah"],
                 battery_id=state.get("battery_id", "cell"),
             )
-            return {"battery_prognosis": result}
+            adapter = state.get("capacity_prognostic_model")
+            if adapter is None:
+                return {"battery_prognosis": result}
+            from ..models import UncertaintyEstimate
+            report = adapter.predict_diagnostic(state)
+            if report.status == "completed" and not result.abstained:
+                result.prognosis.remaining_useful_life = report.point_estimate
+                result.prognosis.risk = None
+                result.prognosis.horizon = "cycles"
+                result.prognosis.uncertainty = None
+                result.prognosis.details = {"method": report.method, "interval": report.interval,
+                    "interval_calibrated": False, "last_observed_cycle": state["cycle_index"][-1],
+                    "eol_capacity_ah": state["eol_capacity_ah"]}
+                for hypothesis in result.hypotheses:
+                    if hypothesis.label == "capacity_fade":
+                        hypothesis.details["rul_cycles"] = report.point_estimate
+                        hypothesis.details["forecast_method"] = report.method
+                result.uncertainty = None
+                result.uncertainty_estimate = UncertaintyEstimate(None, report.method, calibrated=False,
+                    interval=report.interval, details={"interval_is_model_based": True})
+                result.metadata["allow_confidence_complement_uncertainty"] = False
+                result.metadata["confidence_interpretation"] = "baseline_capacity_evidence_not_forecast_accuracy"
+            return {"battery_prognosis": result, "capacity_update": report.model_dump(mode="json")}
 
         return Workflow((Step("battery_prognosis", prognosis, version="capacity-history-v3"),), version="prognosis-1.1")
 

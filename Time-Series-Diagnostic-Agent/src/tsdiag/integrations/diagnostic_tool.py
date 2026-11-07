@@ -11,12 +11,16 @@ from ..input_contract import Envelope, WORKFLOWS, validate_payload, model_input_
 def _public_schema():
     schema = Envelope.model_json_schema()
     variants = []
-    for domain, task, policy, model, _ in WORKFLOWS.values():
+    for domain, task, policy, model, slots in WORKFLOWS.values():
         inputs = model.model_json_schema()
         schema.setdefault("$defs", {}).update(inputs.pop("$defs", {}))
         variants.append({"properties": {
             "domain": {"const": domain}, "task": {"const": task},
             "policy_ref": {"const": policy}, "inputs": inputs,
+            "model_refs": {"type": "object", "properties": {
+                slot: {"type": "string", "pattern": r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"} for slot in slots},
+                "additionalProperties": False,
+                "required": ["trained_rul_model"] if domain == "turbofan" else []},
         }})
     schema["oneOf"] = variants
     return schema

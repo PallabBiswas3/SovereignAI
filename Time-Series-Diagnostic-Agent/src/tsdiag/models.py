@@ -201,8 +201,13 @@ class DiagnosticResult:
     provenance: RunProvenance | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "1.0"
+    diagnostic_updates: list[dict[str, Any]] = field(default_factory=list)
 
     def validate(self) -> None:
+        if self.diagnostic_updates:
+            from .runtime_updates import DiagnosticUpdate
+            for update in self.diagnostic_updates:
+                DiagnosticUpdate.model_validate(update)
         if not self.domain.strip():
             raise ValueError("domain must be non-empty")
         if not self.task.strip():

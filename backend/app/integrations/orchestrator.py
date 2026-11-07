@@ -612,6 +612,14 @@ class IndustrialIntegrationOrchestrator:
                 f"abnormal={detection.get('abnormal', 'unknown')}; "
                 f"top_hypothesis={top.get('label', 'none')}."
             )
+            updates = diagnostic.get("diagnostic_updates") or []
+            if updates:
+                # The service's typed summaries are already bounded and JSON-safe.
+                # Do not substitute supplementary alarms for the policy decision.
+                sections.append("SELECTED DIAGNOSTIC ANALYSIS:\n" + json.dumps(updates, ensure_ascii=True) +
+                    "\nPreserve abstentions and policy holds. Supplementary alarms are not confirmed faults. "
+                    "Label synthetic artifacts and model-based, uncalibrated intervals explicitly. "
+                    "Prediction-set coverage is not individual diagnosis confidence.")
             identified = IndustrialIntegrationOrchestrator._diagnostic_grounding_evidence(diagnostic, linked=True)
             if identified:
                 sections.append("IDENTIFIED DIAGNOSTIC EVIDENCE (tool findings, not confirmed physical causes):\n" + "\n".join(

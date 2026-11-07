@@ -7,10 +7,92 @@ improvement log are maintained in
 [`docs/PROJECT_DIRECTION.md`](docs/PROJECT_DIRECTION.md). Update that document
 instead of creating additional planning or status notes.
 
+## Connected diagnostic updates - 4 November 2026
+
+The research APIs below now have explicit runtime adapters in
+[`runtime_updates.py`](src/tsdiag/runtime_updates.py). They run through the existing
+`diagnose()` / `diagnose_tool()` / `POST /v1/diagnose` boundary, are preserved by
+the application's integration response, and appear in the diagnostic workbench.
+Default model selection and domain/release policies remain unchanged.
+
+| Workflow | `model_refs` slot | Connected adapter |
+| --- | --- | --- |
+| Transformer fault diagnosis | `raw_waveform_model` | Fitted sequence classifier plus an independently fitted conformal calibrator; singleton-or-abstain prediction sets with explicit class-column mapping. |
+| Turbofan RUL | `trained_rul_model` | Fitted HGB/CNN ensemble plus uncapped conformal intervals; optional frozen regime normalization using aligned `operating_settings`. Existing wide-interval and calibrated-RUL requirements still apply. |
+| Battery capacity prognosis | `capacity_prognostic_model` | PF/GP forecast from a fresh copy of a registered template and the observed prefix. Unbounded/censored quantiles withhold the forecast; finite intervals remain explicitly uncalibrated. |
+| Bearing diagnosis | `diagnostic_update` | Supplementary modulation features, optional healthy-score threshold, and order tracking when a band and aligned `shaft_speed_rpm_trace` are configured. |
+| Wind monitoring | `diagnostic_update` | Frozen event calibration applied to residuals from a fixed, train-only NBM. Baseline measurement-quality and regime-support holds remain authoritative. |
+
+Process sensitivity is already part of the Process plugin; this connection does
+not introduce another Process detector or change its thresholds. Bearing/Wind
+updates add evidence without replacing their domain policy's decision. Selecting
+an unavailable, modified or incompatible artifact abstains instead of silently
+using another model. Ambiguous transformer prediction sets also force abstention.
+
+Each selected adapter adds a typed `diagnostic_updates` result, an identified
+evidence record and a timed trace step. Results retain model version/checksum,
+training/calibration dataset identifiers, synthetic-artifact status, prediction
+sets or forecast intervals, and any existing policy hold. The backend synthesis
+prompt carries these qualifications, while unlinked diagnostic data stays out of
+the document assessment. The UI displays holds and model-based uncertainty.
+Calibration applies to the named statistic/set/interval, not an individual
+diagnosis's correctness probability.
+
+### Try the connected synthetic prototype
+
+From this directory, with the API extra installed:
+
+```powershell
+$env:OMP_NUM_THREADS = "1"
+..\.venv\Scripts\python.exe examples/connect_diagnostic_updates.py
+```
+
+This fits explicitly labelled **synthetic demonstration artifacts**, registers
+them in memory, exercises all five connections, and writes request/response JSON
+under ignored `outputs/connected-updates-demo/`. It does not train a plant model
+or change saved/default models. Add `--serve --port 8200` to serve those same
+registered artifacts through the normal API on loopback. Use an available port;
+do not start a second service on an occupied one. Keep the service in that process:
+the standard `uvicorn tsdiag.api:app` command does not install demo artifacts.
+
+The emitted request JSON can be posted to `/v1/diagnose` or supplied as task-bound
+diagnostic input in the application. In the integration form, use the matching
+workflow, measurement/metadata values and generated `synthetic-demo-*-v1` model ID.
+The existing backend and frontend must load this source revision to use the new
+slots and result display. A running old process is not automatically upgraded.
+
+### Register your own artifacts
+
+Call `register_diagnostic_update()` from trusted diagnostic-service startup code,
+before serving requests. Pass an adapter with fitted model/calibration artifacts,
+a new versioned ID, `model_input_profile(validated_example_payload)`, dataset
+identifiers, the truthful synthetic flag, and known training/tuning specimen IDs
+in `excluded_specimen_ids`. The registry stores a copied, checked snapshot; use a
+new registration/version after retraining. Battery templates are copied again for
+each request, preventing cross-request fitting or shared particle-filter state.
+
+Transformer adapters require ordered `Ua, Ub, Uc, Ia, Ib, Ic`, compatible sampling
+metadata and the fitted extractor's cycle count. Stacked sequence models that
+require extra probability columns are not supported by this adapter. Turbofan
+cycles must be positive integer indices, and operating-setting columns must match
+the frozen normalizer's training layout and units. Battery EOL must match the
+registered template. Wind event identities must be disjoint from its calibration
+and validation IDs; operators must also declare upstream NBM training identities.
+Order tracking requires at least two shaft revolutions in the supplied record.
+Callers remain responsible for physical-asset and hidden-dependence checks.
+
+Clients send IDs and measurements only. No artifact-file uploads, executable
+objects, client-supplied calibration pools or decision-threshold overrides were
+added to the public contract. No accepted real-data artifact is bundled here.
+
+The authoritative update response schema is included in the input catalogue;
+generate its frontend type with `python scripts/generate_diagnostic_update_types.py`
+from the application root (`--check` verifies that it is current).
+
 ## Latest diagnostic changes - 3 November 2026
 
 Source baseline: `development`, commit `d157ed6`. The additions below are
-available as Python research utilities; they do not automatically run inside
+available as Python research utilities; without selecting a registered adapter they do not run inside
 `diagnose()` or `POST /v1/diagnose`. Package `0.4.0`, pipeline `1.1.0`, existing
 domain models and public input contract `industrial-diagnostic-v1` are retained.
 No new Process detector was introduced in this batch. Model promotion, real-data
@@ -102,8 +184,9 @@ complete persistence windows, and exclusions must be reported with FAR.
 `early_warning_lead_time(first_alarm, onset)` is signed: positive before onset,
 negative after it. `time_to_event_end(first_alarm, event_end)` is a separate
 quantity. These helpers return sample-index differences, not seconds. No Wind
-artifact has been accepted on independent CARE data, and this calibrator has not
-been wired into `WindScadaPlugin`.
+artifact has been accepted on independent CARE data. The default `WindScadaPlugin`
+is unchanged; the explicit registered adapter described above exposes the frozen
+event calibrator as supplementary analysis.
 
 ### Verification and remaining integration work
 

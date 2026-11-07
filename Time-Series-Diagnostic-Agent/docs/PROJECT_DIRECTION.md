@@ -1,5 +1,16 @@
 # Project Direction and Improvement Log
 
+Runtime connection reviewed 2026-11-04: server-registered adapters now route
+sequence/conformal classification, calibrated RUL ensembles, PF/GP capacity
+forecasts, bearing modulation/order features and frozen Wind event calibration
+through the existing public pipeline. Default policies and model choices remain
+unchanged. Bearing/Wind additions are supplementary; selected model uncertainty
+can withhold a result, never lift an existing policy hold. API outputs and UI
+retain calibration scope and synthetic provenance. The connection demonstration
+trains generated fixtures only; it does not update retained real-data baselines.
+Independent artifact validation and full authenticated application acceptance
+remain pending; setup is documented in the diagnostic README.
+
 Last reviewed: 2026-09-17
 
 Three-domain follow-up reviewed 2026-10-10: Transformer workflow 2.1 adds named

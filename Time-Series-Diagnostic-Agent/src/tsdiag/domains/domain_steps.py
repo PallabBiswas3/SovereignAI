@@ -182,7 +182,10 @@ def turbo_health(s):
 
 def turbo_rul(s):
     h=s["health_index"]; cycles=s["cycle_index"]; slope,intercept=np.polyfit(cycles,h,1); model=s.get("trained_rul_model")
-    if callable(model):
+    if hasattr(model, "predict_diagnostic"):
+        raw = model.predict_diagnostic(s)
+        rul = float(raw["rul_cycles"]); method = "trained"
+    elif callable(model):
         if getattr(model, "interval_calibration", None) is not None and hasattr(model, "predict_with_interval"):
             try:
                 raw = model.predict_with_interval(s["signal_matrix"], cycles, unit_id=s.get("engine_id"))
@@ -195,7 +198,7 @@ def turbo_rul(s):
     else: rul=max(0,float((float(s.get("failure_threshold",3))-intercept)/slope-cycles[-1])) if slope>1e-9 else None; method="linear"
     if rul is not None and (not np.isfinite(rul) or rul < 0): raise ValueError("RUL prediction must be finite and nonnegative")
     residual=h-(slope*cycles+intercept); return {"rul_cycles":rul,"rul_method":method,"health_slope":float(slope),"fit_error":float(np.sqrt(np.mean(residual**2))),
-      "rul_calibration_output": raw if callable(model) and isinstance(raw,dict) and getattr(model,"interval_calibration",None) is not None else {}}
+      "rul_calibration_output": raw if hasattr(model, "predict_diagnostic") or (callable(model) and isinstance(raw,dict) and getattr(model,"interval_calibration",None) is not None) else {}}
 
 
 def turbo_uncertainty(s):
@@ -280,6 +283,7 @@ def transformer_classify(s):
       "predicted_class":out.get("predicted_class",out.get("label")),
       "model_confidence":float(out.get("confidence",.5)),
       "classifier_model_family":out.get("model_family",family),
+      "classifier_update":out.get("diagnostic_update"),
     }
 
 

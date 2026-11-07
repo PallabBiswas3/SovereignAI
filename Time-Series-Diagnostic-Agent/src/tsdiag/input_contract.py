@@ -96,11 +96,14 @@ class Bearing(StrictModel):
     shaft_speed_rpm: Positive
     load_percent: Annotated[Number, Field(ge=0, le=100)]
     fault_frequencies: Frequencies = Field(description="Characteristic frequencies in Hz at the supplied shaft speed; obtain from bearing geometry/manufacturer, do not guess.")
+    shaft_speed_rpm_trace: Vector | None = Field(default=None, description="Optional measured shaft RPM per vibration sample for registered order-tracking analysis.")
 
     @model_validator(mode="after")
     def check(self):
         if max(self.fault_frequencies.model_dump().values()) >= self.sampling_rate_hz / 2:
             raise ValueError("fault frequencies must be below Nyquist (sampling_rate_hz / 2)")
+        if self.shaft_speed_rpm_trace is not None and (len(self.shaft_speed_rpm_trace) != len(self.signal) or min(self.shaft_speed_rpm_trace) <= 0):
+            raise ValueError("shaft_speed_rpm_trace must be positive and align with vibration samples")
         return self
 
 
@@ -193,6 +196,7 @@ class Turbofan(StrictModel):
     engine_id: Text
     regime_map_revision: Text
     require_calibrated_rul: Literal[True] = Field(description="Public RUL requests require calibrated model uncertainty; cannot be disabled by clients.")
+    operating_settings: Matrix | None = Field(default=None, description="Optional operating-setting vectors per cycle, required by registered regime-normalized RUL adapters.")
 
     @model_validator(mode="after")
     def check(self):
@@ -200,6 +204,8 @@ class Turbofan(StrictModel):
         cycles_check(self.cycle_index, rows)
         if min(self.cycle_index) < 0 or len(self.operating_conditions) != rows:
             raise ValueError("nonnegative cycles and operating_conditions must align with rows")
+        if self.operating_settings is not None and matrix_shape(self.operating_settings, "operating_settings")[0] != rows:
+            raise ValueError("operating_settings must align with measurement rows")
         return self
 
 
@@ -220,11 +226,11 @@ class Transformer(StrictModel):
 
 # Expose only tasks that the current plugins actually execute (not merely plan).
 WORKFLOWS = {
-    "bearing": ("bearing", "fault_diagnosis", "bearing-policy-v2", Bearing, ()),
+    "bearing": ("bearing", "fault_diagnosis", "bearing-policy-v2", Bearing, ("diagnostic_update",)),
     "process": ("process", "root_cause", "process-policy-v3", Process, ("trained_fault_classifier",)),
-    "wind_scada": ("wind_scada", "condition_monitoring", "wind-care-event-policy:1.0", Wind, ()),
+    "wind_scada": ("wind_scada", "condition_monitoring", "wind-care-event-policy:1.0", Wind, ("diagnostic_update",)),
     "battery_diagnosis": ("battery", "anomaly_localization", "battery-pack-policy-v2", BatteryDiagnosis, ("trained_prognostic_model",)),
-    "battery_prognosis": ("battery", "prognosis", "capacity-prognosis-policy-v1", BatteryPrognosis, ()),
+    "battery_prognosis": ("battery", "prognosis", "capacity-prognosis-policy-v1", BatteryPrognosis, ("capacity_prognostic_model",)),
     "turbofan": ("turbofan", "remaining_useful_life", "turbofan-policy-v2", Turbofan, ("trained_rul_model",)),
     "transformer": ("transformer", "fault_diagnosis", "transformer-policy-v2", Transformer, ("raw_waveform_model", "trained_image_model")),
 }
@@ -286,12 +292,20 @@ def validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def catalogue() -> dict[str, Any]:
+    from .runtime_updates import DiagnosticUpdate
     return {
         "contract_version": VERSION,
         "metadata_schema": Metadata.model_json_schema(),
+        "diagnostic_update_schema": DiagnosticUpdate.model_json_schema(),
         "workflows": [
             {"id": key, "domain": domain, "task": task, "policy_ref": policy,
              "input_schema": model.model_json_schema(), "model_slots": list(slots),
+             "model_slot_descriptions": {
+                 slot: {"diagnostic_update": "Optional registered supplementary bearing or Wind analysis.",
+                        "capacity_prognostic_model": "Optional registered particle-filter or GP capacity forecast.",
+                        "raw_waveform_model": "Registered waveform classifier; supports sequence features with conformal prediction sets.",
+                        "trained_rul_model": "Registered calibrated RUL model; supports regime-normalized ensembles."}.get(slot, "Registered model ID.")
+                 for slot in slots},
              "required_model_slots": ["trained_rul_model"] if domain == "turbofan" else []}
             for key, (domain, task, policy, model, slots) in WORKFLOWS.items()
         ],
@@ -313,5 +327,6 @@ def model_input_profile(payload: dict[str, Any]) -> dict[str, Any]:
             "channel_names", "channel_units", "sensor_positions", "sampling_rate_hz",
             "signal_unit", "channel_name", "voltage_unit", "temperature_unit", "current_unit",
             "capacity_unit", "regime_map_revision",
+            "fundamental_hz",
         ) if key in inputs},
     }

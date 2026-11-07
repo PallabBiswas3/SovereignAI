@@ -225,6 +225,24 @@ def _resolve_models(request: DiagnosticRequest) -> tuple[DiagnosticRequest, dict
     versions: dict[str, str] = {}; checksums: dict[str, str] = {}
     for slot, ref in model_refs.items():
         record = model_registry.resolve(ref, validate=True); versions[slot] = record.version
+        if slot in {"diagnostic_update", "capacity_prognostic_model"} and record.metadata.get("kind") != "diagnostic_update":
+            raise ValueError("this slot requires a registered diagnostic update adapter")
+        if record.metadata.get("kind") == "diagnostic_update":
+            from .runtime_updates import ADAPTERS, TransformerSequenceAdapter
+            artifact = record.artifact
+            if type(artifact) not in ADAPTERS or (artifact.domain, artifact.task, artifact.slot) != (request.domain, request.task, slot):
+                raise ValueError("diagnostic update is not compatible with the requested domain/task/slot")
+            context = request.run_context.metadata if request.run_context else {}
+            if str(context.get("specimen_id", "")) in record.metadata.get("excluded_specimen_ids", ()):
+                raise ValueError("prediction specimen overlaps registered training/tuning units")
+            if isinstance(artifact, TransformerSequenceAdapter) and tuple(values.get("sensor_positions", ())) != ("Ua", "Ub", "Uc", "Ia", "Ib", "Ic"):
+                raise ValueError("sequence adapter requires named phase order Ua, Ub, Uc, Ia, Ib, Ic")
+            if isinstance(artifact, TransformerSequenceAdapter):
+                cycles = artifact.model._fitted_extractor.cycles_in_window
+                if cycles is not None and values.get("fundamental_hz") is not None:
+                    actual = len(values["signal_matrix"]) * float(values["fundamental_hz"]) / float(values["sampling_rate_hz"])
+                    if not np.isclose(actual, cycles, rtol=1e-6, atol=1e-8):
+                        raise ValueError("waveform duration/fundamental does not match registered sequence cycles")
         if public_profile is not None:
             if record.metadata.get("input_profile") != public_profile:
                 raise ValueError(f"model {ref!r} input profile does not match contract/task/channel order/units/sampling rate")
@@ -258,6 +276,9 @@ def _diagnose_request(request: DiagnosticRequest) -> DiagnosticResult:
         workflow = plugin.workflow(effective_request)
         execution, trace = WorkflowExecutor().run(workflow, validated)
         result = policy.decide(execution, trace)
+        if effective_request.model_refs:
+            from .runtime_updates import apply_diagnostic_updates
+            result = apply_diagnostic_updates(effective_request, result, execution)
         if effective_request.task is not None: result.task = effective_request.task
         # The workflow object is the authority for workflow provenance. Policies
         # may add metadata, but must not stamp a conflicting workflow version.

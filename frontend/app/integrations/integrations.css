@@ -75,6 +75,9 @@
 .assessmentPreview p { font-size: 13px; line-height: 1.6; color: var(--form-muted); margin: 7px 0 0; }
 .integrationEmpty > small { font-size: 12px; line-height: 1.7; color: #cbbf98; }
 .integrationResult :is(label, p, summary, b, code, a) { overflow-wrap: anywhere; }
+.diagnosticUpdates { display: grid; gap: 16px; margin-top: 18px; }
+.diagnosticUpdates article { border-top: 1px solid var(--form-border, #3b4148); padding-top: 14px; }
+.diagnosticUpdates h3 { font-size: 14px; margin: 0 0 10px; }
 @media (max-width: 1100px) {
   .integrationPage .integrationLayout { grid-template-columns: minmax(0, 1fr); }
   .integrationPage .integrationStatus { grid-template-columns: repeat(3, minmax(0, 1fr)); }

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import DiagnosticForm, { Catalogue, Diagnostic } from "./DiagnosticForm";
+import DiagnosticUpdates from "./DiagnosticUpdates";
+import type { DiagnosticUpdate } from "../../lib/diagnostic-update";
 import "./integrations.css";
 
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -20,7 +22,7 @@ type Analysis = {
     claims?: Array<{ id: string; claim_text: string }>;
     verification?: { summary?: Record<string, number>; results?: Array<{ label?: string }> };
   };
-  diagnostic?: { decision?: string; detection?: { abnormal?: boolean }; hypotheses?: Array<{ label?: string; confidence?: number }>; recommended_actions?: string[] };
+  diagnostic?: { decision?: string; abstain_reason?: string; detection?: { abnormal?: boolean }; hypotheses?: Array<{ label?: string; score?: number }>; recommended_actions?: string[]; diagnostic_updates?: DiagnosticUpdate[] };
   controlplane?: { decision?: { action?: string; risk_score?: number; reason?: string }; findings?: Array<{ category: string; severity: string; message: string }> };
   model_runtime?: { provider?: string; model?: string; ttft_ms?: number; tokens_per_second?: number; prompt_tokens?: number; fallback?: boolean };
   timings_ms?: Record<string, number>;
@@ -117,7 +119,7 @@ export default function IntegrationsPage() {
           <div className="releaseHeader"><div><label>{analysis.run_id}</label><h2>{analysis.released ? "Released by ControlPlane" : "Not released"}</h2></div><span className={analysis.released ? "released" : "held"}>{analysis.controlplane?.decision?.action ?? analysis.status}</span></div>
           <div className="flagshipGrid">
             <section><label>1 · AUTHORIZED EVIDENCE</label><b>{analysis.graph_evidence?.status ?? "not returned"}</b>{analysis.graph_evidence?.chunks?.slice(0, 5).map((chunk) => { const meta = chunk.metadata ?? {}; const auth = chunk.authorization ?? {}; return <details key={chunk.id} open><summary>{String(meta.file ?? meta.sourceDocId ?? chunk.id)}</summary><small>Rev {String(meta.revision ?? "—")} · Page {String(meta.page ?? meta.pageStart ?? "—")} · ACL {String(auth.decision ?? "not reported")}</small><p>{chunk.content}</p></details>; })}</section>
-            <section><label>2 · SENSOR DIAGNOSIS</label><b>{analysis.diagnostic?.detection?.abnormal ? "ANOMALY DETECTED" : analysis.diagnostic?.decision ?? "not requested"}</b>{analysis.diagnostic?.hypotheses?.slice(0, 4).map((item, index) => <div className="metric" key={`${item.label}-${index}`}><span>{item.label}</span><b>{item.confidence != null ? `${Math.round(item.confidence * 100)}%` : "evidence-linked"}</b></div>)}{analysis.diagnostic?.recommended_actions?.map((action) => <p key={action}>{action}</p>)}</section>
+            <section><label>2 · SENSOR DIAGNOSIS</label><b>{analysis.diagnostic?.decision === "abstain" ? "REVIEW REQUIRED" : analysis.diagnostic?.detection?.abnormal ? "ANOMALY DETECTED" : analysis.diagnostic?.decision ?? "not requested"}</b>{analysis.diagnostic?.abstain_reason && <p>{analysis.diagnostic.abstain_reason}</p>}{analysis.diagnostic?.hypotheses?.slice(0, 4).map((item, index) => <div className="metric" key={`${item.label}-${index}`}><span>{item.label}</span><b>{item.score != null ? `${Math.round(item.score * 100)}%` : "evidence-linked"}</b></div>)}{analysis.diagnostic?.recommended_actions?.map((action) => <p key={action}>{action}</p>)}<DiagnosticUpdates updates={analysis.diagnostic?.diagnostic_updates}/></section>
             <section><label>3 · LOCAL MODEL RUNTIME</label><b>{analysis.model_runtime?.provider ?? analysis.service_status.model ?? "not called"}</b><p>{analysis.model_runtime?.model}</p><div className="metric"><span>TTFT</span><b>{analysis.model_runtime?.ttft_ms != null ? `${analysis.model_runtime.ttft_ms} ms` : "—"}</b></div><div className="metric"><span>Generation</span><b>{analysis.model_runtime?.tokens_per_second != null ? `${analysis.model_runtime.tokens_per_second} tok/s` : "—"}</b></div><div className="metric"><span>Prompt</span><b>{analysis.model_runtime?.prompt_tokens != null ? `${analysis.model_runtime.prompt_tokens} tokens` : "—"}</b></div></section>
             <section><label>4 · GOVERNANCE</label><b>{analysis.controlplane?.decision?.action ?? analysis.status}</b><div className="metric"><span>Supported</span><b>{analysis.graph_evidence?.verification?.summary?.supported ?? analysis.graph_evidence?.claims?.length ?? 0}</b></div><div className="metric"><span>Conflicting</span><b>{analysis.graph_evidence?.verification?.summary?.contradicted ?? 0}</b></div><div className="metric"><span>Release</span><b>{analysis.released ? "YES" : "NO"}</b></div><p>{analysis.controlplane?.decision?.reason}</p></section>
           </div>

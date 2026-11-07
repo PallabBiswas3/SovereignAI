@@ -11,6 +11,7 @@ type Schema = {
 type Workflow = {
   id: string; domain: string; task: string; policy_ref: string;
   input_schema: Schema; model_slots: string[]; required_model_slots: string[];
+  model_slot_descriptions?: Record<string, string>;
 };
 export type Catalogue = { contract_version: string; metadata_schema: Schema; workflows: Workflow[] };
 export type Diagnostic = {
@@ -166,7 +167,7 @@ export default function DiagnosticForm({ catalogue, onChange }: { catalogue: Cat
       <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>02</span><div><h3>Asset &amp; collection</h3><p>Identify the equipment and when the data was recorded.</p></div></div><div className="diagnosticFieldGrid"><Fields schema={catalogue.metadata_schema} values={values} prefix="metadata" change={change} upload={upload}/></div></section>
       <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>03</span><div><h3>Measurements</h3><p>Paste data or import individual arrays. Keep the original units.</p></div></div><div className="diagnosticFieldGrid"><Fields schema={workflow.input_schema} values={values} prefix="inputs" change={change} upload={upload}/></div></section>
       {workflow.model_slots.length > 0 && <section className="diagnosticSection"><div className="diagnosticSectionHeading"><span>04</span><div><h3>Registered models</h3><p>Use server-registered IDs, not filenames.</p></div></div><div className="diagnosticFieldGrid">
-        {workflow.model_slots.map((slot) => <label className="modelReference" key={slot}>{fieldTitle(slot)}<small>{slot} · {workflow.required_model_slots.includes(slot) ? "Required" : "Optional"}</small><input aria-label={slot} required={workflow.required_model_slots.includes(slot)} value={values[`model.${slot}`] ?? ""} onChange={(event) => change(`model.${slot}`, event.target.value)}/></label>)}
+        {workflow.model_slots.map((slot) => <label className="modelReference" key={slot}>{fieldTitle(slot)}<small>{slot} · {workflow.required_model_slots.includes(slot) ? "Required" : "Optional"}</small>{workflow.model_slot_descriptions?.[slot] && <small>{workflow.model_slot_descriptions[slot]}</small>}<input aria-label={slot} required={workflow.required_model_slots.includes(slot)} value={values[`model.${slot}`] ?? ""} onChange={(event) => change(`model.${slot}`, event.target.value)}/></label>)}
       </div></section>}
       <p className="contractNote">Input completion does not establish model availability or factual correctness. Server validation runs before analysis.</p>
     </>}
