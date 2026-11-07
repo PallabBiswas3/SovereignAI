@@ -1,0 +1,27 @@
+# Explicit opt-in: docker compose -f compose.yaml -f compose.dev.yaml ...
+# Keep local identity, TLS, governance and durable storage enabled during development.
+services:
+  backend:
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, "8000", --reload, --reload-dir, /app/backend/app]
+    volumes:
+      - ./backend/app:/app/backend/app:ro
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+  frontend:
+    # Next dev regenerates next-env.d.ts beside the copied package manifests.
+    read_only: false
+    image: sovereign-frontend:development
+    build:
+      target: development
+    command: [npm, run, dev, --, --hostname, 0.0.0.0, --webpack]
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend/app:/app/app:ro
+      - ./frontend/lib:/app/lib:ro
+      - ./frontend/public:/app/public:ro
+    tmpfs: !override
+      - /tmp
+      - /app/.next:uid=10001,gid=10001,mode=0700
+    mem_limit: 1536m

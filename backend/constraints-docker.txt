@@ -1,0 +1,33 @@
+# Direct constraints from the existing Python 3.11 environment. Linux builds
+# must still pass. Not a transitive hash lock: ship verified built images by ID.
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
+sqlalchemy==2.0.52
+httpx==0.28.1
+PyYAML==6.0.3
+python-multipart==0.0.32
+pypdf==6.16.2
+python-docx==1.2.0
+openpyxl==3.1.5
+python-pptx==1.0.2
+Pillow==12.3.0
+pytesseract==0.3.13
+pypdfium2==5.13.0
+reportlab==4.5.1
+psutil==7.2.2
+Pint==0.25.3
+cryptography==46.0.7
+pandas==3.0.6
+scipy==1.17.1
+scikit-learn==1.9.1
+joblib==1.6.0
+statsmodels==0.15.0
+PyWavelets==1.9.0
+matplotlib==3.11.2
+dateparser==1.4.3
+sentence-transformers==3.0.1
+sentencepiece==0.2.1
+pytest==8.4.2
+pytest-asyncio==0.26.0

@@ -1,5 +1,9 @@
 # Authenticated single-host deployment candidate
 
+The maintained Docker operating guide is now [DOCKER_DEPLOYMENT.md](../docs/DOCKER_DEPLOYMENT.md),
+with current-run results in [DOCKER_VALIDATION.md](../docs/DOCKER_VALIDATION.md).
+The dated investigation below remains historical evidence; it is not a fresh test result.
+
 **Current verdict: BLOCKED.** See the [clean-environment investigation](CLEAN_ENVIRONMENT_REPORT.md)
 and [machine-readable execution ledger](remediation-20261023.json). The missing
 reranker is now provisioned and hash-verified; the remaining blockers include WSL

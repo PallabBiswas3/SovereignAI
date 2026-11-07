@@ -41,6 +41,16 @@ def check_existing_tags(name, lock):
             raise RuntimeError("Existing volume tag conflicts with the model lock; no overwrite performed")
 
 
+def verify_volume(name, volume, lock_path, *, storage_only=False):
+    # The volume is Ollama's home, not its nested models directory.
+    docker("run", "--rm", "--network", f"container:{name}",
+           "--mount", f"type=volume,source={volume},target=/models,readonly",
+           "--mount", f"type=bind,source={lock_path},target=/lock.json,readonly",
+           "--mount", f"type=bind,source={ROOT / 'tests/deployment/ollama_volume_verify.py'},target=/verify.py,readonly",
+           "python:3.11-slim-bookworm", "python", "/verify.py", "--root", "/models/models",
+           *([] if storage_only else ["--api"]))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path.home() / ".ollama/models")
@@ -83,11 +93,7 @@ def main():
             time.sleep(1)
         raise RuntimeError("Isolated Ollama daemon did not start")
     def volume_check():
-        docker("run", "--rm", "--network", f"container:{name}",
-               "--mount", f"type=volume,source={args.volume},target=/models,readonly",
-               "--mount", f"type=bind,source={lock_path},target=/lock.json,readonly",
-               "--mount", f"type=bind,source={ROOT / 'tests/deployment/ollama_volume_verify.py'},target=/verify.py,readonly",
-               "python:3.11-slim-bookworm", "python", "/verify.py", *([] if args.storage_only else ["--api"]))
+        verify_volume(name, args.volume, lock_path, storage_only=args.storage_only)
     try:
         started = True
         start()

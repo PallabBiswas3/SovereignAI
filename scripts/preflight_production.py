@@ -70,7 +70,11 @@ def main() -> int:
         services = profile["services"]
         checks["complete_service_profile"] = {"backend", "frontend", "graphrag", "controlplane", "diagnostics", "ollama", "gateway", "graph-db", "graph-rest"} <= services.keys()
         checks["single_ingress"] = all("ports" not in config for name, config in services.items() if name != "gateway")
-        checks["isolated_networks"] = all(config.get("internal") is True for config in profile["networks"].values())
+        checks["isolated_networks"] = (
+            profile["networks"].get("edge", {}).get("internal") is False
+            and all(config.get("internal") is True for name, config in profile["networks"].items() if name != "edge")
+            and [name for name, config in services.items() if "edge" in config.get("networks", [])] == ["gateway"]
+        )
         environment = services["backend"]["environment"]
         checks["production_auth"] = environment.get("SOVEREIGN_ENVIRONMENT") == "production" and environment.get("SOVEREIGN_AUTH_MODE") == "local" and environment.get("SOVEREIGN_AUTH_COOKIE_SECURE") == "true"
         checks["no_host_docker_socket"] = "docker.sock" not in json.dumps(profile)

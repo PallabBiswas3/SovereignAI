@@ -28,6 +28,7 @@ https://{$SOVEREIGN_HOST:localhost}:8443 {
 # Supabase-compatible REST prefix, available only on the private graph network.
 # The public TLS listener never routes /rest/v1 to this upstream.
 :8080 {
+    respond /healthz 200
     handle_path /rest/v1/* {
         reverse_proxy graph-rest:3000
     }

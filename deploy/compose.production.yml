@@ -1,17 +1,33 @@
 name: sovereign-production
 
+x-runtime: &runtime
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  pids_limit: 256
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "3"}
+
 x-python: &python
-  image: sovereign-python:production-candidate
+  <<: *runtime
+  image: sovereign-python:${SOVEREIGN_IMAGE_TAG:-production-candidate}
   build:
     context: ..
     dockerfile: backend/Dockerfile
   user: "10001:10001"
   read_only: true
   tmpfs: [/tmp]
-  cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
-  restart: unless-stopped
-  networks: [services]
+  mem_limit: 1536m
+  cpus: 2.0
+  stop_grace_period: 45s
+  environment: &cpu
+    OMP_NUM_THREADS: "2"
+    MKL_NUM_THREADS: "2"
+    OPENBLAS_NUM_THREADS: "2"
+    MPLCONFIGDIR: /tmp/matplotlib
+    HF_HOME: /tmp/huggingface
   volumes:
     - ./models:/models:ro
   healthcheck:
@@ -25,6 +41,7 @@ services:
   backend:
     <<: *python
     environment:
+      <<: *cpu
       SOVEREIGN_ENVIRONMENT: production
       SOVEREIGN_AUTH_MODE: local
       SOVEREIGN_AUTH_COOKIE_SECURE: "true"
@@ -37,13 +54,18 @@ services:
       SOVEREIGN_MODELS_CONFIG: /app/config/models.docker.yaml
       SOVEREIGN_TOOLS_CONFIG: /app/deploy/tools.production.yaml
       SOVEREIGN_OLLAMA_URL: http://ollama:11434
+      SOVEREIGN_OLLAMA_GENERAL_MODEL: ${OLLAMA_GENERATION_MODEL:-qwen3:4b-instruct}
+      SOVEREIGN_OLLAMA_CODER_MODEL: ${OLLAMA_CODER_MODEL:-qwen2.5-coder:7b}
+      SOVEREIGN_OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen3-vl:4b-instruct}
       SOVEREIGN_GRAPHRAG_URL: http://graphrag:3100
       SOVEREIGN_CONTROLPLANE_URL: http://controlplane:8000
       SOVEREIGN_DIAGNOSTICS_URL: http://diagnostics:8000
       SOVEREIGN_EMBEDDING_ALLOW_HASH_FALLBACK: "false"
       SOVEREIGN_EMBEDDING_MODEL: /models/all-MiniLM-L6-v2
       SOVEREIGN_RERANKER_MODEL: /models/ms-marco-MiniLM-L-6-v2
+      SOVEREIGN_SMOKE_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     secrets: [graphrag_token]
+    networks: [api, governance, retrieval, inference]
     volumes:
       - backend-data:/app/backend/data
       - workspace:/app/workspace
@@ -51,9 +73,10 @@ services:
       - organizations:/app/organizations
       - ./models:/models:ro
     depends_on:
-      graphrag: {condition: service_started}
-      controlplane: {condition: service_started}
-      diagnostics: {condition: service_started}
+      graphrag: {condition: service_healthy}
+      controlplane: {condition: service_healthy}
+      diagnostics: {condition: service_healthy}
+      ollama: {condition: service_healthy}
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=12)"]
       interval: 30s
@@ -62,17 +85,18 @@ services:
       start_period: 120s
 
   frontend:
+    <<: *runtime
+    image: sovereign-frontend:${SOVEREIGN_IMAGE_TAG:-production-candidate}
     build:
       context: ..
       dockerfile: frontend/Dockerfile
       args: {NEXT_PUBLIC_API_URL: ""}
     user: sovereign
     read_only: true
-    tmpfs: [/tmp, /app/.next/cache]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    restart: unless-stopped
-    networks: [services]
+    tmpfs: [/tmp, "/app/.next/cache:uid=10001,gid=10001,mode=0700"]
+    networks: [ingress]
+    mem_limit: 512m
+    cpus: 1.0
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -84,10 +108,12 @@ services:
     working_dir: /app/Controlplane.ai
     command: [python, -m, uvicorn, controlplane.api:app, --host, 0.0.0.0, --port, "8000"]
     environment:
+      <<: *cpu
       CONTROLPLANE_ADAPTIVE_VERIFICATION: "1"
       CONTROLPLANE_NLI_MODEL: /models/nli-deberta-v3-small
       CONTROLPLANE_NLI_LOCAL_ONLY: "1"
       CONTROLPLANE_NLI_DEVICE: cpu
+    networks: [governance]
     volumes:
       - ./models:/models:ro
       - controlplane-audit:/app/Controlplane.ai/results
@@ -95,8 +121,11 @@ services:
   diagnostics:
     <<: *python
     command: [python, -m, uvicorn, tsdiag.api:app, --host, 0.0.0.0, --port, "8000"]
+    networks: [governance]
 
   graphrag:
+    <<: *runtime
+    image: sovereign-graphrag:${SOVEREIGN_IMAGE_TAG:-production-candidate}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.graphrag
@@ -104,18 +133,22 @@ services:
       HOST: 0.0.0.0
       PORT: "3100"
       OLLAMA_URL: http://ollama:11434
-      OLLAMA_GENERATION_MODEL: qwen3:4b-instruct
-      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      OLLAMA_GENERATION_MODEL: ${OLLAMA_GENERATION_MODEL:-qwen3:4b-instruct}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      OLLAMA_KEEP_ALIVE: 60s
       GRAPHRAG_DENSE_RETRIEVAL_ENABLED: "true"
       SUPABASE_URL: http://gateway:8080
     secrets: [graphrag_token, graph_service_jwt]
     user: node
     read_only: true
     tmpfs: [/tmp]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    restart: unless-stopped
-    networks: [services, graph]
+    networks: [retrieval, inference, graph]
+    mem_limit: 512m
+    cpus: 1.0
+    depends_on:
+      graph-rest: {condition: service_started}
+      gateway: {condition: service_started}
+      ollama: {condition: service_healthy}
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:3100/health').then(async r=>process.exit(r.ok&&(await r.json()).status==='ok'?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -123,6 +156,7 @@ services:
       retries: 3
 
   graph-db:
+    <<: *runtime
     image: postgres:17.6-alpine
     environment:
       POSTGRES_DB: evidence
@@ -134,8 +168,11 @@ services:
       - ../Graph-RAG/server/migrations/001_evidence_graph.sql:/docker-entrypoint-initdb.d/002-evidence.sql:ro
       - ./graph-grants.sql:/docker-entrypoint-initdb.d/003-grants.sql:ro
     networks: [graph]
-    security_opt: [no-new-privileges:true]
-    restart: unless-stopped
+    # Official entrypoint initializes/chowns a fresh volume, then drops to postgres.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, SETUID, SETGID, DAC_OVERRIDE]
+    mem_limit: 384m
+    cpus: 1.0
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U postgres -d evidence"]
       interval: 10s
@@ -143,6 +180,7 @@ services:
       retries: 10
 
   graph-rest:
+    <<: *runtime
     image: postgrest/postgrest:v12.2.3
     environment:
       PGRST_DB_URI: "@/run/secrets/graph_rest_uri"
@@ -154,17 +192,29 @@ services:
       graph-db: {condition: service_healthy}
     user: "10001:10001"
     read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
     networks: [graph]
-    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
 
   ollama:
+    <<: *runtime
     image: ollama/ollama:0.33.2
+    # Preserve the supported image's existing root-owned model-volume layout.
     volumes: [ollama-models:/root/.ollama]
-    networks: [services]
-    restart: unless-stopped
-    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: 60s
+      OLLAMA_NO_CLOUD: "true"
+      OLLAMA_NOPRUNE: "true"
+    networks: [inference]
+    mem_limit: ${OLLAMA_MEMORY_LIMIT:-5g}
+    cpus: ${OLLAMA_CPUS:-4.0}
+    pids_limit: 512
+    stop_grace_period: 60s
     healthcheck:
       test: [CMD, ollama, list]
       interval: 15s
@@ -172,6 +222,8 @@ services:
       retries: 5
 
   gateway:
+    <<: *runtime
+    image: sovereign-gateway:${SOVEREIGN_IMAGE_TAG:-production-candidate}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.gateway
@@ -185,13 +237,23 @@ services:
       - gateway-config:/config
     read_only: true
     tmpfs: [/tmp]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    networks: [services, graph]
-    restart: unless-stopped
+    networks: [edge, ingress, api, graph]
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, wget, -q, --spider, "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
 
 networks:
-  services: {internal: true}
+  # Only the TLS gateway joins this bridge, required for host port publication.
+  edge: {internal: false}
+  ingress: {internal: true}
+  api: {internal: true}
+  governance: {internal: true}
+  retrieval: {internal: true}
+  inference: {internal: true}
   graph: {internal: true}
 
 volumes:

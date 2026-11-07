@@ -1,0 +1,5 @@
+# Canonical entry point. Included paths stay relative to deploy/.
+# Preserve the existing production project name and persistent volume names.
+name: sovereign-production
+include:
+  - path: ./deploy/compose.production.yml

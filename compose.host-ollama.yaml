@@ -1,0 +1,26 @@
+# Development only: replace the daemon with a small proxy to an existing host
+# Ollama. Backend sovereignty checks still address the internal name `ollama`.
+# The host-access network permits egress; this is NOT the isolated offline profile.
+services:
+  ollama:
+    image: sovereign-gateway:${SOVEREIGN_IMAGE_TAG:-production-candidate}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.gateway
+    entrypoint: []
+    command: [caddy, reverse-proxy, --from, "http://:11434", --to, "http://host.docker.internal:11434"]
+    user: "10001:10001"
+    volumes: !reset []
+    tmpfs: !override [/tmp]
+    networks: [inference, host-access]
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+networks:
+  host-access: {}

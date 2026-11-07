@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 import yaml
 
@@ -16,6 +17,16 @@ class ModelRegistry:
         raw = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
         definitions: dict[str, ModelDefinition] = {}
         for model_id, values in raw.get("models", {}).items():
+            # Explicit deployment overrides apply only to Ollama entries. Defaults
+            # and other providers retain their existing registry behavior.
+            values = dict(values)
+            if values.get("provider") == "ollama":
+                endpoint = os.environ.get("SOVEREIGN_OLLAMA_URL")
+                model = os.environ.get(f"SOVEREIGN_OLLAMA_{model_id.upper()}_MODEL")
+                if endpoint:
+                    values["endpoint"] = endpoint
+                if model:
+                    values["model_tag"] = model
             try:
                 definitions[model_id] = ModelDefinition(id=model_id, **values)
             except Exception as exc:
