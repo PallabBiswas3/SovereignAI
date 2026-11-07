@@ -1,5 +1,10 @@
 # SovereignAI — Industrial Agentic AI Workbench
 
+For the complete Docker workflow, Windows/WSL2 development, model provisioning,
+offline transfer and backup/recovery, see [Docker deployment](docs/DOCKER_DEPLOYMENT.md).
+Use the root `compose.yaml` entry point; the older `docker-compose.yml` is retained
+as a legacy partial development stack.
+
 For the authenticated single-host deployment candidate, setup/preflight commands,
 and the evidence-backed production checklist, see [deployment guidance](deploy/README.md).
 The current image-build and acceptance limitations are recorded there and in

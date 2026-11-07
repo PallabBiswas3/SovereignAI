@@ -1,5 +1,16 @@
 # Next implementation plan
 
+## Diagnostic runtime connections - 4 November 2026
+
+Explicit runtime/API/UI adapters for the 3 November uncertainty/calibration and
+challenger utilities are implemented; see the diagnostic README. The executable
+connection demo uses labelled synthetic artifacts, with existing policies and
+defaults preserved. Next provision reviewed, frozen artifact bundles for the
+intended input profiles, then replay the authenticated full application workflow
+with the selected IDs. Real-data calibration/evaluation, routine service startup
+provisioning and deployment acceptance remain pending. Do not treat the synthetic
+demo registry or source/contract tests as an accepted plant model or live release.
+
 ## Diagnostic follow-up - 3 November 2026
 
 The shared uncertainty layer, Wind event calibration and four domain challengers

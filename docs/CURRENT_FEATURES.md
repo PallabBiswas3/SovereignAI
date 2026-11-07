@@ -1,5 +1,38 @@
 # Current features
 
+## Prototype verification budget - 4 November 2026
+
+The active ControlPlane `internal_assistant` policy is version 1.4 and sets
+`latency_budget_ms: null` for prototype feature testing. Verification timings
+remain recorded, but elapsed time alone does not hold a response. Privacy,
+factuality, source-authority, detector-failure and action-approval checks remain
+active. Other policy profiles retain their configured limits. Set a positive
+millisecond value to restore the timing-based review rule.
+
+## Diagnostic runtime connections - 4 November 2026
+
+The uncertainty/challenger APIs now have explicit adapters in
+`Time-Series-Diagnostic-Agent/src/tsdiag/runtime_updates.py`. Registered sequence
+classifiers and calibrated RUL ensembles enter the existing transformer/turbofan
+policies. PF/GP capacity forecasts use an optional `capacity_prognostic_model`;
+bearing modulation/order features and frozen Wind event calibration use an
+optional supplementary `diagnostic_update`. The public contract exposes those
+slots and aligned optional speed/operating-setting arrays.
+
+Selected analyses return `diagnostic_updates` with model version/checksum,
+dataset/synthetic provenance, prediction sets, intervals and abstention reasons.
+They appear in the integration workbench and synthesis prompt. The frontend type
+is generated from the service's response schema. Existing policy holds and
+document-linkage/release checks remain authoritative. Missing or incompatible
+selected artifacts abstain; unbounded forecasts never become finite public RULs.
+Battery fitting uses a request-local copy; registered snapshots reject mutation.
+
+`examples/connect_diagnostic_updates.py` exercises all five routes using clearly
+labelled synthetic artifacts and can serve them explicitly for a prototype.
+Production defaults and thresholds are unchanged; accepted real-data bundles and
+a fresh authenticated all-service/UI acceptance run remain separate work.
+Setup and limitations: [diagnostic README](../Time-Series-Diagnostic-Agent/README.md#connected-diagnostic-updates---4-november-2026).
+
 ## Diagnostic uncertainty and challengers - 3 November 2026
 
 Implemented and pushed to `development` in `d157ed6`; the accompanying GPU
