@@ -15,6 +15,7 @@ from adaptivefact.agents.verifier import BoundedVerificationAgent
 from adaptivefact.data.schema import Claim, ResponseLabel, ResponseRecord, VerificationStatus
 from adaptivefact.extraction.claim_extractor import ClaimExtractionConfig
 from adaptivefact.pipeline.aggregation import aggregate_claims
+from adaptivefact.extraction.units import scalar_outside_source_ranges, unwitnessed_quantities
 from adaptivefact.verification.deterministic import DeterministicVerifierConfig
 from adaptivefact.verification.evidence import EvidenceRetrieverConfig
 from adaptivefact.verification.nli import NLIScorer, TransformersNLIScorer, profile_model_identity
@@ -358,6 +359,18 @@ class AdaptiveFactVerificationService:
                     coverage_guards[claim.id] = "support_names_different_asset"
                 if _support_relies_on_ineligible_evidence(claim, interaction):
                     coverage_guards.setdefault(claim.id, "support_from_non_authoritative_evidence")
+            if claim.status == VerificationStatus.SUPPORTED:
+                # NLI ignores units ("4-6 psi" entails "4-6 bar"). Every stated
+                # quantity must appear in the supporting evidence after unit
+                # conversion (600 cm == 6 m; 4.0 psi != 4 bar).
+                support_texts = [_RENDERED_EVIDENCE_HEADER.sub("", text) for text in claim.evidence] or [
+                    item.text for item in interaction.grounding_evidence]
+                missing = unwitnessed_quantities(_SOURCE_CITATION.sub("", claim.verification_text), support_texts)
+                if missing:
+                    coverage_guards.setdefault(claim.id, "quantity_not_in_supporting_evidence")
+                    claim.verification_metadata["unwitnessed_quantities"] = [item.text for item in missing]
+                if scalar_outside_source_ranges(claim.verification_text, claim.verification_text):
+                    coverage_guards.setdefault(claim.id, "reading_outside_stated_range")
         # The extraction cap bounds computation, not the evidence obligation:
         # unextracted response text is an explicit abstention, never omitted.
         unextracted = _unextracted_tail_claim(record)

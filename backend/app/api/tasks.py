@@ -71,7 +71,7 @@ from app.assets.repository import AssetRepository
 from app.assets.resolver import AssetResolver
 from app.assets.telemetry import APELSimulatorTelemetryProvider, FreshnessPolicy
 from app.identity import ContentIdentityService
-from app.integrations.models import AssuranceLevel, IntegratedAnalysisRequest
+from app.integrations.models import AssuranceLevel, IntegratedAnalysisRequest, resolve_controlplane_profile
 from app.integrations.clients import IntegrationServiceError
 from app.integrations.orchestrator import IndustrialIntegrationOrchestrator
 from app.integrations.routing import IntegrationRoutePlan
@@ -1030,7 +1030,8 @@ async def _execute_task_measured(
                     result = await IndustrialIntegrationOrchestrator(settings=settings).analyze(
                         IntegratedAnalysisRequest(
                             query=payload.request, include_graph_evidence=integration_plan.use_graph,
-                            diagnostic=integration_plan.diagnostic, policy_profile=payload.use_case,
+                            diagnostic=integration_plan.diagnostic,
+                            policy_profile=resolve_controlplane_profile(payload.use_case),
                             consequential=True, assurance_level=assurance_level,
                         ),
                         principal=principal,

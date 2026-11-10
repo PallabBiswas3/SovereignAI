@@ -1,0 +1,21 @@
+# Organization-specific privacy recognizers for ControlPlane.ai.
+# Point CONTROLPLANE_PRIVACY_RECOGNIZERS at a copy of this file. Values here are
+# synthetic examples; replace them with the plant's real ranges and ID formats.
+# An invalid file stops the service from starting (it never fails silently).
+
+# Control-network (OT) ranges: PLC, HMI, historian, engineering workstations.
+# Addresses inside these ranges are reported as HIGH "ot_network_address".
+ot_networks:
+  - 10.20.0.0/16
+  - 192.168.50.0/24
+
+# Company identifier formats (regular expressions, matched case-sensitively).
+identifiers:
+  - subtype: employee_id
+    pattern: "\\bEMP-\\d{6}\\b"
+    severity: medium
+    replacement: "[REDACTED EMPLOYEE ID]"
+  - subtype: gate_pass_number
+    pattern: "\\bGP/\\d{4}/\\d{5}\\b"
+    severity: medium
+    replacement: "[REDACTED GATE PASS]"

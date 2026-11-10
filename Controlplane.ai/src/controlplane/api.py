@@ -36,11 +36,32 @@ control_plane = ControlPlane(verification_service=build_adaptive_verification_fr
 feedback_store = JsonlFeedbackStore()
 
 
+def _risk_router_status() -> dict[str, str]:
+    """Per profile: whether the trained risk router is actually usable.
+
+    When it is not, non-consequential checks use full verification depth
+    instead of the weak deterministic fallback; this is reported, not hidden.
+    """
+    from pathlib import Path
+
+    statuses: dict[str, str] = {}
+    for name in control_plane.policy_repository.available():
+        check = control_plane.policy_repository.load(name).checks.get("hallucination")
+        settings = check.settings if check is not None else {}
+        if check is None or not check.enabled or not settings.get("use_trained_risk", True):
+            statuses[name] = "disabled_full_verification"
+            continue
+        model = Path(settings.get("risk_model", "models/phase2/selected_model.joblib"))
+        manifest = Path(settings.get("risk_manifest", "models/phase2/manifest.json"))
+        statuses[name] = "trained_model" if model.exists() and manifest.exists() else "missing_full_verification"
+    return statuses
+
+
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, object]:
     if not app.state.ready:
         raise HTTPException(status_code=503, detail="ControlPlane verifier is not ready")
-    return {"status": "ok"}
+    return {"status": "ok", "risk_router": _risk_router_status()}
 
 
 @app.get("/v1/policies")

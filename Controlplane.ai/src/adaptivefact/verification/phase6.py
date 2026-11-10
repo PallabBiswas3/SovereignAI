@@ -8,12 +8,17 @@ from time import perf_counter
 import numpy as np
 
 from adaptivefact.data.schema import Claim, ResponseRecord, VerificationStatus
+from adaptivefact.extraction.units import align_units_to_premise, extract_quantities, scalar_outside_source_ranges
 from adaptivefact.verification.evidence import ContextTfidfIndex, EvidenceRetrieverConfig, merge_seed_evidence
 from adaptivefact.verification.nli import NLIScorer, NLIScores
 from adaptivefact.verification.text import split_sentences
 
 
 _EVIDENCE_CITATION = re.compile(r"\[([A-Za-z0-9][A-Za-z0-9:_-]{2,127})\]")
+_ASSET_ID = re.compile(r"(?<![\w-])[A-Za-z]+-\d+\b")
+# For the NLI hypothesis only: remove a citation of any length plus its leading
+# space. A leftover "[D1]" alone drops entailment from ~0.98 to ~0.00.
+_HYPOTHESIS_CITATION = re.compile(r"\s*\[[A-Za-z0-9][A-Za-z0-9:_-]{0,127}\]")
 _RETRIEVAL_STOPWORDS = frozenset({
     "and", "are", "as", "at", "been", "for", "from", "has", "have", "into",
     "its", "per", "that", "the", "their", "these", "this", "those", "was",
@@ -30,6 +35,13 @@ class Phase6NLIConfig:
     min_contradiction_retrieval_score: float = 0.10
     evidence_conflict_threshold: float = 0.85
     min_contradiction_evidence_count: int = 2
+    # The NLI cross-encoder was trained on one-to-two-sentence premises. A whole
+    # retrieved chunk dilutes or inverts its scores and is truncated at 512
+    # tokens, so structured evidence is scored as short sentence windows and
+    # aggregated back to its source chunk.
+    window_premises: bool = True
+    window_single_sentences: int = 4
+    window_sentence_pairs: int = 1
 
 
 @dataclass
@@ -42,6 +54,8 @@ class PendingClaim:
     evidence_scores: list[float]
     retrieval_ms: float
     unexamined_relevant_count: int = 0
+    window_texts: list[str] | None = None
+    window_parents: list[int] | None = None
 
 
 class Phase6Pipeline:
@@ -76,6 +90,7 @@ class Phase6Pipeline:
         supported_rechecks = 0
         retrieval_cache_hits = 0
         unexamined_relevant_claims = 0
+        window_pairs = 0
         decision_ms = 0.0
 
         for record_index, record in enumerate(records):
@@ -133,15 +148,23 @@ class Phase6Pipeline:
                     continue
 
                 pair_start = len(premises)
-                hypothesis = _EVIDENCE_CITATION.sub("", query).strip()
-                for text in evidence_texts:
+                hypothesis = _HYPOTHESIS_CITATION.sub("", query).strip()
+                windows: list[str] | None = None
+                parents: list[int] | None = None
+                if structured_items and self.nli_config.window_premises:
+                    windows, parents = self._premise_windows(evidence_texts, hypothesis)
+                    window_pairs += len(windows)
+                for text in (windows if windows is not None else evidence_texts):
                     premises.append(text)
-                    hypotheses.append(hypothesis)
+                    # NLI does not convert units: present an *equal* claimed
+                    # quantity in the premise's unit (600 cm -> 6 m). Unequal
+                    # quantities are left exactly as the claim wrote them.
+                    hypotheses.append(align_units_to_premise(hypothesis, text))
                 pair_end = len(premises)
                 if unexamined_count:
                     unexamined_relevant_claims += 1
                 pending.append(PendingClaim(record_index, claim_index, pair_start, pair_end, evidence_texts,
-                                            evidence_scores, retrieval_ms, unexamined_count))
+                                            evidence_scores, retrieval_ms, unexamined_count, windows, parents))
 
         nli_started = perf_counter()
         scores = self.nli.score(premises, hypotheses) if premises else []
@@ -158,12 +181,30 @@ class Phase6Pipeline:
             local_scores = scores[item.pair_start:item.pair_end]
             status, confidence, best_evidence, method, verification_scores = self._decide(
                 local_scores, item.evidence_texts, item.evidence_scores, claim.subject, claim.verification_text,
+                window_texts=item.window_texts, window_parents=item.window_parents,
             )
+            premise_windows = verification_scores.pop("premise_windows", None)
+            if premise_windows:
+                claim.verification_metadata["nli_premise_windows"] = premise_windows
 
+            # A Phase-5 exact value match proves only that the number occurs in a
+            # source, not what the claim says about it ("normal at 6.8 bar").
+            # A strong relevant NLI contradiction therefore cannot be outvoted by
+            # it, even when it lacks the corroboration needed for CONTRADICTED.
+            relevant_contradiction = verification_scores.pop("relevant_contradiction", 0.0)
+            if (prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN
+                    and relevant_contradiction >= self.nli_config.contradiction_threshold):
+                claim.status = VerificationStatus.UNDECIDABLE
+                claim.confidence = float(relevant_contradiction)
+                claim.evidence = best_evidence or prior_evidence
+                claim.verifier_used = "phase6_nli_contradiction_overrides_value_match"
+                claim.verification_scores = verification_scores
+                claim.verification_metadata["support_guard_reason"] = "nli_contradiction_against_value_match"
+                claim.verification_metadata["relevant_contradiction"] = float(relevant_contradiction)
             # Preserve a deterministic exact support only when semantic checking is
             # genuinely inconclusive. Explicit contradiction and CONFLICTING states
             # must always override the earlier Phase-5 support decision.
-            if prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN and not item.unexamined_relevant_count:
+            elif prior_status == VerificationStatus.SUPPORTED and status == VerificationStatus.UNKNOWN and not item.unexamined_relevant_count:
                 claim.status = prior_status
                 claim.confidence = prior_confidence
                 claim.evidence = prior_evidence
@@ -197,6 +238,7 @@ class Phase6Pipeline:
             "unexamined_relevant_claims": unexamined_relevant_claims,
             "no_evidence_claims": no_evidence_claims,
             "nli_resolution_counts": dict(resolution_counts),
+            "nli_window_pairs": window_pairs,
             "retrieval_latency_ms": _percentiles(retrieval_latencies),
             "index_total_ms": index_total_ms,
             "retrieval_total_ms": retrieval_total_ms,
@@ -281,10 +323,66 @@ class Phase6Pipeline:
             return list(claim.evidence)
         return []
 
-    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None, claim_text: str = ""):
-        # NLI over a long chunk can combine an entity in one sentence with a
-        # generic opposing rule in another. A contradiction needs a sentence
-        # that actually names the claim subject; support remains NLI-scored.
+    def _decide(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float], subject: str | None,
+                claim_text: str = "", *, window_texts: list[str] | None = None, window_parents: list[int] | None = None):
+        windowed = window_texts is not None and window_parents is not None
+        if not windowed:
+            return self._decide_whole_premises(scores, evidence_texts, evidence_scores, subject, claim_text)
+        claim_assets = self._asset_ids(_EVIDENCE_CITATION.sub("", claim_text))
+        count = len(evidence_texts)
+        entailment = [0.0] * count
+        contradiction = [0.0] * count
+        contradiction_eligible = [False] * count
+        entail_window: list[str | None] = [None] * count
+        contra_window: list[str | None] = [None] * count
+        relevant = 0.0
+        for score, text, parent in zip(scores, window_texts, window_parents):
+            window_assets = self._asset_ids(text)
+            # A window that only names a different asset cannot support the claim.
+            if not (claim_assets and window_assets and claim_assets.isdisjoint(window_assets)):
+                if score.entailment > entailment[parent] or entail_window[parent] is None:
+                    entailment[parent], entail_window[parent] = float(score.entailment), text
+            # NLI over a long chunk can combine an entity in one sentence with a
+            # generic opposing rule in another. A contradiction needs a premise
+            # that names the claim subject; a window must also name the same
+            # asset and metric as the claim.
+            local = self._subject_local_to_sentence(subject, text) and self._same_asset_and_metric(
+                claim_assets, window_assets, subject, claim_text, text,
+            )
+            if not local:
+                continue
+            if self._compatible_numeric_relation(claim_text, text):
+                contradiction_eligible[parent] = True
+                if score.contradiction > contradiction[parent]:
+                    contradiction[parent], contra_window[parent] = float(score.contradiction), text
+                relevant = max(relevant, float(score.contradiction))
+            elif scalar_outside_source_ranges(claim_text, text):
+                # Strongest relevant contradiction, for overriding a Phase-5
+                # value match. The scalar/range exemption still applies only
+                # when the reading really lies inside the source range.
+                relevant = max(relevant, float(score.contradiction))
+        chunk_scores = [
+            NLIScores(entailment[index], contradiction[index], max(0.0, 1.0 - entailment[index] - contradiction[index]))
+            for index in range(count)
+        ]
+        # Windows are aggregated per source chunk first, so two windows of one
+        # document can never "corroborate" each other as independent sources.
+        gated = [evidence_scores[index] if contradiction_eligible[index] else 0.0 for index in range(count)]
+        status, confidence, evidence_index, method = decide_nli_evidence(chunk_scores, gated, self.nli_config)
+        best_evidence = [] if evidence_index is None else [evidence_texts[evidence_index]]
+        verification_scores: dict = {}
+        if evidence_index is not None:
+            selected = chunk_scores[evidence_index]
+            verification_scores = {"entailment": float(selected.entailment), "contradiction": float(selected.contradiction), "neutral": float(selected.neutral)}
+            verification_scores["premise_windows"] = {
+                "entailment": entail_window[evidence_index], "contradiction": contra_window[evidence_index],
+            }
+        verification_scores["relevant_contradiction"] = relevant
+        return status, confidence, best_evidence, method, verification_scores
+
+    def _decide_whole_premises(self, scores: list[NLIScores], evidence_texts: list[str], evidence_scores: list[float],
+                               subject: str | None, claim_text: str = ""):
+        """Original whole-premise decision (legacy free-text context path)."""
         contradiction_scores = [
             score if (self._subject_local_to_sentence(subject, text)
                       and self._compatible_numeric_relation(claim_text, text)) else 0.0
@@ -296,7 +394,71 @@ class Phase6Pipeline:
         if evidence_index is not None:
             selected = scores[evidence_index]
             verification_scores = {"entailment": float(selected.entailment), "contradiction": float(selected.contradiction), "neutral": float(selected.neutral)}
+        relevant = [
+            float(score.contradiction)
+            for score, text in zip(scores, evidence_texts)
+            if self._subject_local_to_sentence(subject, text)
+            and (self._compatible_numeric_relation(claim_text, text) or scalar_outside_source_ranges(claim_text, text))
+        ]
+        verification_scores["relevant_contradiction"] = max(relevant, default=0.0)
         return status, confidence, best_evidence, method, verification_scores
+
+    @staticmethod
+    def _asset_ids(text: str) -> set[str]:
+        return {match.casefold() for match in _ASSET_ID.findall(text or "")}
+
+    @classmethod
+    def _same_asset_and_metric(cls, claim_assets: set[str], window_assets: set[str], subject: str | None,
+                               claim_text: str, window: str) -> bool:
+        if claim_assets and not claim_assets & window_assets:
+            return False
+        # Metric words: the claim subject (or claim) without asset IDs/numbers.
+        basis = _EVIDENCE_CITATION.sub("", subject or claim_text)
+        metric = {token for token in cls._tokens(basis)
+                  if not _ASSET_ID.fullmatch(token) and not re.search(r"\d", token)}
+        if metric and len(metric & cls._tokens(window)) < min(2, len(metric)):
+            return False
+        claim_dimensions = {quantity.dimension for quantity in extract_quantities(claim_text)}
+        if claim_dimensions and not claim_dimensions & {quantity.dimension for quantity in extract_quantities(window)}:
+            return False
+        return True
+
+    def _premise_windows(self, chunks: list[str], hypothesis: str) -> tuple[list[str], list[int]]:
+        """Short premises in the shape the NLI model was trained on.
+
+        Per chunk: the most claim-relevant single sentences plus the best
+        adjacent pair (for facts split across two sentences). A sentence without
+        an asset ID inherits the chunk's asset when the chunk names exactly one.
+        """
+        claim_tokens = self._tokens(hypothesis)
+        windows: list[str] = []
+        parents: list[int] = []
+        for parent, chunk in enumerate(chunks):
+            sentences = [sentence for line in re.split(r"\n+", chunk or "") for sentence in split_sentences(line)]
+            if len(sentences) <= 1:
+                windows.append(chunk)
+                parents.append(parent)
+                continue
+            assets = list(dict.fromkeys(match for match in _ASSET_ID.findall(chunk)))
+            single_asset = assets[0] if len({asset.casefold() for asset in assets}) == 1 else None
+
+            def contextual(text: str) -> str:
+                return f"{single_asset}: {text}" if single_asset and not _ASSET_ID.search(text) else text
+
+            def ranked(candidates: list[str], limit: int) -> list[str]:
+                scored = sorted(((len(claim_tokens & self._tokens(text)), -index, text)
+                                 for index, text in enumerate(candidates)), reverse=True)
+                chosen = [text for overlap, _, text in scored if overlap > 0][:limit]
+                return chosen or [scored[0][2]]
+
+            selected = ranked(sentences, self.nli_config.window_single_sentences)
+            if len(sentences) > 1 and self.nli_config.window_sentence_pairs > 0:
+                pairs = [f"{sentences[index]} {sentences[index + 1]}" for index in range(len(sentences) - 1)]
+                selected += ranked(pairs, self.nli_config.window_sentence_pairs)
+            for text in dict.fromkeys(contextual(text) for text in selected):
+                windows.append(text)
+                parents.append(parent)
+        return windows, parents
 
     @staticmethod
     def _compatible_numeric_relation(claim: str, evidence: str) -> bool:

@@ -6,6 +6,23 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+# The server, not the caller, decides how strictly an industrial analysis is
+# released. A caller may only keep the default or ask for a stricter profile;
+# it can never select a weaker one (e.g. customer_support) or mark the work
+# non-consequential, both of which would skip checks for its own answer.
+CONTROLPLANE_DEFAULT_PROFILE = "internal_assistant"
+CONTROLPLANE_ALLOWED_PROFILES = frozenset({CONTROLPLANE_DEFAULT_PROFILE, "regulated_decision_support"})
+
+
+def resolve_controlplane_profile(requested: str | None) -> str:
+    """Map a workbench use case to a permitted ControlPlane release profile.
+
+    Workbench governance names such as ``engineering`` or ``finance`` are not
+    ControlPlane profiles; they, and any weaker profile, use the default.
+    """
+    return requested if requested in CONTROLPLANE_ALLOWED_PROFILES else CONTROLPLANE_DEFAULT_PROFILE
+
+
 class AssuranceLevel(str, Enum):
     fast = "fast"
     standard = "standard"
@@ -40,9 +57,18 @@ class IntegratedAnalysisRequest(BaseModel):
     candidate_response: str | None = Field(default=None, max_length=30000)
     include_graph_evidence: bool = True
     diagnostic: DiagnosticInvocation | None = None
-    policy_profile: str = Field(default="internal_assistant", pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
+    policy_profile: str = Field(default=CONTROLPLANE_DEFAULT_PROFILE, pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
     consequential: bool = True
     assurance_level: AssuranceLevel = AssuranceLevel.thorough
+
+    @model_validator(mode="after")
+    def forbid_weaker_release_policy(self):
+        if self.policy_profile not in CONTROLPLANE_ALLOWED_PROFILES:
+            allowed = ", ".join(sorted(CONTROLPLANE_ALLOWED_PROFILES))
+            raise ValueError(f"policy_profile must be one of: {allowed}")
+        if not self.consequential:
+            raise ValueError("industrial analysis is always consequential; consequential=false is not permitted")
+        return self
 
     @model_validator(mode="after")
     def require_evidence_or_candidate(self):

@@ -1,5 +1,5 @@
 id: internal_assistant
-version: "1.4"
+version: "1.5"
 name: Internal Knowledge Assistant
 description: Balanced internal policy emphasizing source grounding, auditability, and selective escalation.
 geography: global
@@ -132,6 +132,14 @@ rules:
       category: policy
       subtype: detector_failure
     action: human_review
+
+# Phase-5 value-conflict hints are re-checked by NLI; a confirmed contradiction
+# is held by the contradiction rule above. Any other unmatched HIGH finding is
+# held for review by the policy engine.
+informational_subtypes:
+  - grounded_value_conflict
+  - elevated_response_risk
+  - unsupported_entity_claim
 
 warning_template: Internal content may be incomplete or unsupported; consult the cited source before acting.
 blocked_response: This response was blocked because it contains restricted sensitive information.

@@ -77,7 +77,10 @@ class ControlPlane:
 
     def __init__(self, *, policy_repository: PolicyRepository | None = None, detectors: dict[str, Detector] | None = None, policy_engine: PolicyEngine | None = None, audit_store: JsonlAuditStore | None = None, audit_enabled: bool = True, verification_service: VerificationService | None = None) -> None:
         self.policy_repository = policy_repository or PolicyRepository()
-        self.detectors = detectors or {"privacy": PrivacyDetector(), "bias": BiasDetector(), "hallucination": HallucinationDetector(), "conversation": ConversationRiskDetector()}
+        # The bias detector reuses the verifier's already-loaded NLI model for its
+        # semantic check (or a configured local LLM judge); no second model load.
+        shared_nli = getattr(getattr(verification_service, "phase6", None), "nli", None)
+        self.detectors = detectors or {"privacy": PrivacyDetector(), "bias": BiasDetector(nli=shared_nli), "hallucination": HallucinationDetector(), "conversation": ConversationRiskDetector()}
         self.policy_engine = policy_engine or PolicyEngine()
         self.audit_store = audit_store or JsonlAuditStore()
         self.audit_enabled = audit_enabled
@@ -249,6 +252,14 @@ class ControlPlane:
             return maximum
 
         metadata = hallucination_result.metadata if hallucination_result is not None else {}
+        # The cheap risk score may only *skip* NLI when it comes from the trained
+        # router. The deterministic fallback scores an unresolved claim at about
+        # 0.04, which would route a plainly contradicted answer to QUICK; without
+        # the trained model, unresolved claims with evidence get full depth.
+        if metadata.get("risk_source") != "trained_model":
+            unresolved = int(metadata.get("claims", 0)) - int(metadata.get("deterministically_supported", 0))
+            if hallucination_result is None or (metadata.get("evidence_available") and unresolved > 0):
+                return maximum
         risk = float(metadata.get("risk_score", 1.0))
         conflicts = int(metadata.get("conflict_candidates", 0))
         quick_threshold = float(check.settings.get("routing_standard_threshold", 0.30))

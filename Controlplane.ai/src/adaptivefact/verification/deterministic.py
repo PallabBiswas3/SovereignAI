@@ -7,6 +7,7 @@ from time import perf_counter
 from adaptivefact.data.schema import Claim, VerificationStatus
 from adaptivefact.extraction.ner import EntityExtractor
 from adaptivefact.extraction.numeric_date import DateValue, NumberValue, extract_dates, extract_numbers
+from adaptivefact.extraction.units import extract_quantities, scalar_outside_source_ranges, unwitnessed_quantities
 from adaptivefact.verification.text import split_sentences
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
@@ -70,6 +71,11 @@ class DeterministicVerifier:
         # authoritative range; leave it for the multi-source checker/NLI.
         if _COMPARISON_RE.search(claim.verification_text):
             return self._finish(claim, status, confidence, evidence, "deterministic_comparison_requires_context", started)
+        # A claim that states a reading outside its own stated range is either a
+        # deviation report or a false "within" claim; a value match cannot tell
+        # which (compared after unit conversion, without a vocabulary list).
+        if scalar_outside_source_ranges(claim.verification_text, claim.verification_text):
+            return self._finish(claim, status, confidence, evidence, "deterministic_reading_outside_stated_range", started)
 
         claim_numbers = extract_numbers(claim.text)
         claim_dates = extract_dates(claim.text)
@@ -153,6 +159,15 @@ class DeterministicVerifier:
     def _find_exact_value_sentence(self, claim_text, claim_values, context, *, value_type: str):
         claim_anchor = self._anchor_tokens(claim_text)
         claim_value_keys = self._value_keys(claim_values, value_type)
+        # Unit-bearing quantities are compared after unit conversion (600 cm ==
+        # 6 m; 4 psi != 4 bar). Only the remaining unitless numbers use the
+        # plain normalized-number comparison.
+        quantities = extract_quantities(claim_text) if value_type == "number" else []
+        if quantities:
+            remainder = claim_text
+            for quantity in sorted(quantities, key=lambda item: item.start, reverse=True):
+                remainder = remainder[:quantity.start] + " " + remainder[quantity.end:]
+            claim_value_keys = self._value_keys(extract_numbers(remainder), value_type)
         best = None
         best_overlap = 0.0
         for sentence in split_sentences(context):
@@ -161,6 +176,8 @@ class DeterministicVerifier:
                 continue
             sentence_keys = self._value_keys(sentence_values, value_type)
             if not claim_value_keys.issubset(sentence_keys):
+                continue
+            if quantities and unwitnessed_quantities(claim_text, [sentence]):
                 continue
             sentence_anchor = self._anchor_tokens(sentence)
             overlap = len(claim_anchor & sentence_anchor) / max(1, len(claim_anchor))

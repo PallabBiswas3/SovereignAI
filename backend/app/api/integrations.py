@@ -91,7 +91,12 @@ async def integrated_analysis(
             detail={"code": "INTEGRATION_SERVICE_UNAVAILABLE", **failure_meta},
         ) from exc
 
-    if result.released and payload.diagnostic is not None and "pump-102" in payload.query.lower():
+    # Caller-written text can be checked against evidence, but it was not
+    # produced by the governed local model, so it is never turned into a
+    # "Verified recommendation" artifact or capsule input.
+    response_origin = "client_supplied" if payload.candidate_response else "local_model"
+    if (result.released and response_origin == "local_model"
+            and payload.diagnostic is not None and "pump-102" in payload.query.lower()):
         _materialize_pump_102_outputs(result, payload, principal, db)
 
     AuditLogger(db, principal).log(
@@ -103,6 +108,8 @@ async def integrated_analysis(
             "status": result.status,
             "services": result.service_status,
             "controlplane_action": (result.controlplane or {}).get("decision", {}).get("action"),
+            "controlplane_profile": payload.policy_profile,
+            "response_origin": response_origin,
         },
     )
     return result

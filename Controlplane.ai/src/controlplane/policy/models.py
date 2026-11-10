@@ -48,6 +48,10 @@ class PolicyProfile(BaseModel):
     default_action: EnforcementAction = EnforcementAction.ALLOW
     checks: dict[str, DetectorPolicy]
     rules: list[PolicyRule]
+    # Finding subtypes this profile deliberately treats as non-actionable
+    # signals. Any other HIGH/CRITICAL finding that no rule matches is held for
+    # review by the engine instead of silently taking the default action.
+    informational_subtypes: list[str] = Field(default_factory=list)
     warning_template: str = "This response may require verification before it is relied upon."
     blocked_response: str = "This response was blocked by the organization's AI safety policy."
     review_response: str = "This response has been held for human review."

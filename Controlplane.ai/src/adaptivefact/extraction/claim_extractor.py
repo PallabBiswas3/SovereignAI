@@ -26,6 +26,24 @@ _SIMPLE_RELATION_RE = re.compile(
     r"^(?P<subject>.+?)\s+(?P<predicate>is|are|was|were|has|have|had|contains?|includes?|reported|recorded|reached|exceeded|requires?|recommends?|approved|joined|founded)\s+(?P<object>.+)$",
     re.IGNORECASE,
 )
+# A conjunction inside a condition is part of that condition ("must not be
+# restarted until the seal is replaced and the permit is closed"); splitting it
+# would turn a precondition into a stand-alone fact and drop it from the rule.
+_CONDITION_RE = re.compile(
+    r"\b(?:until|unless|if|provided(?:\s+that)?|as\s+long\s+as|so\s+long\s+as|in\s+case|whenever|except\s+when|"
+    r"only\s+(?:after|when|if|once))\b|"
+    r"\b(?:when|once|before|after|while)\s+(?:the\s+|a\s+|an\s+|it\s+|they\s+|its\s+)?[\w-]+(?:\s+(?!and\b|but\b)[\w-]+){0,3}\s+"
+    r"(?:is|are|was|were|has|have|had|reaches|exceeds|falls|drops|rises|returns|completes|closes|opens)\b",
+    re.IGNORECASE,
+)
+_ASSET_ID_RE = re.compile(r"(?<![\w-])[A-Za-z]+-\d+\b")
+# A capitalised first word of an instruction is not a subject ("Do not ...").
+_NOT_A_SUBJECT = frozenset({
+    "do", "don't", "check", "ensure", "replace", "inspect", "verify", "please", "note", "initiate", "stop",
+    "start", "restart", "use", "isolate", "monitor", "review", "confirm", "record", "schedule", "perform",
+    "apply", "keep", "avoid", "never", "always", "then", "also", "however", "the", "this", "that", "these",
+    "those", "if", "when", "after", "before", "until", "it", "they", "we", "you", "a", "an",
+})
 _STRUCTURAL_HEADINGS = frozenset({
     "diagnosis:", "evidence:", "uncertainty/conflicts:",
     "recommended inspection:", "human approval required:", "conclusion:",
@@ -67,7 +85,7 @@ class ClaimExtractor:
         # unexamined remainder as verified.
         record.metadata.pop("claim_extraction_truncated", None)
         record.metadata.pop("claim_extraction_unextracted_start", None)
-        for raw, start, end, parent_span in self._atomic_segments(record.generated_response or ""):
+        for raw, start, end, parent_span, inherited_asset in self._atomic_segments(record.generated_response or ""):
             prefix = _BULLET_PREFIX_RE.match(raw)
             if prefix:
                 start += prefix.end()
@@ -94,13 +112,15 @@ class ClaimExtractor:
             entities = self.entities.extract(clean)
             subject, predicate, obj = self._structure(clean)
             decontextualized = clean
-            if self.config.decontextualize_pronouns and previous_subject and _PRONOUN_START_RE.match(clean):
+            if inherited_asset and not _ASSET_ID_RE.search(clean):
+                # Right conjunct of "Pump-102 vibration is 7.4 mm/s and the
+                # bearing temperature is 92 °C": keep the asset it is about.
+                decontextualized = self._with_asset(clean, inherited_asset)
+                subject, predicate, obj = self._structure(decontextualized)
+            elif self.config.decontextualize_pronouns and previous_subject and _PRONOUN_START_RE.match(clean):
                 decontextualized = _PRONOUN_START_RE.sub(previous_subject, clean, count=1)
                 subject, predicate, obj = self._structure(decontextualized)
-            if subject and not _PRONOUN_START_RE.match(subject):
-                previous_subject = subject
-            elif entities:
-                previous_subject = entities[0]
+            previous_subject = self._salient_subject(decontextualized, subject, entities) or previous_subject
 
             qualifiers: dict[str, str] = {}
             if numbers:
@@ -129,14 +149,17 @@ class ClaimExtractor:
             )
         return claims
 
-    def _atomic_segments(self, text: str) -> list[tuple[str, int, int, tuple[int, int]]]:
-        output: list[tuple[str, int, int, tuple[int, int]]] = []
+    def _atomic_segments(self, text: str) -> list[tuple[str, int, int, tuple[int, int], str | None]]:
+        output: list[tuple[str, int, int, tuple[int, int], str | None]] = []
         for raw, start, end in self._segments_with_offsets(text):
             parent = (start, end)
-            if not self.config.split_atomic_conjunctions:
-                output.append((raw, start, end, parent))
+            # Keep a conditional sentence whole so its condition stays attached
+            # to every requirement it governs.
+            if not self.config.split_atomic_conjunctions or _CONDITION_RE.search(raw):
+                output.append((raw, start, end, parent, None))
                 continue
             local = 0
+            inherited: str | None = None
             for match in _ATOMIC_CONJUNCTION_RE.finditer(raw):
                 # A coordinated noun phrase is not two factual assertions.
                 # Split only when both sides have their own finite predicate and
@@ -148,11 +171,33 @@ class ClaimExtractor:
                         and _FINITE_PREDICATE_RE.search(raw[match.end():])):
                     continue
                 if match.start() > local:
-                    output.append((raw[local:match.start()], start + local, start + match.start(), parent))
+                    output.append((raw[local:match.start()], start + local, start + match.start(), parent, inherited))
+                # The right conjunct inherits the asset only when the text so far
+                # names exactly one, never one picked from a mixed-asset sentence.
+                assets = {asset.casefold(): asset for asset in _ASSET_ID_RE.findall(raw[:match.start()])}
+                inherited = next(iter(assets.values())) if len(assets) == 1 else None
                 local = match.end()
             if local < len(raw):
-                output.append((raw[local:], start + local, end, parent))
+                output.append((raw[local:], start + local, end, parent, inherited))
         return output
+
+    @staticmethod
+    def _with_asset(text: str, asset: str) -> str:
+        determiner = re.match(r"(?i)(?:the|its|their)\s+", text)
+        if determiner:
+            return f"{asset} {text[determiner.end():]}"
+        return f"{asset}: {text}"
+
+    @staticmethod
+    def _salient_subject(text: str, subject: str | None, entities: list[str]) -> str | None:
+        """Subject a following pronoun may refer to, or None if unclear."""
+        if subject and not _PRONOUN_START_RE.match(subject) and subject.casefold() not in _NOT_A_SUBJECT:
+            return subject
+        asset = _ASSET_ID_RE.search(text)
+        if asset:
+            return asset.group()
+        candidates = [entity for entity in entities if entity.casefold() not in _NOT_A_SUBJECT]
+        return candidates[0] if candidates else None
 
     def _segments_with_offsets(self, text: str) -> list[tuple[str, int, int]]:
         if not text.strip():

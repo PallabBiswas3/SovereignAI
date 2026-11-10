@@ -13,12 +13,22 @@ class PolicyEngine:
     def decide(self, interaction: Interaction, findings: list[Finding], profile: PolicyProfile, *, latency_budget_exceeded: bool = False, verification_depth: VerificationDepth | None = None) -> PolicyDecision:
         action = profile.default_action
         matched: list[str] = []
+        informational = set(profile.informational_subtypes)
         for finding in findings:
+            finding_matched = False
             for rule in profile.rules:
                 if self._matches(rule, finding, interaction):
+                    finding_matched = True
                     matched.append(rule.id)
                     if ACTION_RANK[rule.action] > ACTION_RANK[action]:
                         action = rule.action
+            # Fail closed: a serious finding that no rule anticipates must not
+            # fall through to the default (usually "allow").
+            if (not finding_matched and finding.subtype not in informational
+                    and SEVERITY_RANK[finding.severity] >= SEVERITY_RANK[Severity.HIGH]):
+                matched.append(f"system:unmatched_high_severity_finding:{finding.subtype}")
+                if ACTION_RANK[EnforcementAction.REVIEW] > ACTION_RANK[action]:
+                    action = EnforcementAction.REVIEW
         if latency_budget_exceeded and interaction.consequential:
             action = max((action, EnforcementAction.REVIEW), key=lambda item: ACTION_RANK[item])
             matched.append("system:consequential_latency_budget_exceeded")
